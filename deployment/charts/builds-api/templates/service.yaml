@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: builds-api
+  labels:
+    name: builds-api
+spec:
+  ports:
+    - name: api
+      port: 8443
+      targetPort: 8443
+  selector:
+    name: builds-api

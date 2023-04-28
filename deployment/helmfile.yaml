@@ -1,0 +1,13 @@
+releases:
+  - name: builds-api
+    chart: ./charts/builds-api/
+    namespace: builds-api
+    createNamespace: true
+    values:
+      - ./values/{{ .Environment.Name }}.yaml
+
+# Specify an environment for each project.
+environments:
+  tools: {}
+  toolsbeta: {}
+  local: {}

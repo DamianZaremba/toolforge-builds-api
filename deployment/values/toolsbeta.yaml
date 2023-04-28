@@ -1,0 +1,4 @@
+image:
+  name: toolforge-builds-api
+  tag: dev
+  pullPolicy: Never

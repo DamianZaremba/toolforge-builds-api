@@ -33,6 +33,9 @@ spec:
               readOnly: true
           securityContext:
             readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            runAsUser: 101
+            runAsGroup: 101
         - name: nginx
           image:
             "{{ .Values.nginx.image.repository }}:{{ .Values.nginx.image.tag }}"
@@ -59,6 +62,10 @@ spec:
               port: 9000
             initialDelaySeconds: 3
             periodSeconds: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsUser: 101
+            runAsGroup: 101
       serviceAccountName: builds-api
       volumes:
         - name: toolforge-builds-api-certs

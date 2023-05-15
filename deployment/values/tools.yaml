@@ -1,4 +1,3 @@
 image:
-  name: toolforge-builds-api
-  tag: dev
-  pullPolicy: Never
+  name: docker-registry.tools.wmflabs.org/builds-api
+  tag: 09f3b49-dev

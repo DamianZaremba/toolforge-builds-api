@@ -1,0 +1,106 @@
+---
+swagger: "2.0"
+info:
+  version: 0.0.1
+  title: Toolforge builds API
+basePath: /v1
+paths:
+  /healthz:
+    get:
+      security: []
+      produces:
+        - application/json
+      operationId: healthcheck
+      responses:
+        200:
+          description: Returns the health status of the service
+          schema:
+            $ref: "#/definitions/HealthResponse"
+        503:
+          description: Returned when the service is not ready
+          schema:
+            $ref: "#/definitions/HealthResponse"
+
+  /build/{id}/logs:
+    get:
+      security:
+        - key: []
+      produces:
+        - application/json
+      parameters:
+        - name: id
+          in: path
+          required: true
+          type: string
+          description: Id of the build
+      operationId: logs
+      responses:
+        200:
+          description: returns the logs of a build
+          schema:
+            description: logs about the build requested
+            $ref: "#/definitions/BuildLogs"
+        400:
+          description: Bad parameters passed
+          schema:
+            $ref: "#/definitions/BadRequest"
+        401:
+          description: Unauthorized
+          schema:
+            $ref: "#/definitions/Unauthorized"
+        404:
+          description: The build was not found
+          schema:
+            $ref: "#/definitions/NotFound"
+        500:
+          description: An internal error happened
+          schema:
+            $ref: "#/definitions/InternalError"
+
+securityDefinitions:
+  key:
+    type: apiKey
+    in: header
+    name: ssl-client-subject-dn
+
+definitions:
+  HealthResponse:
+    type: object
+    properties:
+      status:
+        type: string
+        enum: [OK, ERROR]
+      message:
+        type: string
+  NotFound:
+    type: object
+    properties:
+      message:
+        type: string
+  BadRequest:
+    type: object
+    properties:
+      message:
+        type: string
+  Unauthorized:
+    type: object
+    properties:
+      message:
+        type: string
+  InternalError:
+    type: object
+    properties:
+      message:
+        type: string
+  BuildLogs:
+    type: object
+    properties:
+      lines:
+        type: array
+        items:
+          type: string
+  principal:
+    type: object
+    properties:
+      user:
+        type: string

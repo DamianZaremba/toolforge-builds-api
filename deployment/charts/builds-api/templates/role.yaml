@@ -1,0 +1,17 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: builds-api-access
+  namespace: image-build
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+      - pods/log
+    verbs: ["*"]
+  - apiGroups:
+      - tekton.dev
+    resources: ["*"]
+    verbs: ["*"]

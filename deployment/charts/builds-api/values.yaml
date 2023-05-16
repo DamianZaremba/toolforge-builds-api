@@ -1,0 +1,34 @@
+replicas: 2
+
+image:
+  name: docker-registry.tools.wmflabs.org/toolforge-builds-api
+  tag: latest
+  pullPolicy: IfNotPresent
+
+resources:
+  limits:
+    memory: 50Mi
+    cpu: 300m
+  requests:
+    memory: 50Mi
+    cpu: 300m
+
+api:
+  failurePolicy: Fail
+  secretName: builds-api-certs
+
+nginx:
+  image:
+    repository: docker-registry.tools.wmflabs.org/nginx
+    tag: latest
+    pullpolicy: Always
+
+certificates:
+  apiGatewayCa:
+    name: api-gateway-backend-ca
+    kind: ClusterIssuer
+    group: cert-manager.io
+
+config:
+  debug: false
+  port: 8000

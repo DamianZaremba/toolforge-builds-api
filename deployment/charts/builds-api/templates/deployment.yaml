@@ -1,0 +1,82 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: builds-api
+  labels:
+    name: builds-api
+  annotations:
+    secret.reloader.stakater.com/reload: "{{ .Values.api.secretName }}"
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      name: builds-api
+  template:
+    metadata:
+      name: builds-api
+      labels:
+        name: builds-api
+    spec:
+      containers:
+        - name: api
+          image: "{{ .Values.image.name }}:{{ .Values.image.tag }}"
+          imagePullPolicy: "{{ .Values.image.pullPolicy }}"
+          env:
+            - name: "DEBUG"
+              value: "{{ .Values.config.debug }}"
+            - name: "PORT"
+              value: "{{ .Values.config.port }}"
+          resources: {{ toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: toolforge-builds-api-certs
+              mountPath: /etc/api/certs
+              readOnly: true
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            runAsUser: 101
+            runAsGroup: 101
+        - name: nginx
+          image:
+            "{{ .Values.nginx.image.repository }}:{{ .Values.nginx.image.tag }}"
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8443
+              name: https
+              protocol: TCP
+            - containerPort: 9000
+              name: metrics
+              protocol: TCP
+          resources: {}
+          volumeMounts:
+            - mountPath: /etc/nginx/api-gateway-ssl
+              name: api-gateway-server-cert
+              readOnly: true
+            - mountPath: /etc/nginx/nginx.conf
+              name: nginx-config
+              readOnly: true
+              subPath: nginx.conf
+          livenessProbe:
+            httpGet:
+              path: /v1/healthz
+              port: 9000
+            initialDelaySeconds: 3
+            periodSeconds: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsUser: 101
+            runAsGroup: 101
+      serviceAccountName: builds-api
+      volumes:
+        - name: toolforge-builds-api-certs
+          secret:
+            secretName: "{{ .Values.api.secretName }}"
+        - configMap:
+            items:
+              - key: nginx.conf
+                path: nginx.conf
+            name: nginx-config
+          name: nginx-config
+        - name: api-gateway-server-cert
+          secret:
+            secretName: "{{ .Release.Name }}-api-gateway-server"

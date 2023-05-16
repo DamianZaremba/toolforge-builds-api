@@ -1,0 +1,3 @@
+image:
+  name: docker-registry.tools.wmflabs.org/builds-api
+  tag: 09f3b49-dev

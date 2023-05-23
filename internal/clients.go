@@ -6,6 +6,6 @@ import (
 )
 
 type Clients struct {
-	Tekton *versioned.Clientset
-	K8s    *kubernetes.Clientset
+	Tekton versioned.Interface
+	K8s    kubernetes.Interface
 }

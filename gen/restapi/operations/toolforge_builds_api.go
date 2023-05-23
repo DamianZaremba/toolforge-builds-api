@@ -50,6 +50,9 @@ func NewToolforgeBuildsAPI(spec *loads.Document) *ToolforgeBuildsAPI {
 		LogsHandler: LogsHandlerFunc(func(params LogsParams, principal *models.Principal) middleware.Responder {
 			return middleware.NotImplemented("operation Logs has not yet been implemented")
 		}),
+		StartHandler: StartHandlerFunc(func(params StartParams, principal *models.Principal) middleware.Responder {
+			return middleware.NotImplemented("operation Start has not yet been implemented")
+		}),
 
 		// Applies when the "ssl-client-subject-dn" header is set
 		KeyAuth: func(token string) (*models.Principal, error) {
@@ -104,6 +107,8 @@ type ToolforgeBuildsAPI struct {
 	HealthcheckHandler HealthcheckHandler
 	// LogsHandler sets the operation handler for the logs operation
 	LogsHandler LogsHandler
+	// StartHandler sets the operation handler for the start operation
+	StartHandler StartHandler
 
 	// ServeError is called when an error is received, there is a default handler
 	// but you can set your own with this
@@ -190,6 +195,9 @@ func (o *ToolforgeBuildsAPI) Validate() error {
 	}
 	if o.LogsHandler == nil {
 		unregistered = append(unregistered, "LogsHandler")
+	}
+	if o.StartHandler == nil {
+		unregistered = append(unregistered, "StartHandler")
 	}
 
 	if len(unregistered) > 0 {
@@ -298,6 +306,10 @@ func (o *ToolforgeBuildsAPI) initHandlerCache() {
 		o.handlers["GET"] = make(map[string]http.Handler)
 	}
 	o.handlers["GET"]["/build/{id}/logs"] = NewLogs(o.context, o.LogsHandler)
+	if o.handlers["POST"] == nil {
+		o.handlers["POST"] = make(map[string]http.Handler)
+	}
+	o.handlers["POST"]["/build"] = NewStart(o.context, o.StartHandler)
 }
 
 // Serve creates a http handler to serve the API over HTTP

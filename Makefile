@@ -1,4 +1,5 @@
 SWAGGER=docker run --rm -it --user $(shell id -u):$(shell id -g) -e GOPATH=${GOPATH}:/go -v ${PWD}:${PWD} -w ${PWD} quay.io/goswagger/swagger
+SHELL := /bin/bash
 
 .PHONY: run image gen-api gen-cli
 
@@ -18,4 +19,13 @@ build-api:
 	go build ./cmd/builds-api
 
 image:
-	docker build . --tag=toolforge-builds-api:dev
+	bash -c "source <(minikube docker-env) || : && docker build . --tag=toolforge-builds-api:dev"
+
+kind_load:
+	bash -c "hash kind 2>/dev/null && kind load docker-image docker.io/library/toolforge-builds-api:dev --name toolforge || :"
+
+rollout:
+	kubectl rollout restart -n builds-api deployment builds-api
+
+build-and-deploy-local: image kind_load rollout
+	./deploy.sh local

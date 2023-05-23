@@ -25,6 +25,69 @@ func init() {
   },
   "basePath": "/v1",
   "paths": {
+    "/build": {
+      "post": {
+        "security": [
+          {
+            "key": []
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "operationId": "start",
+        "parameters": [
+          {
+            "name": "new_build",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "required": [
+                "source_url"
+              ],
+              "properties": {
+                "ref": {
+                  "description": "Source code reference to build (ex. a git branch name)",
+                  "type": "string"
+                },
+                "source_url": {
+                  "description": "URL to the public git repository that contains the source code to build",
+                  "type": "string"
+                }
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "returns the newly created build information",
+            "schema": {
+              "description": "the newly created build",
+              "$ref": "#/definitions/NewBuild"
+            }
+          },
+          "400": {
+            "description": "Bad parameters passed",
+            "schema": {
+              "$ref": "#/definitions/BadRequest"
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "schema": {
+              "$ref": "#/definitions/Unauthorized"
+            }
+          },
+          "500": {
+            "description": "An internal error happened",
+            "schema": {
+              "$ref": "#/definitions/InternalError"
+            }
+          }
+        }
+      }
+    },
     "/build/{id}/logs": {
       "get": {
         "security": [
@@ -144,6 +207,25 @@ func init() {
       "properties": {
         "message": {
           "type": "string"
+        }
+      }
+    },
+    "NewBuild": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "ref": {
+              "type": "string"
+            },
+            "source_url": {
+              "type": "string"
+            }
+          }
         }
       }
     },
@@ -188,6 +270,69 @@ func init() {
   },
   "basePath": "/v1",
   "paths": {
+    "/build": {
+      "post": {
+        "security": [
+          {
+            "key": []
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "operationId": "start",
+        "parameters": [
+          {
+            "name": "new_build",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "type": "object",
+              "required": [
+                "source_url"
+              ],
+              "properties": {
+                "ref": {
+                  "description": "Source code reference to build (ex. a git branch name)",
+                  "type": "string"
+                },
+                "source_url": {
+                  "description": "URL to the public git repository that contains the source code to build",
+                  "type": "string"
+                }
+              }
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "returns the newly created build information",
+            "schema": {
+              "description": "the newly created build",
+              "$ref": "#/definitions/NewBuild"
+            }
+          },
+          "400": {
+            "description": "Bad parameters passed",
+            "schema": {
+              "$ref": "#/definitions/BadRequest"
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "schema": {
+              "$ref": "#/definitions/Unauthorized"
+            }
+          },
+          "500": {
+            "description": "An internal error happened",
+            "schema": {
+              "$ref": "#/definitions/InternalError"
+            }
+          }
+        }
+      }
+    },
     "/build/{id}/logs": {
       "get": {
         "security": [
@@ -306,6 +451,36 @@ func init() {
       "type": "object",
       "properties": {
         "message": {
+          "type": "string"
+        }
+      }
+    },
+    "NewBuild": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "ref": {
+              "type": "string"
+            },
+            "source_url": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "NewBuildParameters": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "type": "string"
+        },
+        "source_url": {
           "type": "string"
         }
       }

@@ -4,9 +4,8 @@ releases:
     namespace: builds-api
     createNamespace: true
     values:
-      - ./values/{{ .Environment.Name }}.yaml
+      - ./values/{{ .Environment.Name }}.yaml*
 
-# Specify an environment for each project.
 environments:
   tools: {}
   toolsbeta: {}

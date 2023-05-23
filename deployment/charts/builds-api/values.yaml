@@ -32,3 +32,4 @@ certificates:
 config:
   debug: false
   port: 8000
+  harborRepository: tools-harbor.wmcloud.org

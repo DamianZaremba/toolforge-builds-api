@@ -1,0 +1,11 @@
+pre-commit:
+  image: "docker-registry.tools.wmflabs.org/cloud-cicd-py39bullseye-tox:latest"
+  stage: test
+  script:
+    - pre-commit run -a
+
+unit:
+  image: "docker-registry.wikimedia.org/golang1.19:latest"
+  stage: test
+  script:
+    - go test ./...

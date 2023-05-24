@@ -1,6 +1,6 @@
 # Toolforge builds API
 
-API to start builds of images to use in toolforge. 
+API to start builds of images to use in toolforge.
 
 # Developing
 ## If you modify the swagger definition

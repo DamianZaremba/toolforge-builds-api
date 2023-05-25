@@ -16,10 +16,10 @@ gen-cli:
 	go mod tidy
 
 build-api:
-	go build ./cmd/builds-api
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -buildvcs=false -a -installsuffix cgo -ldflags="-w -s" -o builds-api ./cmd/builds-api
 
 image:
-	bash -c "source <(minikube docker-env) || : && docker build . --tag=toolforge-builds-api:dev"
+	bash -c "source <(minikube docker-env) || : && docker build --target image -f .pipeline/blubber.yaml . -t toolforge-builds-api:dev"
 
 kind_load:
 	bash -c "hash kind 2>/dev/null && kind load docker-image docker.io/library/toolforge-builds-api:dev --name toolforge || :"

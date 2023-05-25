@@ -1,10 +1,8 @@
 package internal
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"strings"
 
 	"github.com/go-openapi/runtime/middleware"
@@ -16,6 +14,22 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// TODO: Get the list of containers from the pod and sort by the task spec
+var Containers = [...]string{
+	"place-tools",
+	"step-init",
+	"place-scripts",
+	"step-clone",
+	"step-prepare",
+	"step-copy-stack-toml",
+	"step-detect",
+	"step-analyze",
+	"step-restore",
+	"step-build",
+	"step-export",
+	"step-results",
+}
+
 func getContainerLogs(clients *Clients, container string, taskRun *v1beta1.PipelineRunTaskRunStatus, namespace string) (string, error) {
 	logs := clients.K8s.CoreV1().Pods(BuildNamespace).GetLogs(
 		taskRun.Status.PodName, &v1.PodLogOptions{
@@ -23,21 +37,19 @@ func getContainerLogs(clients *Clients, container string, taskRun *v1beta1.Pipel
 			Container:  container,
 		},
 	)
-	podLogs, err := logs.Stream(context.TODO())
+	result := logs.Do(context.TODO())
+	err := result.Error()
 	if err != nil {
 		return "", err
 	}
-	defer podLogs.Close()
-
-	buf := new(bytes.Buffer)
-	_, err = io.Copy(buf, podLogs)
+	rawLogs, err := result.Raw()
 	if err != nil {
 		return "", err
 	}
-	rawLogs := buf.String()
+	stringLogs := string(rawLogs)
 
-	logLines := make([]string, strings.Count("\n", rawLogs))
-	for _, logLine := range strings.Split(rawLogs, "\n") {
+	logLines := make([]string, strings.Count("\n", stringLogs))
+	for _, logLine := range strings.Split(stringLogs, "\n") {
 		logLines = append(logLines, fmt.Sprintf("%s: %s", container, logLine))
 	}
 
@@ -52,25 +64,9 @@ func getPipelineRunLogs(pipelineRun *v1beta1.PipelineRun, clients *Clients, name
 		return "", nil
 	}
 
-	// TODO: Get the list of containers from the pod and sort by the task spec
-	containers := [...]string{
-		"place-tools",
-		"step-init",
-		"place-scripts",
-		"step-clone",
-		"step-prepare",
-		"step-copy-stack-toml",
-		"step-detect",
-		"step-analyze",
-		"step-restore",
-		"step-build",
-		"step-export",
-		"step-results",
-	}
-
 	for _, taskRun := range pipelineRun.Status.TaskRuns {
-		var allLogs = make([]string, 0, len(containers))
-		for _, container := range containers {
+		var allLogs = make([]string, 0, len(Containers))
+		for _, container := range Containers {
 			newLogs, err := getContainerLogs(clients, container, taskRun, namespace)
 			if err != nil {
 				return "", err

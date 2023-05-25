@@ -1,0 +1,40 @@
+# syntax=docker-registry.wikimedia.org/repos/releng/blubber:v0.12.1
+version: v4
+base: docker-registry.wikimedia.org/golang1.19
+variants:
+  download-deps:
+    lives:
+      in: /src
+    builders:
+     - custom:
+         requirements: [.]
+         command:
+           - go
+           - mod
+           - download
+
+  test:
+    includes:
+      - download-deps
+    entrypoint:
+      - go
+      - test
+      - ./...
+
+  build:
+    includes:
+      - download-deps
+    builders:
+     - custom:
+         command:
+           - make
+           - build-api
+
+  image:
+    lives:
+      in: /src
+    copies:
+      - from: build
+        source: /src/builds-api
+        destination: /builds-api
+    entrypoint: [/builds-api]

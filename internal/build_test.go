@@ -237,3 +237,88 @@ func TestLogsReturnsAllLogsConcatenated(t *testing.T) {
 		}
 	}
 }
+
+func TestStartReturnsInternalServerErrorOnException(t *testing.T) {
+	mockTekton := tektonFake.Clientset{}
+	mockTekton.Fake.AddReactor(
+		"create",
+		"pipelineruns",
+		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
+			return true, nil, fmt.Errorf("Dummy error")
+		},
+	)
+	clients := Clients{
+		Tekton: &mockTekton,
+	}
+
+	responder := Start(
+		"dummy-source-url",
+		"dummy-ref",
+		&clients,
+		"dummy-namespace",
+		"dummy-tool",
+		"dummy-harbor-repository",
+		"dummy-builder",
+	)
+
+	recorder := httptest.NewRecorder()
+	responder.WriteResponse(recorder, runtime.JSONProducer())
+
+	if recorder.Result().StatusCode != 500 {
+		t.Fatalf("I was expecting a 500 response, got: %s", recorder.Result().Status)
+	}
+}
+
+func TestStartReturnsNewBuildName(t *testing.T) {
+	mockTekton := tektonFake.Clientset{}
+	expectedName := "new-pipelinerun"
+	expectedRef := "dummy-ref"
+	expectedSourceURL := "dummy-source-url"
+	fakePipelineRun := v1beta1.PipelineRun{
+		ObjectMeta: v1.ObjectMeta{Name: expectedName},
+	}
+	mockTekton.Fake.AddReactor(
+		"create",
+		"pipelineruns",
+		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
+			return true, &fakePipelineRun, nil
+		},
+	)
+	clients := Clients{
+		Tekton: &mockTekton,
+	}
+
+	responder := Start(
+		expectedSourceURL,
+		expectedRef,
+		&clients,
+		"dummy-namespace",
+		"dummy-tool",
+		"dummy-harbor-repository",
+		"dummy-builder",
+	)
+
+	recorder := httptest.NewRecorder()
+	responder.WriteResponse(recorder, runtime.JSONProducer())
+
+	if recorder.Result().StatusCode != 200 {
+		t.Fatalf("I was expecting a 200 response, got: %s", recorder.Result().Status)
+	}
+
+	var gottenNewBuild models.NewBuild
+	if err := gottenNewBuild.UnmarshalBinary(recorder.Body.Bytes()); err != nil {
+		t.Fatalf("Got error unmarshalling response: \nerr:%s\nrawResponse:%s", err, recorder.Body.Bytes())
+	}
+
+	if gottenNewBuild.Name != expectedName {
+		t.Fatalf("Got an unexpected name for the new build, got '%s', expected '%s'", gottenNewBuild.Name, expectedName)
+	}
+
+	if gottenNewBuild.Parameters.Ref != expectedRef {
+		t.Fatalf("Got an unexpected ref for the new build, got '%s', expected '%s'", gottenNewBuild.Parameters.Ref, expectedRef)
+	}
+
+	if gottenNewBuild.Parameters.SourceURL != expectedSourceURL {
+		t.Fatalf("Got an unexpected source url for the new build, got '%s', expected '%s'", gottenNewBuild.Parameters.SourceURL, expectedSourceURL)
+	}
+}

@@ -1,3 +1,7 @@
 image:
   name: docker-registry.tools.wmflabs.org/builds-api
   tag: 35b57c6
+
+config:
+  harborRepository: tools-harbor.wmcloud.org
+  builder: tools-harbor.wmcloud.org/toolforge/heroku-builder-classic:22

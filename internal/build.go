@@ -127,3 +127,88 @@ func Logs(buildId string, clients *Clients, namespace string, toolName string) m
 		},
 	)
 }
+
+func Start(
+	sourceURL string,
+	ref string,
+	clients *Clients,
+	namespace string,
+	toolName string,
+	harborRepository string,
+	builder string,
+) middleware.Responder {
+	// TODO: Check quotas
+	// TODO: Create destination project in harbor if it does not exist
+	log.Debugf("Starting a new build: ref=%s, toolName=%s, harborRepository=%s, builder=%s", ref, toolName, harborRepository, builder)
+	newRun := v1beta1.PipelineRun{
+		ObjectMeta: metav1.ObjectMeta{
+			GenerateName: fmt.Sprintf("%s%s", toolName, BuildIdPrefix),
+			Namespace:    BuildNamespace,
+			Labels: map[string]string{
+				"user": toolName,
+			},
+		},
+		Spec: v1beta1.PipelineRunSpec{
+			PipelineRef:        &v1beta1.PipelineRef{Name: "buildpacks"},
+			ServiceAccountName: "buildpacks-service-account",
+			Params: []v1beta1.Param{
+				{
+					Name: "BUILDER_IMAGE",
+					Value: v1beta1.ParamValue{
+						StringVal: builder,
+						Type:      v1beta1.ParamTypeString,
+					},
+				},
+				{
+					Name: "APP_IMAGE",
+					Value: v1beta1.ParamValue{
+						StringVal: fmt.Sprintf("%s/tool-%s/%s:latest", harborRepository, toolName, toolName),
+						Type:      v1beta1.ParamTypeString,
+					},
+				},
+				{
+					Name:  "SOURCE_URL",
+					Value: v1beta1.ParamValue{StringVal: sourceURL, Type: v1beta1.ParamTypeString},
+				},
+				{
+					Name:  "SOURCE_REFERENCE",
+					Value: v1beta1.ParamValue{StringVal: ref, Type: v1beta1.ParamTypeString},
+				},
+			},
+			Workspaces: []v1beta1.WorkspaceBinding{
+				{
+					Name:     "source-ws",
+					EmptyDir: &v1.EmptyDirVolumeSource{},
+				},
+				{
+					Name:     "cache-ws",
+					EmptyDir: &v1.EmptyDirVolumeSource{},
+				},
+			},
+		},
+	}
+
+	pipelineRun, err := clients.Tekton.TektonV1beta1().PipelineRuns(namespace).Create(
+		context.TODO(),
+		&newRun,
+		metav1.CreateOptions{},
+	)
+	if err != nil {
+		log.Warnf(
+			"Got error when creating a new pipelinerun on namespace %s: %s", namespace, err,
+		)
+		return operations.NewStartInternalServerError().WithPayload(
+			&models.InternalError{Message: "Unable to create a new build!"},
+		)
+	}
+
+	return operations.NewStartOK().WithPayload(
+		&models.NewBuild{
+			Name: pipelineRun.Name,
+			Parameters: &models.NewBuildParameters{
+				Ref:       ref,
+				SourceURL: sourceURL,
+			},
+		},
+	)
+}

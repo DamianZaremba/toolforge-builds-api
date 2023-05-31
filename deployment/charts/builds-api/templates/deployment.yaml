@@ -26,6 +26,10 @@ spec:
               value: "{{ .Values.config.debug }}"
             - name: "PORT"
               value: "{{ .Values.config.port }}"
+            - name: "HARBOR_REPOSITORY"
+              value: "{{ .Values.config.harborRepository }}"
+            - name: "BUILDER"
+              value: "{{ .Values.config.builder}}"
           resources: {{ toYaml .Values.resources | nindent 12 }}
           volumeMounts:
             - name: toolforge-builds-api-certs

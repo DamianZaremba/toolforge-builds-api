@@ -5,13 +5,12 @@ package main
 import (
 	"context"
 	"fmt"
-	"os"
-	"strconv"
 
 	"github.com/go-openapi/errors"
 	"github.com/go-openapi/loads"
 	"github.com/go-openapi/runtime/middleware"
 	log "github.com/sirupsen/logrus"
+	"github.com/spf13/viper"
 	"github.com/tektoncd/pipeline/pkg/client/clientset/versioned"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -28,7 +27,14 @@ import (
 func main() {
 	log.SetFormatter(&log.JSONFormatter{})
 
-	if os.Getenv("DEBUG") == "true" {
+	viper.AutomaticEnv()
+	viper.AllowEmptyEnv(true)
+	viper.SetDefault("debug", false)
+	viper.SetDefault("port", 8000)
+	// note that the builder is the full ref for the image
+	viper.SetDefault("builder", "tools-harbor.wmcloud.org/toolforge/heroku-builder-classic:22")
+
+	if viper.GetBool("debug") {
 		log.SetLevel(log.DebugLevel)
 		log.Info("Starting in DEBUG mode")
 	}
@@ -47,16 +53,7 @@ func main() {
 		}
 	}()
 
-	if os.Getenv("PORT") != "" {
-		val, err := strconv.Atoi(os.Getenv("PORT"))
-		if err != nil {
-			log.Fatalf("Bad port specified '%s'", os.Getenv("PORT"))
-		}
-
-		server.Port = val
-	} else {
-		server.Port = 8000
-	}
+	server.Port = viper.GetInt("port")
 
 	// Applies when the "ssl-client-subject-dn" header is set
 	api.KeyAuth = func(token string) (*models.Principal, error) {
@@ -71,7 +68,16 @@ func main() {
 		return nil, errors.New(401, "incorrect auth")
 	}
 
-	addHandlers(api)
+	harborRepository := viper.GetString("HARBOR_REPOSITORY")
+	if harborRepository == "" {
+		log.Fatalf("No HARBOR_REPOSITORY set, one is needed.")
+	}
+	config := Config{
+		HarborRepository: harborRepository,
+		Builder:          viper.GetString("builder"),
+	}
+
+	addHandlers(api, config)
 
 	if err := server.Serve(); err != nil {
 		log.Fatalln(err)
@@ -79,7 +85,12 @@ func main() {
 
 }
 
-func addHandlers(api *operations.ToolforgeBuildsAPI) {
+type Config struct {
+	HarborRepository string
+	Builder          string
+}
+
+func addHandlers(api *operations.ToolforgeBuildsAPI, config Config) {
 	k8sConfig, err := rest.InClusterConfig()
 	if err != nil {
 		log.Fatalln(err.Error())
@@ -116,10 +127,24 @@ func addHandlers(api *operations.ToolforgeBuildsAPI) {
 			})
 		})
 
-	// Handler for getting a build
+	// Handler for getting a build logs
 	api.LogsHandler = operations.LogsHandlerFunc(
 		func(params operations.LogsParams, principal *models.Principal) middleware.Responder {
 			return internal.Logs(params.ID, &clients, internal.BuildNamespace, principal.User)
+		})
+
+	// Handler for getting a build logs
+	api.StartHandler = operations.StartHandlerFunc(
+		func(params operations.StartParams, principal *models.Principal) middleware.Responder {
+			return internal.Start(
+				*params.NewBuild.SourceURL,
+				params.NewBuild.Ref,
+				&clients,
+				internal.BuildNamespace,
+				principal.User,
+				config.HarborRepository,
+				config.Builder,
+			)
 		})
 
 }

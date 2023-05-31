@@ -21,6 +21,50 @@ paths:
           schema:
             $ref: "#/definitions/HealthResponse"
 
+  /build:
+    post:
+      security:
+        - key: []
+      produces:
+        - application/json
+      parameters:
+        - name: new_build
+          required: true
+          in: body
+          schema:
+            type: object
+            required:
+              - source_url
+            properties:
+              source_url:
+                type: string
+                description:
+                  URL to the public git repository that contains the source code
+                  to build
+              ref:
+                type: string
+                description:
+                  Source code reference to build (ex. a git branch name)
+      operationId: start
+      responses:
+        200:
+          description: returns the newly created build information
+          schema:
+            description: the newly created build
+            $ref: "#/definitions/NewBuild"
+        400:
+          description: Bad parameters passed
+          schema:
+            $ref: "#/definitions/BadRequest"
+        401:
+          description: Unauthorized
+          schema:
+            $ref: "#/definitions/Unauthorized"
+        500:
+          description: An internal error happened
+          schema:
+            $ref: "#/definitions/InternalError"
+
   /build/{id}/logs:
     get:
       security:
@@ -99,6 +143,18 @@ definitions:
         type: array
         items:
           type: string
+  NewBuild:
+    type: object
+    properties:
+      name:
+        type: string
+      parameters:
+        type: object
+        properties:
+          source_url:
+            type: string
+          ref:
+            type: string
   principal:
     type: object
     properties:

@@ -1,6 +1,6 @@
 image:
   name: docker-registry.tools.wmflabs.org/builds-api
-  tag: 35b57c6
+  tag: a1977b3a
 
 config:
   harborRepository: toolsbeta-harbor.wmcloud.org

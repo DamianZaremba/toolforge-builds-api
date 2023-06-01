@@ -1,6 +1,6 @@
 image:
   name: tools-harbor.wmcloud.org/toolforge/builds-api
-  tag: 35b57c6
+  tag: a1977b3a
 
 config:
   harborRepository: tools-harbor.wmcloud.org

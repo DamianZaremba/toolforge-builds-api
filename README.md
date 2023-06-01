@@ -76,7 +76,7 @@ If you only want to deploy the golang code, you can build the image in minikube 
 
 And then force a rollout on the deployment:
 ```
-> kubectl rollout restart -n builds-api deployment build-api
+> kubectl rollout restart -n builds-api deployment builds-api
 ```
 
 ## Access locally

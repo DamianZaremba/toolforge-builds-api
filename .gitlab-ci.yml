@@ -107,7 +107,7 @@ publish-image-tools:
   script:
     - |
       mkdir -p ~/.docker || : \
-      && echo "{\"auths\":{\"toolsbeta-harbor.wmcloud.org\":{\"auth\":\"$TOOLS_HARBOR_AUTH\"}}}" \
+      && echo "{\"auths\":{\"tools-harbor.wmcloud.org\":{\"auth\":\"$TOOLS_HARBOR_AUTH\"}}}" \
       > ~/.docker/config.json
     - |
       buildctl \

@@ -84,6 +84,15 @@ publish-image-toolsbeta:
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       when: manual
+      # Only run when there's code changes, no helm/helmfile changes
+      # Note that this will get triggered also on tag and non-push events
+      # https://docs.gitlab.com/ee/ci/yaml/#ruleschanges
+      changes:
+        - "**/*.go"
+        - go.mod
+        - go.sum
+        - Makefile
+        - .pipeline/*
 
 publish-image-tools:
   extends: .kokkuri:build-and-publish-image
@@ -116,6 +125,15 @@ publish-image-tools:
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       when: manual
+      # Only run when there's code changes, no helm/helmfile changes
+      # Note that this will get triggered also on tag and non-push events
+      # https://docs.gitlab.com/ee/ci/yaml/#ruleschanges
+      changes:
+        - "**/*.go"
+        - go.mod
+        - go.sum
+        - Makefile
+        - .pipeline/*
 
 # prevent running the workflows in any other case but the following
 workflow:

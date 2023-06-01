@@ -1,7 +1,7 @@
 replicas: 2
 
 image:
-  name: docker-registry.tools.wmflabs.org/toolforge-builds-api
+  name: tools-harbor.wmcloud.org/toolforge/builds-api
   tag: latest
   pullPolicy: IfNotPresent
 

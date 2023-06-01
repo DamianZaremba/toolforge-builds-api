@@ -1,5 +1,5 @@
 image:
-  name: docker-registry.tools.wmflabs.org/builds-api
+  name: tools-harbor.wmcloud.org/toolforge/builds-api
   tag: 35b57c6
 
 config:

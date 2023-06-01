@@ -22,7 +22,7 @@ unit:
   rules:
     - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
 
-publish-toolsbeta-dev:
+publish-image-toolsbeta-dev:
   extends: .kokkuri:build-and-publish-image
   stage: publish
   environment:
@@ -51,12 +51,12 @@ publish-toolsbeta-dev:
         --opt target=image \
         --output "type=image,name=toolsbeta-harbor.wmcloud.org/toolforge/builds-api:dev-mr-$CI_MERGE_REQUEST_IID,push=true"
 
-publish-toolsbeta:
+publish-image-toolsbeta:
   extends: .kokkuri:build-and-publish-image
   stage: deployment
   environment:
     name: staging
-    url: https://toolsbeta-harbor.wmcloud.org/harbor/projects/toolforge/repositories/builds-api/artifacts-tab/artifacts/mr-$CI_MERGE_REQUEST_IID
+    url: https://toolsbeta-harbor.wmcloud.org/harbor/projects/toolforge/repositories/builds-api/artifacts-tab/artifacts/$CI_COMMIT_SHORT_SHA
   variables:
     BUILD_VARIANT: image
     KOKKURI_REGISTRY_INTERNAL: toolsbeta-harbor.wmcloud.org
@@ -78,17 +78,17 @@ publish-toolsbeta:
         --local dockerfile=. \
         --opt filename=.pipeline/blubber.yaml \
         --opt target=image \
-        --output "type=image,name=toolsbeta-harbor.wmcloud.org/toolforge/builds-api:mr-$CI_MERGE_REQUEST_IID,push=true"
+        --output "type=image,name=toolsbeta-harbor.wmcloud.org/toolforge/builds-api:$CI_COMMIT_SHORT_SHA,push=true"
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       when: manual
 
-publish-tools:
+publish-image-tools:
   extends: .kokkuri:build-and-publish-image
   stage: deployment
   environment:
     name: production
-    url: https://tools-harbor.wmcloud.org/harbor/projects/toolforge/repositories/builds-api/artifacts-tab/artifacts/mr-$CI_MERGE_REQUEST_IID
+    url: https://tools-harbor.wmcloud.org/harbor/projects/toolforge/repositories/builds-api/artifacts-tab/artifacts/$CI_COMMIT_SHORT_SHA
   variables:
     BUILD_VARIANT: image
     KOKKURI_REGISTRY_INTERNAL: tools-harbor.wmcloud.org
@@ -110,7 +110,7 @@ publish-tools:
         --local dockerfile=. \
         --opt filename=.pipeline/blubber.yaml \
         --opt target=image \
-        --output "type=image,name=tools-harbor.wmcloud.org/toolforge/builds-api:mr-$CI_MERGE_REQUEST_IID,push=true"
+        --output "type=image,name=tools-harbor.wmcloud.org/toolforge/builds-api:$CI_COMMIT_SHORT_SHA,push=true"
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       when: manual

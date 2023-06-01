@@ -114,7 +114,12 @@ func addHandlers(api *operations.ToolforgeBuildsAPI, config Config) {
 	// Declare handlers
 	api.HealthcheckHandler = operations.HealthcheckHandlerFunc(
 		func(params operations.HealthcheckParams) middleware.Responder {
-			_, err := clients.K8s.CoreV1().Pods(internal.BuildNamespace).List(context.TODO(), metav1.ListOptions{})
+			_, err := clients.K8s.CoreV1().Pods(internal.BuildNamespace).List(
+				context.TODO(),
+				metav1.ListOptions{
+					Limit: 1,
+				},
+			)
 			if err != nil {
 				return operations.NewHealthcheckServiceUnavailable().WithPayload(&models.HealthResponse{
 					Message: fmt.Sprintf("Unable to contact the k8s API: %s", err),

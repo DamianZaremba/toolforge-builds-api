@@ -2,7 +2,7 @@ replicas: 2
 
 image:
   name: tools-harbor.wmcloud.org/toolforge/builds-api
-  tag: latest
+  tag: 0.0.1
   pullPolicy: IfNotPresent
 
 resources:

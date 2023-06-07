@@ -184,6 +184,10 @@ func Start(
 					Name:     "cache-ws",
 					EmptyDir: &v1.EmptyDirVolumeSource{},
 				},
+				{
+					Name:     "aptbuildpack-ws",
+					EmptyDir: &v1.EmptyDirVolumeSource{},
+				},
 			},
 		},
 	}

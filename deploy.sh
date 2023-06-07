@@ -1,18 +1,13 @@
 #!/bin/bash
-# standard deploy.sh for applications using Helmfile
-set -eu
+# local deployment only
+set -o errexit
+set -o nounset
+set -o pipefail
 
 # explicitly find and specify path to helmfile to allow invoking
 # this script without having to cd to the deployment directory
 BASE_DIR=$(dirname "$(realpath -s "$0")")
 cd "$BASE_DIR"
-
-DEPLOY_ENVIRONMENT=${1:-}
-PROJECT=$(cat /etc/wmcs-project 2>/dev/null || echo "local")
-
-if [[ "$DEPLOY_ENVIRONMENT" == "" ]]; then
-	DEPLOY_ENVIRONMENT="$PROJECT"
-fi
 
 # use -i (interactive) to ask for confirmation for changing
 # live cluster state if stdin is a tty
@@ -23,4 +18,4 @@ else
 fi
 
 # helmfile apply will show a diff before doing changes
-helmfile -e "$DEPLOY_ENVIRONMENT" --file "./deployment/helmfile.yaml" $INTERACTIVE_PARAM apply
+helmfile -e local --file "./deployment/helmfile.yaml.gotmpl" $INTERACTIVE_PARAM apply

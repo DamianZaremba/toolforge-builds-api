@@ -1,0 +1,14 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: builds-api-nginx-default-psp
+  namespace: builds-api
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: default
+subjects:
+  - kind: ServiceAccount
+    name: builds-api
+    namespace: builds-api

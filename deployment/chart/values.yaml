@@ -2,7 +2,9 @@ replicas: 2
 
 image:
   name: tools-harbor.wmcloud.org/toolforge/builds-api
-  tag: latest
+  # Override if needed for development purposes
+  # leaving it empty will use the .Chart.Version
+  # tag: 0.0.1
   pullPolicy: IfNotPresent
 
 resources:

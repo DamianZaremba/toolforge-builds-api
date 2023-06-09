@@ -30,6 +30,10 @@ spec:
               value: "{{ .Values.config.harborRepository }}"
             - name: "BUILDER"
               value: "{{ .Values.config.builder}}"
+            - name: "OK_BUILDS_TO_KEEP"
+              value: "{{ .Values.config.okBuildsToKeep }}"
+            - name: "FAILED_BUILDS_TO_KEEP"
+              value: "{{ .Values.config.failedBuildsToKeep }}"
           resources: {{ toYaml .Values.resources | nindent 12 }}
           volumeMounts:
             - name: toolforge-builds-api-certs

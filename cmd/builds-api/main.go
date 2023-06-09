@@ -33,7 +33,8 @@ func main() {
 	viper.SetDefault("port", 8000)
 	// note that the builder is the full ref for the image
 	viper.SetDefault("builder", "tools-harbor.wmcloud.org/toolforge/heroku-builder-classic:22")
-
+	viper.SetDefault("ok_builds_to_keep", 1)
+	viper.SetDefault("failed_builds_to_keep", 2)
 	if viper.GetBool("debug") {
 		log.SetLevel(log.DebugLevel)
 		log.Info("Starting in DEBUG mode")
@@ -72,9 +73,14 @@ func main() {
 	if harborRepository == "" {
 		log.Fatalf("No HARBOR_REPOSITORY set, one is needed.")
 	}
+	buildCleanup := map[string]int{
+		"okBuildsToKeep":     viper.GetInt("ok_builds_to_keep"),
+		"failedBuildsToKeep": viper.GetInt("failed_builds_to_keep"),
+	}
 	config := Config{
 		HarborRepository: harborRepository,
 		Builder:          viper.GetString("builder"),
+		BuildCleanup:     buildCleanup,
 	}
 
 	addHandlers(api, config)
@@ -88,6 +94,7 @@ func main() {
 type Config struct {
 	HarborRepository string
 	Builder          string
+	BuildCleanup     map[string]int
 }
 
 func addHandlers(api *operations.ToolforgeBuildsAPI, config Config) {
@@ -149,6 +156,7 @@ func addHandlers(api *operations.ToolforgeBuildsAPI, config Config) {
 				principal.User,
 				config.HarborRepository,
 				config.Builder,
+				config.BuildCleanup,
 			)
 		})
 

@@ -3,6 +3,7 @@ package internal
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/go-openapi/runtime/middleware"
@@ -28,6 +29,116 @@ var Containers = [...]string{
 	"step-build",
 	"step-export",
 	"step-results",
+}
+
+func getPipelineRuns(clients *Clients, namespace string, listoptions metav1.ListOptions) ([]v1beta1.PipelineRun, error) {
+
+	pipelineRuns, err := clients.Tekton.TektonV1beta1().PipelineRuns(namespace).List(
+		context.TODO(),
+		listoptions,
+	)
+	if err != nil {
+		return nil, err
+	}
+	sort.Slice(pipelineRuns.Items, func(i, j int) bool {
+		return !pipelineRuns.Items[i].CreationTimestamp.Before(&pipelineRuns.Items[j].CreationTimestamp)
+	})
+	return pipelineRuns.Items, nil
+}
+
+func deletePipelineRun(clients *Clients, namespace string, name string) error {
+	err := clients.Tekton.TektonV1beta1().PipelineRuns(namespace).Delete(
+		context.TODO(),
+		name,
+		metav1.DeleteOptions{},
+	)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func getPipelineRunStatus(pipelineRun v1beta1.PipelineRun) string {
+
+	if pipelineRun.Status.CompletionTime == nil {
+		return "running"
+	}
+
+	if pipelineRun.Status.Conditions == nil {
+		return "error"
+	}
+
+	for _, condition := range pipelineRun.Status.Conditions {
+		if condition.Type == "Succeeded" && condition.Status == "True" {
+			return "ok"
+		}
+
+		if condition.Type == "Succeeded" && condition.Status == "False" {
+			return "error"
+		}
+
+		if condition.Type == "Cancelled" {
+			return "cancelled"
+		}
+		// TODO: use v1beta1.PipelineRunTimedOut when tekton >= 0.48.0
+		if condition.Type == "TimedOut" {
+			return "timeout"
+		}
+
+	}
+
+	return "unknown"
+}
+
+func filterPipelineRunsByStatus(pipelineRuns []v1beta1.PipelineRun, filter string) []v1beta1.PipelineRun {
+	var filteredPipelineRuns []v1beta1.PipelineRun
+	for _, pipelineRun := range pipelineRuns {
+		if getPipelineRunStatus(pipelineRun) == filter {
+			filteredPipelineRuns = append(filteredPipelineRuns, pipelineRun)
+		}
+	}
+	return filteredPipelineRuns
+}
+
+func cleanupOldPipelineRuns(clients *Clients, namespace string, toolName string) {
+	pipelineRuns, err := getPipelineRuns(clients, namespace, metav1.ListOptions{LabelSelector: fmt.Sprintf("user=%s", toolName)})
+	if err != nil {
+		log.Warnf(
+			"Got error when listing pipelineruns on namespace %s, maybe new cluster with no runs yet?: %s", namespace, err,
+		)
+		return
+	}
+	log.Debugf("Found %d pipelineruns. Cleaning up old runs...", len(pipelineRuns))
+	runningPipelineRuns := filterPipelineRunsByStatus(pipelineRuns, "running")
+	successfulPipelineRuns := filterPipelineRunsByStatus(pipelineRuns, "ok")
+	failedPipelineRuns := filterPipelineRunsByStatus(pipelineRuns, "error")
+	pipelineRunsToKeep := map[string]v1beta1.PipelineRun{}
+	for _, pipelineRun := range runningPipelineRuns {
+		pipelineRunsToKeep[pipelineRun.Name] = pipelineRun
+	}
+	for idx, pipelineRun := range successfulPipelineRuns {
+		if idx >= 1 {
+			break
+		}
+		pipelineRunsToKeep[pipelineRun.Name] = pipelineRun
+	}
+	for idx, pipelineRun := range failedPipelineRuns {
+		if idx >= 2 {
+			break
+		}
+		pipelineRunsToKeep[pipelineRun.Name] = pipelineRun
+	}
+	for _, pipelineRun := range pipelineRuns {
+		log.Debugf("loop pipelinerun.name %s", pipelineRun.Name)
+		if _, ok := pipelineRunsToKeep[pipelineRun.Name]; !ok {
+			log.Debugf("Deleting old pipelinerun %s", pipelineRun.Name)
+			err := deletePipelineRun(clients, namespace, pipelineRun.Name)
+			if err != nil {
+				log.Warnf("Got error when deleting pipelinerun %s: %s", pipelineRun.Name, err)
+			}
+		}
+	}
 }
 
 func getContainerLogs(clients *Clients, container string, taskRun *v1beta1.PipelineRunTaskRunStatus, namespace string) (string, error) {
@@ -87,10 +198,7 @@ func Logs(buildId string, clients *Clients, namespace string, toolName string) m
 		)
 	}
 
-	pipelineRuns, err := clients.Tekton.TektonV1beta1().PipelineRuns(namespace).List(
-		context.TODO(),
-		metav1.ListOptions{FieldSelector: fmt.Sprintf("metadata.name=%s", buildId)},
-	)
+	pipelineRuns, err := getPipelineRuns(clients, namespace, metav1.ListOptions{FieldSelector: fmt.Sprintf("metadata.name=%s", buildId)})
 	if err != nil {
 		log.Warnf(
 			"Got error when listing pipelineruns on namespace %s, maybe new cluster with no runs yet?: %s", namespace, err,
@@ -100,18 +208,18 @@ func Logs(buildId string, clients *Clients, namespace string, toolName string) m
 		)
 	}
 
-	log.Debugf("Get: Got %d pipeline runs!: %v", len(pipelineRuns.Items), pipelineRuns.Items)
-	if len(pipelineRuns.Items) == 0 {
+	log.Debugf("Get: Got %d pipeline runs!: %v", len(pipelineRuns), pipelineRuns)
+	if len(pipelineRuns) == 0 {
 		return operations.NewLogsNotFound().WithPayload(
 			&models.NotFound{Message: fmt.Sprintf("Unable to find build with id '%s'", buildId)},
 		)
-	} else if len(pipelineRuns.Items) > 1 {
-		message := fmt.Sprintf("Got %d builds matching name %s, only 1 was expected.", len(pipelineRuns.Items), buildId)
+	} else if len(pipelineRuns) > 1 {
+		message := fmt.Sprintf("Got %d builds matching name %s, only 1 was expected.", len(pipelineRuns), buildId)
 		log.Warning(message)
 		return operations.NewLogsNotFound().WithPayload(&models.NotFound{Message: message})
 	}
 
-	pipelineRun := pipelineRuns.Items[0]
+	pipelineRun := pipelineRuns[0]
 	logs, err := getPipelineRunLogs(&pipelineRun, clients, namespace)
 	if err != nil {
 		message := fmt.Sprintf("Error getting the logs for %s: %s", buildId, err)
@@ -139,6 +247,7 @@ func Start(
 ) middleware.Responder {
 	// TODO: Check quotas
 	// TODO: Create destination project in harbor if it does not exist
+	cleanupOldPipelineRuns(clients, namespace, toolName)
 	log.Debugf("Starting a new build: ref=%s, toolName=%s, harborRepository=%s, builder=%s", ref, toolName, harborRepository, builder)
 	newRun := v1beta1.PipelineRun{
 		ObjectMeta: metav1.ObjectMeta{

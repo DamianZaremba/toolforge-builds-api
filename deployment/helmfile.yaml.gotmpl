@@ -1,0 +1,20 @@
+releases:
+  - name: builds-api
+    chart: ./chart
+    namespace: builds-api
+    createNamespace: true
+    values:
+      - replicas: 1
+
+        image:
+          name: toolforge-builds-api
+          pullPolicy: Never
+
+        config:
+          debug: true
+          # You can override this by exporting the env var HARBOR_IP before running ./depoy.sh
+          harborRepository: "{{ exec "./helpers/get_harbor_ip.sh" (list) }}"
+          builder: toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder-classic:22
+
+environments:
+  local: {}

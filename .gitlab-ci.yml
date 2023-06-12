@@ -1,8 +1,6 @@
 include:
   - project: "repos/cloud/cicd/gitlab-ci"
     file: "toolforge-cd/golang_test_and_publish.yaml"
-    # TODO: Removed once that branch is merged
-    ref: add_toolforge_golang_delpoyment
 
 variables:
   PROJECT_NAME: builds-api

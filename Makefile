@@ -21,7 +21,7 @@ ifneq ($(strip $(shell command -v kind 2>/dev/null)), )
 KIND=$(shell command -v kind)
 endif
 
-IMAGE_NAME=toolsbeta-harbor.wmcloud.org/toolforge/$(PROJECT):dev
+IMAGE_NAME=tools-harbor.wmcloud.org/toolforge/$(PROJECT):dev
 
 ifdef DOCKER
 	DOCKER=podman

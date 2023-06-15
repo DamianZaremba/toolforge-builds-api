@@ -1,8 +1,205 @@
+# Requirements:
+# * blubber
+# * pre-commit
+# * golang
 include:
-  - project: "repos/cloud/cicd/gitlab-ci"
-    file: "toolforge-cd/golang_test_and_publish.yaml"
-    # fix_sed branch
-    ref: 8fe95575ef922efa4943e3802ea0a46205a0a52b
+  - project: "repos/releng/kokkuri"
+    file: "includes/images.yaml"
+
+stages:
+  - test
+  - publish
+  - deployment
 
 variables:
   PROJECT_NAME: builds-api
+
+pre-commit:
+  image: "docker-registry.tools.wmflabs.org/cloud-cicd-py39bullseye-tox:latest"
+  stage: test
+  script:
+    - pre-commit run -a
+
+unit:
+  stage: test
+  extends: .kokkuri:build-and-run-image
+  variables:
+    BUILD_VARIANT: test
+    BUILD_CONFIG: .pipeline/blubber.yaml
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+
+publish-devimage-toolsbeta:
+  extends: .kokkuri:build-and-publish-image
+  stage: publish
+  environment:
+    name: development
+    url: https://toolsbeta-harbor.wmcloud.org/harbor/projects/1693/repositories/$PROJECT_NAME/artifacts-tab/artifacts/dev-mr-$CI_MERGE_REQUEST_IID
+  variables:
+    BUILD_VARIANT: image
+    KOKKURI_REGISTRY_INTERNAL: toolsbeta-harbor.wmcloud.org
+    KOKKURI_REGISTRY_PUBLIC: toolsbeta-harbor.wmcloud.org
+  script:
+    - |
+      mkdir -p ~/.docker || : \
+      && echo "{\"auths\":{\"toolsbeta-harbor.wmcloud.org\":{\"auth\":\"$TOOLSBETA_HARBOR_AUTH\"}}}" \
+      > ~/.docker/config.json
+    - |
+      buildctl \
+        --timeout $CI_JOB_TIMEOUT \
+        --wait-for-ready $CI_JOB_TIMEOUT \
+        build \
+        --progress=plain \
+        --frontend=gateway.v0 \
+        --opt source=docker-registry.wikimedia.org/repos/releng/blubber/buildkit:v0.16.0 \
+        --local context=. \
+        --local dockerfile=. \
+        --opt filename=.pipeline/blubber.yaml \
+        --opt target=image \
+        --output "type=image,name=toolsbeta-harbor.wmcloud.org/toolforge/$PROJECT_NAME:dev-mr-$CI_MERGE_REQUEST_IID,push=true"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+
+publish-image-toolsbeta:
+  extends: .kokkuri:build-and-publish-image
+  stage: deployment
+  environment:
+    name: staging
+    url: https://toolsbeta-harbor.wmcloud.org/harbor/projects/toolforge/repositories/$PROJECT_NAME/artifacts-tab/artifacts
+  variables:
+    BUILD_VARIANT: image
+    KOKKURI_REGISTRY_INTERNAL: toolsbeta-harbor.wmcloud.org
+    KOKKURI_REGISTRY_PUBLIC: toolsbeta-harbor.wmcloud.org
+  script:
+    - |
+      mkdir -p ~/.docker || : \
+      && echo "{\"auths\":{\"toolsbeta-harbor.wmcloud.org\":{\"auth\":\"$TOOLSBETA_HARBOR_AUTH\"}}}" \
+      > ~/.docker/config.json
+    - |
+      tag=$(grep '^version:' deployment/chart/Chart.yaml | awk '{print $2}')
+      buildctl \
+        --timeout $CI_JOB_TIMEOUT \
+        --wait-for-ready $CI_JOB_TIMEOUT \
+        build \
+        --progress=plain \
+        --frontend=gateway.v0 \
+        --opt source=docker-registry.wikimedia.org/repos/releng/blubber/buildkit:v0.16.0 \
+        --local context=. \
+        --local dockerfile=. \
+        --opt filename=.pipeline/blubber.yaml \
+        --opt target=image \
+        --output "type=image,name=toolsbeta-harbor.wmcloud.org/toolforge/$PROJECT_NAME:$tag,push=true"
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+publish-image-tools:
+  extends: .kokkuri:build-and-publish-image
+  stage: deployment
+  environment:
+    name: production
+    url: https://tools-harbor.wmcloud.org/harbor/projects/toolforge/repositories/$PROJECT_NAME/artifacts-tab/artifacts
+  variables:
+    BUILD_VARIANT: image
+    KOKKURI_REGISTRY_INTERNAL: tools-harbor.wmcloud.org
+    KOKKURI_REGISTRY_PUBLIC: tools-harbor.wmcloud.org
+  script:
+    - |
+      mkdir -p ~/.docker || : \
+      && echo "{\"auths\":{\"tools-harbor.wmcloud.org\":{\"auth\":\"$TOOLS_HARBOR_AUTH\"}}}" \
+      > ~/.docker/config.json
+    - |
+      tag=$(grep '^version:' deployment/chart/Chart.yaml | awk '{print $2}')
+      buildctl \
+        --timeout $CI_JOB_TIMEOUT \
+        --wait-for-ready $CI_JOB_TIMEOUT \
+        build \
+        --progress=plain \
+        --frontend=gateway.v0 \
+        --opt source=docker-registry.wikimedia.org/repos/releng/blubber/buildkit:v0.16.0 \
+        --local context=. \
+        --local dockerfile=. \
+        --opt filename=.pipeline/blubber.yaml \
+        --opt target=image \
+        --output "type=image,name=tools-harbor.wmcloud.org/toolforge/$PROJECT_NAME:$tag,push=true"
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+
+publish-devchart-toolsbeta:
+  image: "docker-registry.wikimedia.org/repos/abstract-wiki/ci-images/helm:latest"
+  stage: publish
+  environment:
+    name: development
+    url: https://toolsbeta-harbor.wmcloud.org/harbor/projects/toolforge/repositories/$PROJECT_NAME/artifacts-tab/artifacts
+  script:
+    - |
+      mkdir -p ~/.config/helm/registry || : \
+      && echo "{\"auths\":{\"toolsbeta-harbor.wmcloud.org\":{\"auth\":\"$TOOLSBETA_HARBOR_AUTH\"}}}" \
+      > ~/.config/helm/registry/config.json
+    # set the dev version on the chart
+    - |
+      sed -i -e "s/^version:\(.*\)/version:\1-dev.mr$CI_MERGE_REQUEST_IID/" deployment/chart/Chart.yaml
+    # set the dev version on the image tag
+    - |
+      sed -i -e "s/^\( *\)tag:\(.*\)/\1tag: dev-mr-$CI_MERGE_REQUEST_IID/" deployment/chart/values.yaml
+    # set the toolsbeta image as default for the dev chart
+    - |
+      sed -i -e "s/^\( *\)name: *tools-harbor\(.*\)/\1name: toolsbeta-harbor\2/" deployment/chart/values.yaml
+    - helm package deployment/chart
+    - |
+      helm push $PROJECT_NAME*.tgz oci://toolsbeta-harbor.wmcloud.org/toolforge
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+
+publish-chart-toolsbeta:
+  image: "docker-registry.wikimedia.org/repos/abstract-wiki/ci-images/helm:latest"
+  stage: deployment
+  environment:
+    name: staging
+    url: https://toolsbeta-harbor.wmcloud.org/harbor/projects/toolforge/repositories/$PROJECT_NAME/artifacts-tab/artifacts
+  script:
+    - |
+      mkdir -p ~/.config/helm/registry || : \
+      && echo "{\"auths\":{\"toolsbeta-harbor.wmcloud.org\":{\"auth\":\"$TOOLSBETA_HARBOR_AUTH\"}}}" \
+      > ~/.config/helm/registry/config.json
+    # Set the image tag the same as the chart version
+    - echo test
+    - |
+      tag=$(grep '^version:' deployment/chart/Chart.yaml | awk '{print $2}') \
+      && sed -i -e "s/^\( *\)tag:.*/\1tag: $tag/" deployment/chart/values.yaml
+    - helm package deployment/chart
+    - |
+      helm push $PROJECT_NAME*.tgz oci://toolsbeta-harbor.wmcloud.org/toolforge
+
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+publish-chart-tools:
+  image: "docker-registry.wikimedia.org/repos/abstract-wiki/ci-images/helm:latest"
+  stage: deployment
+  environment:
+    name: production
+    url: https://tools-harbor.wmcloud.org/harbor/projects/toolforge/repositories/$PROJECT_NAME/artifacts-tab/artifacts
+  script:
+    - |
+      mkdir -p ~/.config/helm/registry || : \
+      && echo "{\"auths\":{\"tools-harbor.wmcloud.org\":{\"auth\":\"$TOOLS_HARBOR_AUTH\"}}}" \
+      > ~/.config/helm/registry/config.json
+    # Set the image tag the same as the chart version
+    - |
+      tag=$(grep '^version:' deployment/chart/Chart.yaml | awk '{print $2}') \
+      && sed -i -e "s/^\( *\)tag:.*/\1tag: $tag/" deployment/chart/values.yaml
+    - helm package deployment/chart
+    - |
+      helm push $PROJECT_NAME*.tgz oci://tools-harbor.wmcloud.org/toolforge
+
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+
+# prevent running the workflows in any other case but the following
+workflow:
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+    - if: $CI_COMMIT_TAG && $CI_COMMIT_REF_PROTECTED

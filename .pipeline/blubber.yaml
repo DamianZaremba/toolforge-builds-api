@@ -6,12 +6,12 @@ variants:
     lives:
       in: /src
     builders:
-     - custom:
-         requirements: [.]
-         command:
-           - go
-           - mod
-           - download
+      - custom:
+          requirements: [.]
+          command:
+            - go
+            - mod
+            - download
 
   test:
     includes:
@@ -25,10 +25,10 @@ variants:
     includes:
       - download-deps
     builders:
-     - custom:
-         command:
-           - make
-           - build-api
+      - custom:
+          command:
+            - make
+            - build-api
 
   image:
     lives:

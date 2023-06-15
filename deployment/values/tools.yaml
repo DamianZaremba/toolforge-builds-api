@@ -1,0 +1,7 @@
+image:
+  name: tools-harbor.wmcloud.org/toolforge/builds-api
+  tag: a1977b3a
+
+config:
+  harborRepository: tools-harbor.wmcloud.org
+  builder: tools-harbor.wmcloud.org/toolforge/heroku-builder-classic:22

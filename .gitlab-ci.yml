@@ -1,7 +1,8 @@
 include:
   - project: "repos/cloud/cicd/gitlab-ci"
     file: "toolforge-cd/golang_test_and_publish.yaml"
-    ref: fix_sed
+    # fix_sed branch
+    ref: 8fe95575ef922efa4943e3802ea0a46205a0a52b
 
 variables:
   PROJECT_NAME: builds-api

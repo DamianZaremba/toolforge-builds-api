@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
         - name: api
-          image: "{{ .Values.image.name }}:{{ .Values.image.tag | default .Chart.Version }}"
+          image: "{{ .Values.image.name }}:{{ .Values.image.tag }}"
           imagePullPolicy: "{{ .Values.image.pullPolicy }}"
           env:
             - name: "DEBUG"
@@ -42,7 +42,7 @@ spec:
             runAsGroup: 101
         - name: nginx
           image:
-            "{{ .Values.nginx.image.repository }}:{{ .Values.nginx.image.tag }}"
+            "{{ .Values.nginx.image.repository }}:{{ .Values.nginx.image.nginxTag }}"
           imagePullPolicy: Always
           ports:
             - containerPort: 8443

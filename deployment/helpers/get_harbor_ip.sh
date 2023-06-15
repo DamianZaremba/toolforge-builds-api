@@ -1,8 +1,8 @@
 #!/bin/bash
 
-set --option nounset
-set --option exiterr
-set --option pipeerr
+set -o nounset
+set -o errexit
+set -o pipefail
 
 if [[ "${HARBOR_IP:-}" == "" ]]; then
     if [[ -f /etc/debian_version ]]; then

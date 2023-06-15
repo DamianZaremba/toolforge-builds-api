@@ -1,10 +1,10 @@
 replicas: 2
 
 image:
+  # name and tag are currently used by CI
   name: tools-harbor.wmcloud.org/toolforge/builds-api
   # Override if needed for development purposes
-  # leaving it empty will use the .Chart.Version
-  # tag: 0.0.1
+  tag: OVERWRITTEN_BY_CI
   pullPolicy: IfNotPresent
 
 resources:
@@ -22,7 +22,7 @@ api:
 nginx:
   image:
     repository: docker-registry.tools.wmflabs.org/nginx
-    tag: latest
+    nginxTag: latest
     pullpolicy: Always
 
 certificates:

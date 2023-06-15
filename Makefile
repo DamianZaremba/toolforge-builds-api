@@ -1,6 +1,4 @@
 SHELL := /bin/bash
-API_CLASS_NAME := toolforge-builds
-PROJECT := builds-api
 # For podman, you need to run buildkit:
 # > podman run --rm -d --name buildkitd --privileged moby/buildkit:latest
 #
@@ -21,10 +19,11 @@ ifneq ($(strip $(shell command -v kind 2>/dev/null)), )
 KIND=$(shell command -v kind)
 endif
 
-IMAGE_NAME=tools-harbor.wmcloud.org/toolforge/$(PROJECT):dev
+PROJECT_SLUG=builds
+IMAGE_NAME=toolsbeta-harbor.wmcloud.org/toolforge/$(PROJECT_SLUG)-api:dev
 
-ifdef DOCKER
-	DOCKER=podman
+ifdef PODMAN
+	DOCKER=$(PODMAN)
 	BUILD_IMAGE=buildctl \
 		--addr=podman-container://buildkitd \
 		build \
@@ -38,8 +37,7 @@ ifdef DOCKER
 			--output type=docker,name=$(IMAGE_NAME)
 	KEEP_ID=--userns=keep-id
 else
-	DOCKER=docker
-	BUILD_IMAGE=docker \
+	BUILD_IMAGE=$(DOCKER) \
 		build \
 			--target image \
 			-f .pipeline/blubber.yaml \
@@ -83,27 +81,37 @@ endif
 endif
 
 gen-api: check_requirements
-	$(SWAGGER) generate server -t gen -P models.Principal -f ./swagger/swagger_v1.yaml --exclude-main -A $(API_CLASS_NAME)
+	$(SWAGGER) generate server -t gen -P models.Principal -f ./swagger/swagger_v1.yaml --exclude-main -A toolforge-$(PROJECT_SLUG)
 	go mod tidy
 
 build-api:
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -buildvcs=false -a -installsuffix cgo -ldflags="-w -s" -o $(PROJECT) ./cmd/$(PROJECT)
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -buildvcs=false -a -installsuffix cgo -ldflags="-w -s" -o $(PROJECT_SLUG)-api ./cmd/$(PROJECT_SLUG)-api
 
 image: check_requirements
 ifdef MINIKUBE
+ifdef PODMAN
+# minikube + podman
 	$(BUILD_IMAGE) >/tmp/image.tar
 	minikube image load /tmp/image.tar
+	rm -f /tmp/image.tar
+else
+# minikube + docker
+	bash -c "source <(minikube docker-env) && $(BUILD_IMAGE)"
+endif
 else
 ifdef PODMAN
+# kind + podman
 	$(BUILD_IMAGE) | podman load
 else
+# kind + docker
 	$(BUILD_IMAGE)
 endif
+# 	kind with both podman and docker
 	kind load docker-image $(IMAGE_NAME) --name toolforge
 endif
 
 rollout: check_requirements
-	bash -c "if kubectl get namespace $(PROJECT) >/dev/null 2>&1; then kubectl rollout restart -n $(PROJECT) deployment $(PROJECT); else :; fi"
+	bash -c "if kubectl get namespace $(PROJECT_SLUG)-api >/dev/null 2>&1; then kubectl rollout restart -n $(PROJECT_SLUG)-api deployment $(PROJECT_SLUG)-api; else :; fi"
 
 build-and-deploy-local: image rollout
 	./deploy.sh local

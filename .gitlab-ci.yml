@@ -53,6 +53,8 @@ publish-toolsbeta-dev:
         --opt filename=.pipeline/blubber.yaml \
         --opt target=image \
         --output "type=image,name=toolsbeta-harbor.wmcloud.org/toolforge/$PROJECT_NAME:dev-mr-$CI_MERGE_REQUEST_IID,push=true"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
 
 publish-toolsbeta:
   extends: .kokkuri:build-and-publish-image

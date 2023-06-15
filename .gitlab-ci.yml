@@ -76,7 +76,7 @@ publish-image-toolsbeta:
       && echo "{\"auths\":{\"toolsbeta-harbor.wmcloud.org\":{\"auth\":\"$TOOLSBETA_HARBOR_AUTH\"}}}" \
       > ~/.docker/config.json
     - |
-      tag=$(grep '^version:' deployment/chart/Chart.yaml | awk '{print $2}')
+      tag=$(grep '^version:' deployment/chart/Chart.yaml | awk '{print $2}')_image
       buildctl \
         --timeout $CI_JOB_TIMEOUT \
         --wait-for-ready $CI_JOB_TIMEOUT \
@@ -108,7 +108,7 @@ publish-image-tools:
       && echo "{\"auths\":{\"tools-harbor.wmcloud.org\":{\"auth\":\"$TOOLS_HARBOR_AUTH\"}}}" \
       > ~/.docker/config.json
     - |
-      tag=$(grep '^version:' deployment/chart/Chart.yaml | awk '{print $2}')
+      tag=$(grep '^version:' deployment/chart/Chart.yaml | awk '{print $2}')_image
       buildctl \
         --timeout $CI_JOB_TIMEOUT \
         --wait-for-ready $CI_JOB_TIMEOUT \
@@ -162,10 +162,9 @@ publish-chart-toolsbeta:
       mkdir -p ~/.config/helm/registry || : \
       && echo "{\"auths\":{\"toolsbeta-harbor.wmcloud.org\":{\"auth\":\"$TOOLSBETA_HARBOR_AUTH\"}}}" \
       > ~/.config/helm/registry/config.json
-    # Set the image tag the same as the chart version
-    - echo test
+    # Set the image tag the same as the chart version, with a suffix so they don't collide (harbor only allows one object per tag)
     - |
-      tag=$(grep '^version:' deployment/chart/Chart.yaml | awk '{print $2}') \
+      tag=$(grep '^version:' deployment/chart/Chart.yaml | awk '{print $2}')_image \
       && sed -i -e "s/^\( *\)tag:.*/\1tag: $tag/" deployment/chart/values.yaml
     - helm package deployment/chart
     - |
@@ -185,9 +184,9 @@ publish-chart-tools:
       mkdir -p ~/.config/helm/registry || : \
       && echo "{\"auths\":{\"tools-harbor.wmcloud.org\":{\"auth\":\"$TOOLS_HARBOR_AUTH\"}}}" \
       > ~/.config/helm/registry/config.json
-    # Set the image tag the same as the chart version
+    # Set the image tag the same as the chart version, with a suffix so they don't collide (harbor only allows one object per tag)
     - |
-      tag=$(grep '^version:' deployment/chart/Chart.yaml | awk '{print $2}') \
+      tag=$(grep '^version:' deployment/chart/Chart.yaml | awk '{print $2}')_image \
       && sed -i -e "s/^\( *\)tag:.*/\1tag: $tag/" deployment/chart/values.yaml
     - helm package deployment/chart
     - |

@@ -1,6 +1,126 @@
 include:
-  - project: "repos/cloud/cicd/gitlab-ci"
-    file: "toolforge-cd/golang_test_and_publish.yaml"
+  - project: "repos/releng/kokkuri"
+    file: "includes/images.yaml"
 
 variables:
   PROJECT_NAME: builds-api
+
+stages:
+  - test
+  - publish
+  - deployment
+
+pre-commit:
+  image: "docker-registry.tools.wmflabs.org/cloud-cicd-py39bullseye-tox:latest"
+  stage: test
+  script:
+    - pre-commit run -a
+
+unit:
+  stage: test
+  extends: .kokkuri:build-and-run-image
+  variables:
+    BUILD_VARIANT: test
+    BUILD_CONFIG: .pipeline/blubber.yaml
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+
+publish-toolsbeta-dev:
+  extends: .kokkuri:build-and-publish-image
+  stage: publish
+  environment:
+    name: development
+    url: https://toolsbeta-harbor.wmcloud.org/harbor/projects/1693/repositories/$PROJECT_NAME/artifacts-tab/artifacts/dev-mr-$CI_MERGE_REQUEST_IID
+  variables:
+    BUILD_VARIANT: image
+    KOKKURI_REGISTRY_INTERNAL: toolsbeta-harbor.wmcloud.org
+    KOKKURI_REGISTRY_PUBLIC: toolsbeta-harbor.wmcloud.org
+  script:
+    - |
+      mkdir -p ~/.docker || : \
+      && echo "{\"auths\":{\"toolsbeta-harbor.wmcloud.org\":{\"auth\":\"$TOOLSBETA_HARBOR_AUTH\"}}}" \
+      > ~/.docker/config.json
+    - |
+      buildctl \
+        --timeout $CI_JOB_TIMEOUT \
+        --wait-for-ready $CI_JOB_TIMEOUT \
+        build \
+        --progress=plain \
+        --frontend=gateway.v0 \
+        --opt source=docker-registry.wikimedia.org/repos/releng/blubber/buildkit:v0.16.0 \
+        --local context=. \
+        --local dockerfile=. \
+        --opt filename=.pipeline/blubber.yaml \
+        --opt target=image \
+        --output "type=image,name=toolsbeta-harbor.wmcloud.org/toolforge/$PROJECT_NAME:dev-mr-$CI_MERGE_REQUEST_IID,push=true"
+
+publish-toolsbeta:
+  extends: .kokkuri:build-and-publish-image
+  stage: deployment
+  environment:
+    name: staging
+    url: https://toolsbeta-harbor.wmcloud.org/harbor/projects/toolforge/repositories/$PROJECT_NAME/artifacts-tab/artifacts/$CI_COMMIT_SHORT_SHA
+  variables:
+    BUILD_VARIANT: image
+    KOKKURI_REGISTRY_INTERNAL: toolsbeta-harbor.wmcloud.org
+    KOKKURI_REGISTRY_PUBLIC: toolsbeta-harbor.wmcloud.org
+  script:
+    - |
+      mkdir -p ~/.docker || : \
+      && echo "{\"auths\":{\"toolsbeta-harbor.wmcloud.org\":{\"auth\":\"$TOOLSBETA_HARBOR_AUTH\"}}}" \
+      > ~/.docker/config.json
+    - |
+      buildctl \
+        --timeout $CI_JOB_TIMEOUT \
+        --wait-for-ready $CI_JOB_TIMEOUT \
+        build \
+        --progress=plain \
+        --frontend=gateway.v0 \
+        --opt source=docker-registry.wikimedia.org/repos/releng/blubber/buildkit:v0.16.0 \
+        --local context=. \
+        --local dockerfile=. \
+        --opt filename=.pipeline/blubber.yaml \
+        --opt target=image \
+        --output "type=image,name=toolsbeta-harbor.wmcloud.org/toolforge/$PROJECT_NAME:$CI_COMMIT_SHORT_SHA,push=true"
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+
+publish-tools:
+  extends: .kokkuri:build-and-publish-image
+  stage: deployment
+  environment:
+    name: production
+    url: https://tools-harbor.wmcloud.org/harbor/projects/toolforge/repositories/$PROJECT_NAME/artifacts-tab/artifacts/$CI_COMMIT_SHORT_SHA
+  variables:
+    BUILD_VARIANT: image
+    KOKKURI_REGISTRY_INTERNAL: tools-harbor.wmcloud.org
+    KOKKURI_REGISTRY_PUBLIC: tools-harbor.wmcloud.org
+  script:
+    - |
+      mkdir -p ~/.docker || : \
+      && echo "{\"auths\":{\"toolsbeta-harbor.wmcloud.org\":{\"auth\":\"$TOOLS_HARBOR_AUTH\"}}}" \
+      > ~/.docker/config.json
+    - |
+      buildctl \
+        --timeout $CI_JOB_TIMEOUT \
+        --wait-for-ready $CI_JOB_TIMEOUT \
+        build \
+        --progress=plain \
+        --frontend=gateway.v0 \
+        --opt source=docker-registry.wikimedia.org/repos/releng/blubber/buildkit:v0.16.0 \
+        --local context=. \
+        --local dockerfile=. \
+        --opt filename=.pipeline/blubber.yaml \
+        --opt target=image \
+        --output "type=image,name=tools-harbor.wmcloud.org/toolforge/$PROJECT_NAME:$CI_COMMIT_SHORT_SHA,push=true"
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+
+# prevent running the workflows in any other case but the following
+workflow:
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+    - if: $CI_COMMIT_TAG && $CI_COMMIT_REF_PROTECTED

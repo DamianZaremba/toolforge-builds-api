@@ -20,7 +20,7 @@ KIND=$(shell command -v kind)
 endif
 
 PROJECT_SLUG=builds
-IMAGE_NAME=toolsbeta-harbor.wmcloud.org/toolforge/$(PROJECT_SLUG)-api:dev
+IMAGE_NAME=tools-harbor.wmcloud.org/toolforge/$(PROJECT_SLUG)-api:dev
 
 ifdef PODMAN
 	DOCKER=$(PODMAN)

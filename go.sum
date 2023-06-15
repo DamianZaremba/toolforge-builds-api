@@ -339,8 +339,8 @@ github.com/markbates/safe v1.0.1/go.mod h1:nAqgmRi7cY2nqMc92/bSEeQA+R4OheNU2T1kN
 github.com/matttproud/golang_protobuf_extensions v1.0.1/go.mod h1:D8He9yQNgCq6Z5Ld7szi9bcBfOoFv/3dc6xSMkL2PC0=
 github.com/matttproud/golang_protobuf_extensions v1.0.4 h1:mmDVorXM7PCGKw94cs5zkfA9PSy5pEvNWRP0ET0TIVo=
 github.com/matttproud/golang_protobuf_extensions v1.0.4/go.mod h1:BSXmuO+STAnVfrANrmjBb36TMTDstsz7MSK+HVaYKv4=
-github.com/meatballhat/negroni-logrus v1.1.1 h1:eDgsDdJYy97gI9kr+YS/uDKCaqK4S6CUQLPG0vNDqZA=
-github.com/meatballhat/negroni-logrus v1.1.1/go.mod h1:FlwPdXB6PeT8EG/gCd/2766M2LNF7SwZiNGD6t2NRGU=
+github.com/meatballhat/negroni-logrus v0.0.0-20201129033903-bc51654b0848 h1:I47CCoFLPFWoG9qDpBzmcpLY0/t1a1LaBU6VNRNjl74=
+github.com/meatballhat/negroni-logrus v0.0.0-20201129033903-bc51654b0848/go.mod h1:FlwPdXB6PeT8EG/gCd/2766M2LNF7SwZiNGD6t2NRGU=
 github.com/mitchellh/mapstructure v1.3.3/go.mod h1:bFUtVrKA4DC2yAKiSyO/QUcy7e+RRV2QTWOzhPopBRo=
 github.com/mitchellh/mapstructure v1.4.1/go.mod h1:bFUtVrKA4DC2yAKiSyO/QUcy7e+RRV2QTWOzhPopBRo=
 github.com/mitchellh/mapstructure v1.5.0 h1:jeMsZIYE/09sWLaz43PL7Gy6RuMjD2eJVyuac5Z2hdY=

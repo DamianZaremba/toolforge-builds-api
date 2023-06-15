@@ -83,6 +83,7 @@ func main() {
 		BuildCleanup:     buildCleanup,
 	}
 
+	log.Infof("Using config: %v", config)
 	addHandlers(api, config)
 
 	if err := server.Serve(); err != nil {

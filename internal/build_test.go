@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"context"
 	"fmt"
 	"net/http/httptest"
 	"testing"
@@ -14,7 +15,216 @@ import (
 	k8sRuntime "k8s.io/apimachinery/pkg/runtime"
 	k8sFake "k8s.io/client-go/kubernetes/fake"
 	k8sTesting "k8s.io/client-go/testing"
+	knative "knative.dev/pkg/apis/duck/v1beta1"
 )
+
+func TestGetPipelineRunsReturnsErrorIfApiReturnsError(t *testing.T) {
+	mockTekton := tektonFake.Clientset{}
+	mockTekton.AddReactor("list", "pipelineruns", func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
+		return true, nil, fmt.Errorf("Dummy error!")
+	})
+	clients := Clients{
+		Tekton: &mockTekton,
+	}
+
+	_, err := getPipelineRuns(&clients, "dummy-namespace", v1.ListOptions{})
+
+	if err == nil {
+		t.Fatalf("I was expecting an error, got: %s", err)
+	}
+
+}
+
+func TestGetPipelineRunsReturnsSortedArrayOfPipelineRuns(t *testing.T) {
+	mockTekton := tektonFake.NewSimpleClientset(
+		&v1beta1.PipelineRunList{
+			Items: []v1beta1.PipelineRun{
+				{
+					ObjectMeta: v1.ObjectMeta{
+						Name:              "one",
+						Namespace:         "dummy-namespace",
+						CreationTimestamp: v1.Time{Time: time.Now().Add(-1 * time.Hour)},
+					},
+				},
+				{
+					ObjectMeta: v1.ObjectMeta{
+						Name:              "two",
+						Namespace:         "dummy-namespace",
+						CreationTimestamp: v1.Time{Time: time.Now()},
+					},
+				},
+			},
+		},
+	)
+	clients := Clients{
+		Tekton: mockTekton,
+	}
+
+	pipelineRuns, err := getPipelineRuns(&clients, "dummy-namespace", v1.ListOptions{})
+
+	if err != nil {
+		t.Fatalf("I was not expecting an error, got: %s", err)
+	}
+
+	if len(pipelineRuns) != 2 {
+		t.Fatalf("I was expecting 2 pipeline run, got: %d", len(pipelineRuns))
+	}
+
+	if pipelineRuns[0].Name != "two" {
+		t.Fatalf("I was expecting the first pipeline run to be 'two', got: %s", pipelineRuns[0].Name)
+	}
+
+}
+
+func TestDeletePipelineRunReturnsErrorIfApiReturnsError(t *testing.T) {
+	mockTekton := tektonFake.Clientset{}
+	mockTekton.AddReactor("delete", "pipelineruns", func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
+		return true, nil, fmt.Errorf("Dummy error!")
+	})
+	clients := Clients{
+		Tekton: &mockTekton,
+	}
+
+	err := deletePipelineRun(&clients, "dummy-namespace", "dummy-name")
+
+	if err == nil {
+		t.Fatalf("I was expecting an error, got: %s", err)
+	}
+
+}
+
+func TestDeletePipelineRunDeletesTargetPipelineRun(t *testing.T) {
+	mockTekton := tektonFake.NewSimpleClientset(
+		&v1beta1.PipelineRunList{
+			Items: []v1beta1.PipelineRun{
+				{ObjectMeta: v1.ObjectMeta{Name: "one", Namespace: "dummy-namespace"}},
+				{ObjectMeta: v1.ObjectMeta{Name: "two", Namespace: "dummy-namespace"}},
+			},
+		},
+	)
+	clients := Clients{
+		Tekton: mockTekton,
+	}
+
+	err := deletePipelineRun(&clients, "dummy-namespace", "one")
+
+	if err != nil {
+		t.Fatalf("I was not expecting an error, got: %s", err)
+	}
+
+	pipelineRuns, err := clients.Tekton.TektonV1beta1().PipelineRuns("dummy-namespace").List(
+		context.TODO(),
+		v1.ListOptions{},
+	)
+
+	if err != nil {
+		t.Fatalf("I was not expecting an error, got: %s", err)
+	}
+
+	if len(pipelineRuns.Items) != 1 {
+		t.Fatalf("I was expecting 1 pipeline run, got: %d", len(pipelineRuns.Items))
+	}
+
+}
+
+func TestCleanupOldPipelineRuns(t *testing.T) {
+	mockTekton := tektonFake.NewSimpleClientset(
+		&v1beta1.PipelineRunList{
+			Items: []v1beta1.PipelineRun{
+				{
+					ObjectMeta: v1.ObjectMeta{Name: "pipelinerun-wrong-user", Namespace: "dummy-namespace", Labels: map[string]string{"user": "wrong-user"}},
+					Status: v1beta1.PipelineRunStatus{
+						Status:                  knative.Status{Conditions: knative.Conditions{{Type: "Succeeded", Status: "True"}}},
+						PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 22, 0, 0, 0, time.UTC)}},
+					},
+				},
+				{
+					ObjectMeta: v1.ObjectMeta{Name: "pipelinerun-succeeded1", Namespace: "dummy-namespace", Labels: map[string]string{"user": "test-user"}},
+					Status: v1beta1.PipelineRunStatus{
+						Status:                  knative.Status{Conditions: knative.Conditions{{Type: "Succeeded", Status: "True"}}},
+						PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)}},
+					},
+				},
+				{
+					ObjectMeta: v1.ObjectMeta{Name: "pipelinerun-succeeded2", Namespace: "dummy-namespace", Labels: map[string]string{"user": "test-user"}},
+					Status: v1beta1.PipelineRunStatus{
+						Status:                  knative.Status{Conditions: knative.Conditions{{Type: "Succeeded", Status: "True"}}},
+						PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 18, 0, 0, 0, time.UTC)}},
+					},
+				},
+				{
+					ObjectMeta: v1.ObjectMeta{Name: "pipelinerun-failed1", Namespace: "dummy-namespace", Labels: map[string]string{"user": "test-user"}},
+					Status: v1beta1.PipelineRunStatus{
+						Status:                  knative.Status{Conditions: knative.Conditions{{Type: "Succeeded", Status: "False"}}},
+						PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)}},
+					},
+				},
+				{
+					ObjectMeta: v1.ObjectMeta{Name: "pipelinerun-failed2", Namespace: "dummy-namespace", Labels: map[string]string{"user": "test-user"}},
+					Status: v1beta1.PipelineRunStatus{
+						PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)}},
+					},
+				},
+				{
+					ObjectMeta: v1.ObjectMeta{Name: "pipelinerun-running", Namespace: "dummy-namespace", Labels: map[string]string{"user": "test-user"}},
+					Status:     v1beta1.PipelineRunStatus{},
+				},
+				{
+					ObjectMeta: v1.ObjectMeta{Name: "pipelinerun-timedout", Namespace: "dummy-namespace", Labels: map[string]string{"user": "test-user"}},
+					Status: v1beta1.PipelineRunStatus{
+						Status:                  knative.Status{Conditions: knative.Conditions{{Type: "TimedOut"}}},
+						PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)}},
+					},
+				},
+				{
+					ObjectMeta: v1.ObjectMeta{Name: "pipelinerun-cancelled", Namespace: "dummy-namespace", Labels: map[string]string{"user": "test-user"}},
+					Status: v1beta1.PipelineRunStatus{
+						Status:                  knative.Status{Conditions: knative.Conditions{{Type: "Cancelled"}}},
+						PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)}},
+					},
+				},
+			},
+		},
+	)
+	clients := Clients{
+		Tekton: mockTekton,
+	}
+	buildConfig := map[string]int{"okBuildsToKeep": 1, "failedBuildsToKeep": 2}
+
+	expectedPipelineRunNames := map[string]bool{
+		"pipelinerun-wrong-user": false,
+		"pipelinerun-succeeded2": true,
+		"pipelinerun-failed1":    true,
+		"pipelinerun-failed2":    true,
+		"pipelinerun-running":    true,
+	}
+
+	cleanupOldPipelineRuns(&clients, "dummy-namespace", "test-user", buildConfig)
+
+	pipelineRuns, err := clients.Tekton.TektonV1beta1().PipelineRuns("dummy-namespace").List(
+		context.TODO(),
+		v1.ListOptions{},
+	)
+
+	if err != nil {
+		t.Fatalf("I was not expecting an error, got: %s", err)
+	}
+
+	if len(pipelineRuns.Items) != len(expectedPipelineRunNames) {
+		t.Fatalf(
+			"I was expecting %d pipeline run, got: %d",
+			len(expectedPipelineRunNames),
+			len(pipelineRuns.Items),
+		)
+	}
+
+	for _, pipelineRun := range pipelineRuns.Items {
+		if _, found := expectedPipelineRunNames[pipelineRun.Name]; !found {
+			t.Fatalf("I was not expecting pipeline run %s", pipelineRun.Name)
+		}
+	}
+
+}
 
 func TestLogsReturnsErrorIfNotAllowed(t *testing.T) {
 	responder := Logs(
@@ -250,6 +460,7 @@ func TestStartReturnsInternalServerErrorOnException(t *testing.T) {
 	clients := Clients{
 		Tekton: &mockTekton,
 	}
+	buildConfig := map[string]int{"okBuildsToKeep": 1, "failedBuildsToKeep": 2}
 
 	responder := Start(
 		"dummy-source-url",
@@ -259,6 +470,7 @@ func TestStartReturnsInternalServerErrorOnException(t *testing.T) {
 		"dummy-tool",
 		"dummy-harbor-repository",
 		"dummy-builder",
+		buildConfig,
 	)
 
 	recorder := httptest.NewRecorder()
@@ -287,6 +499,7 @@ func TestStartReturnsNewBuildName(t *testing.T) {
 	clients := Clients{
 		Tekton: &mockTekton,
 	}
+	buildConfig := map[string]int{"okBuildsToKeep": 1, "failedBuildsToKeep": 2}
 
 	responder := Start(
 		expectedSourceURL,
@@ -296,6 +509,7 @@ func TestStartReturnsNewBuildName(t *testing.T) {
 		"dummy-tool",
 		"dummy-harbor-repository",
 		"dummy-builder",
+		buildConfig,
 	)
 
 	recorder := httptest.NewRecorder()

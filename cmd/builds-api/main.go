@@ -161,4 +161,15 @@ func addHandlers(api *operations.ToolforgeBuildsAPI, config Config) {
 			)
 		})
 
+	// Handler for deleting a build
+	api.DeleteHandler = operations.DeleteHandlerFunc(
+		func(params operations.DeleteParams, principal *models.Principal) middleware.Responder {
+			return internal.Delete(
+				&clients,
+				internal.BuildNamespace,
+				params.ID,
+				principal.User,
+			)
+		})
+
 }

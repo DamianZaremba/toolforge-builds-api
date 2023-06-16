@@ -88,6 +88,60 @@ func init() {
         }
       }
     },
+    "/build/{id}": {
+      "delete": {
+        "security": [
+          {
+            "key": []
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "operationId": "delete",
+        "parameters": [
+          {
+            "type": "string",
+            "description": "Id of the build",
+            "name": "id",
+            "in": "path",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The build was deleted",
+            "schema": {
+              "$ref": "#/definitions/DeleteResponse"
+            }
+          },
+          "400": {
+            "description": "Bad parameters passed",
+            "schema": {
+              "$ref": "#/definitions/BadRequest"
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "schema": {
+              "$ref": "#/definitions/Unauthorized"
+            }
+          },
+          "404": {
+            "description": "The build was not found",
+            "schema": {
+              "$ref": "#/definitions/NotFound"
+            }
+          },
+          "500": {
+            "description": "An internal error happened",
+            "schema": {
+              "$ref": "#/definitions/InternalError"
+            }
+          }
+        }
+      }
+    },
     "/build/{id}/logs": {
       "get": {
         "security": [
@@ -184,6 +238,14 @@ func init() {
           "items": {
             "type": "string"
           }
+        }
+      }
+    },
+    "DeleteResponse": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
         }
       }
     },
@@ -333,6 +395,60 @@ func init() {
         }
       }
     },
+    "/build/{id}": {
+      "delete": {
+        "security": [
+          {
+            "key": []
+          }
+        ],
+        "produces": [
+          "application/json"
+        ],
+        "operationId": "delete",
+        "parameters": [
+          {
+            "type": "string",
+            "description": "Id of the build",
+            "name": "id",
+            "in": "path",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The build was deleted",
+            "schema": {
+              "$ref": "#/definitions/DeleteResponse"
+            }
+          },
+          "400": {
+            "description": "Bad parameters passed",
+            "schema": {
+              "$ref": "#/definitions/BadRequest"
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "schema": {
+              "$ref": "#/definitions/Unauthorized"
+            }
+          },
+          "404": {
+            "description": "The build was not found",
+            "schema": {
+              "$ref": "#/definitions/NotFound"
+            }
+          },
+          "500": {
+            "description": "An internal error happened",
+            "schema": {
+              "$ref": "#/definitions/InternalError"
+            }
+          }
+        }
+      }
+    },
     "/build/{id}/logs": {
       "get": {
         "security": [
@@ -429,6 +545,14 @@ func init() {
           "items": {
             "type": "string"
           }
+        }
+      }
+    },
+    "DeleteResponse": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
         }
       }
     },

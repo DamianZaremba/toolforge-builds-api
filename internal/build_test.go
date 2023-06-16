@@ -76,57 +76,6 @@ func TestGetPipelineRunsReturnsSortedArrayOfPipelineRuns(t *testing.T) {
 
 }
 
-func TestDeletePipelineRunReturnsErrorIfApiReturnsError(t *testing.T) {
-	mockTekton := tektonFake.Clientset{}
-	mockTekton.AddReactor("delete", "pipelineruns", func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
-		return true, nil, fmt.Errorf("Dummy error!")
-	})
-	clients := Clients{
-		Tekton: &mockTekton,
-	}
-
-	err := deletePipelineRun(&clients, "dummy-namespace", "dummy-name")
-
-	if err == nil {
-		t.Fatalf("I was expecting an error, got: %s", err)
-	}
-
-}
-
-func TestDeletePipelineRunDeletesTargetPipelineRun(t *testing.T) {
-	mockTekton := tektonFake.NewSimpleClientset(
-		&v1beta1.PipelineRunList{
-			Items: []v1beta1.PipelineRun{
-				{ObjectMeta: v1.ObjectMeta{Name: "one", Namespace: "dummy-namespace"}},
-				{ObjectMeta: v1.ObjectMeta{Name: "two", Namespace: "dummy-namespace"}},
-			},
-		},
-	)
-	clients := Clients{
-		Tekton: mockTekton,
-	}
-
-	err := deletePipelineRun(&clients, "dummy-namespace", "one")
-
-	if err != nil {
-		t.Fatalf("I was not expecting an error, got: %s", err)
-	}
-
-	pipelineRuns, err := clients.Tekton.TektonV1beta1().PipelineRuns("dummy-namespace").List(
-		context.TODO(),
-		v1.ListOptions{},
-	)
-
-	if err != nil {
-		t.Fatalf("I was not expecting an error, got: %s", err)
-	}
-
-	if len(pipelineRuns.Items) != 1 {
-		t.Fatalf("I was expecting 1 pipeline run, got: %d", len(pipelineRuns.Items))
-	}
-
-}
-
 func TestCleanupOldPipelineRuns(t *testing.T) {
 	mockTekton := tektonFake.NewSimpleClientset(
 		&v1beta1.PipelineRunList{
@@ -534,5 +483,114 @@ func TestStartReturnsNewBuildName(t *testing.T) {
 
 	if gottenNewBuild.Parameters.SourceURL != expectedSourceURL {
 		t.Fatalf("Got an unexpected source url for the new build, got '%s', expected '%s'", gottenNewBuild.Parameters.SourceURL, expectedSourceURL)
+	}
+}
+
+func TestDeleteReturnsErrorIfNotAllowed(t *testing.T) {
+	responder := Delete(
+		&Clients{},
+		"dummy-namespace",
+		"dummy-build-id",
+		"dummy-tool-name",
+	)
+
+	recorder := httptest.NewRecorder()
+	responder.WriteResponse(recorder, runtime.JSONProducer())
+
+	if recorder.Result().StatusCode != 401 {
+		t.Fatalf("I was expecting a 401 response, got: %s", recorder.Result().Status)
+	}
+
+}
+
+func TestDeleteReturnsNotFoundIfNoBuildsThere(t *testing.T) {
+	mockTekton := tektonFake.NewSimpleClientset(
+		&v1beta1.PipelineRunList{
+			Items: make([]v1beta1.PipelineRun, 0),
+		},
+	)
+	clients := Clients{
+		Tekton: mockTekton,
+	}
+
+	responder := Delete(
+		&clients,
+		"dummy-namespace",
+		fmt.Sprintf("dummy-tool%sbuild", BuildIdPrefix),
+		"dummy-tool",
+	)
+
+	recorder := httptest.NewRecorder()
+	responder.WriteResponse(recorder, runtime.JSONProducer())
+
+	if recorder.Result().StatusCode != 404 {
+		t.Fatalf("I was expecting a 404 response, got: %s", recorder.Result().Status)
+	}
+
+}
+
+func TestDeleteReturnsInternalServerErrorOnException(t *testing.T) {
+	mockTekton := tektonFake.Clientset{}
+	mockTekton.Fake.AddReactor(
+		"delete",
+		"pipelineruns",
+		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
+			return true, nil, fmt.Errorf("Dummy error")
+		},
+	)
+	clients := Clients{
+		Tekton: &mockTekton,
+	}
+
+	responder := Delete(
+		&clients,
+		"dummy-namespace",
+		fmt.Sprintf("dummy-tool%sbuild", BuildIdPrefix),
+		"dummy-tool",
+	)
+
+	recorder := httptest.NewRecorder()
+	responder.WriteResponse(recorder, runtime.JSONProducer())
+
+	if recorder.Result().StatusCode != 500 {
+		t.Fatalf("I was expecting a 500 response, got: %s", recorder.Result().Status)
+	}
+}
+
+func TestDeleteReturnsDeletedBuildName(t *testing.T) {
+	mockTekton := tektonFake.Clientset{}
+	expectedName := fmt.Sprintf("dummy-tool%sbuild", BuildIdPrefix)
+	mockTekton.Fake.AddReactor(
+		"delete",
+		"pipelineruns",
+		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
+			return true, nil, nil
+		},
+	)
+	clients := Clients{
+		Tekton: &mockTekton,
+	}
+
+	responder := Delete(
+		&clients,
+		"dummy-namespace",
+		expectedName,
+		"dummy-tool",
+	)
+
+	recorder := httptest.NewRecorder()
+	responder.WriteResponse(recorder, runtime.JSONProducer())
+
+	if recorder.Result().StatusCode != 200 {
+		t.Fatalf("I was expecting a 200 response, got (%s): %v", recorder.Result().Status, recorder.Body.String())
+	}
+
+	var gottenDeletedId models.DeleteResponse
+	if err := gottenDeletedId.UnmarshalBinary(recorder.Body.Bytes()); err != nil {
+		t.Fatalf("Got error unmarshalling response: \nerr:%s\nrawResponse:%s", err, recorder.Body.Bytes())
+	}
+
+	if gottenDeletedId.ID != expectedName {
+		t.Fatalf("Got unexpected build id, expected '%s', got '%s'", expectedName, gottenDeletedId.ID)
 	}
 }

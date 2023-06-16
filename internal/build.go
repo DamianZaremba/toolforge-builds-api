@@ -59,14 +59,6 @@ func getPipelineRuns(clients *Clients, namespace string, listoptions metav1.List
 	return pipelineRuns.Items, nil
 }
 
-func deletePipelineRun(clients *Clients, namespace string, name string) error {
-	return clients.Tekton.TektonV1beta1().PipelineRuns(namespace).Delete(
-		context.TODO(),
-		name,
-		metav1.DeleteOptions{},
-	)
-}
-
 func getBuildStatusFromPipelineRun(pipelineRun v1beta1.PipelineRun) BuildStatus {
 
 	if pipelineRun.Status.CompletionTime == nil {
@@ -139,7 +131,11 @@ func cleanupOldPipelineRuns(clients *Clients, namespace string, toolName string,
 	for _, pipelineRun := range pipelineRuns {
 		if _, found := pipelineRunsToKeep[pipelineRun.Name]; !found {
 			log.Debugf("Deleting old pipelinerun %s", pipelineRun.Name)
-			err := deletePipelineRun(clients, namespace, pipelineRun.Name)
+			err := clients.Tekton.TektonV1beta1().PipelineRuns(namespace).Delete(
+				context.TODO(),
+				pipelineRun.Name,
+				metav1.DeleteOptions{},
+			)
 			if err != nil {
 				log.Warnf("Got error when deleting pipelinerun %s: %s", pipelineRun.Name, err)
 				deleteErrors = append(deleteErrors, err)
@@ -340,4 +336,39 @@ func Start(
 			},
 		},
 	)
+}
+
+func Delete(
+	clients *Clients,
+	namespace string,
+	buildId string,
+	toolName string,
+) middleware.Responder {
+	if err := ToolIsAllowedForBuild(toolName, buildId); err != nil {
+		return operations.NewDeleteUnauthorized().WithPayload(
+			&models.Unauthorized{Message: fmt.Sprintf("%s", err)},
+		)
+	}
+	// TODO: Delete also the associated image on harbor
+	log.Debugf("Deleting build: buildId=%s, namespace=%s, toolName=%s", buildId, namespace, toolName)
+	err := clients.Tekton.TektonV1beta1().PipelineRuns(namespace).Delete(
+		context.TODO(),
+		buildId,
+		metav1.DeleteOptions{},
+	)
+	if err != nil {
+		// A bit flaky way of handling, maybe improve in the future
+		if strings.HasSuffix(err.Error(), "not found") {
+			return operations.NewDeleteNotFound().WithPayload(&models.NotFound{Message: fmt.Sprintf("Build with id %s not found", buildId)})
+		}
+
+		log.Warnf(
+			"Got error when deleting pipelinerun %s on namespace %s: %s", buildId, namespace, err,
+		)
+		return operations.NewDeleteInternalServerError().WithPayload(
+			&models.InternalError{Message: "Unable to delete build!"},
+		)
+	}
+
+	return operations.NewDeleteOK().WithPayload(&models.DeleteResponse{ID: buildId})
 }

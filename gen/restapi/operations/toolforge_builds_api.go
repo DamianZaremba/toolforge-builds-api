@@ -44,6 +44,9 @@ func NewToolforgeBuildsAPI(spec *loads.Document) *ToolforgeBuildsAPI {
 
 		JSONProducer: runtime.JSONProducer(),
 
+		DeleteHandler: DeleteHandlerFunc(func(params DeleteParams, principal *models.Principal) middleware.Responder {
+			return middleware.NotImplemented("operation Delete has not yet been implemented")
+		}),
 		HealthcheckHandler: HealthcheckHandlerFunc(func(params HealthcheckParams) middleware.Responder {
 			return middleware.NotImplemented("operation Healthcheck has not yet been implemented")
 		}),
@@ -103,6 +106,8 @@ type ToolforgeBuildsAPI struct {
 	// APIAuthorizer provides access control (ACL/RBAC/ABAC) by providing access to the request and authenticated principal
 	APIAuthorizer runtime.Authorizer
 
+	// DeleteHandler sets the operation handler for the delete operation
+	DeleteHandler DeleteHandler
 	// HealthcheckHandler sets the operation handler for the healthcheck operation
 	HealthcheckHandler HealthcheckHandler
 	// LogsHandler sets the operation handler for the logs operation
@@ -190,6 +195,9 @@ func (o *ToolforgeBuildsAPI) Validate() error {
 		unregistered = append(unregistered, "SslClientSubjectDnAuth")
 	}
 
+	if o.DeleteHandler == nil {
+		unregistered = append(unregistered, "DeleteHandler")
+	}
 	if o.HealthcheckHandler == nil {
 		unregistered = append(unregistered, "HealthcheckHandler")
 	}
@@ -298,6 +306,10 @@ func (o *ToolforgeBuildsAPI) initHandlerCache() {
 		o.handlers = make(map[string]map[string]http.Handler)
 	}
 
+	if o.handlers["DELETE"] == nil {
+		o.handlers["DELETE"] = make(map[string]http.Handler)
+	}
+	o.handlers["DELETE"]["/build/{id}"] = NewDelete(o.context, o.DeleteHandler)
 	if o.handlers["GET"] == nil {
 		o.handlers["GET"] = make(map[string]http.Handler)
 	}
@@ -351,6 +363,6 @@ func (o *ToolforgeBuildsAPI) AddMiddlewareFor(method, path string, builder middl
 	}
 	o.Init()
 	if h, ok := o.handlers[um][path]; ok {
-		o.handlers[method][path] = builder(h)
+		o.handlers[um][path] = builder(h)
 	}
 }

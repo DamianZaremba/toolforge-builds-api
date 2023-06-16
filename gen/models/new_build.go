@@ -75,6 +75,11 @@ func (m *NewBuild) ContextValidate(ctx context.Context, formats strfmt.Registry)
 func (m *NewBuild) contextValidateParameters(ctx context.Context, formats strfmt.Registry) error {
 
 	if m.Parameters != nil {
+
+		if swag.IsZero(m.Parameters) { // not required
+			return nil
+		}
+
 		if err := m.Parameters.ContextValidate(ctx, formats); err != nil {
 			if ve, ok := err.(*errors.Validation); ok {
 				return ve.ValidateName("parameters")

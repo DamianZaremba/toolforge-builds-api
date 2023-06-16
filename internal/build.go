@@ -335,3 +335,38 @@ func Start(
 		},
 	)
 }
+
+func Delete(
+	clients *Clients,
+	namespace string,
+	buildId string,
+	toolName string,
+) middleware.Responder {
+	if err := ToolIsAllowedForBuild(toolName, buildId); err != nil {
+		return operations.NewDeleteUnauthorized().WithPayload(
+			&models.Unauthorized{Message: fmt.Sprintf("%s", err)},
+		)
+	}
+	// TODO: Delete also the associated image on harbor
+	log.Debugf("Deleting build: buildId=%s, namespace=%s, toolName=%s", buildId, namespace, toolName)
+	err := clients.Tekton.TektonV1beta1().PipelineRuns(namespace).Delete(
+		context.TODO(),
+		buildId,
+		metav1.DeleteOptions{},
+	)
+	if err != nil {
+		// A bit flaky way of handling, maybe improve in the future
+		if strings.HasSuffix(err.Error(), "not found") {
+			return operations.NewDeleteNotFound().WithPayload(&models.NotFound{Message: fmt.Sprintf("Build with id %s not found", buildId)})
+		}
+
+		log.Warnf(
+			"Got error when deleting pipelinerun %s on namespace %s: %s", buildId, namespace, err,
+		)
+		return operations.NewDeleteInternalServerError().WithPayload(
+			&models.InternalError{Message: "Unable to delete build!"},
+		)
+	}
+
+	return operations.NewDeleteOK().WithPayload(&models.DeleteResponse{ID: buildId})
+}

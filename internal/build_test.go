@@ -7,10 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-openapi/runtime"
 	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	tektonFake "github.com/tektoncd/pipeline/pkg/client/clientset/versioned/fake"
-	"gitlab.wikimedia.org/repos/toolforge/toolforge-builds-api/gen/models"
+	"gitlab.wikimedia.org/repos/toolforge/builds-api/gen"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8sRuntime "k8s.io/apimachinery/pkg/runtime"
 	k8sFake "k8s.io/client-go/kubernetes/fake"
@@ -135,10 +134,17 @@ func TestCleanupOldPipelineRuns(t *testing.T) {
 			},
 		},
 	)
-	clients := Clients{
-		Tekton: mockTekton,
+	api := BuildsApi{
+		Clients: Clients{
+			Tekton: mockTekton,
+		},
+		Config: Config{
+			OkToKeep:       1,
+			FailedToKeep:   2,
+			BuildIdPrefix:  BuildIdPrefix,
+			BuildNamespace: BuildNamespace,
+		},
 	}
-	buildConfig := map[string]int{"okBuildsToKeep": 1, "failedBuildsToKeep": 2}
 
 	expectedPipelineRunNames := map[string]bool{
 		"pipelinerun-wrong-user": false,
@@ -148,9 +154,9 @@ func TestCleanupOldPipelineRuns(t *testing.T) {
 		"pipelinerun-running":    true,
 	}
 
-	cleanupOldPipelineRuns(&clients, "dummy-namespace", "test-user", buildConfig)
+	cleanupOldPipelineRuns(&api.Clients, "dummy-namespace", "test-user", api.Config.OkToKeep, api.Config.FailedToKeep)
 
-	pipelineRuns, err := clients.Tekton.TektonV1beta1().PipelineRuns("dummy-namespace").List(
+	pipelineRuns, err := api.Clients.Tekton.TektonV1beta1().PipelineRuns("dummy-namespace").List(
 		context.TODO(),
 		v1.ListOptions{},
 	)
@@ -176,43 +182,54 @@ func TestCleanupOldPipelineRuns(t *testing.T) {
 }
 
 func TestLogsReturnsErrorIfNotAllowed(t *testing.T) {
-	responder := Logs(
+	api := BuildsApi{}
+
+	code, _, err := Logs(
+		&api,
 		"dummy-build-id",
-		&Clients{},
 		"dummy-namespace",
 		"dummy-tool-name",
 	)
 
-	recorder := httptest.NewRecorder()
-	responder.WriteResponse(recorder, runtime.JSONProducer())
+	if err != nil {
+		t.Fatalf("Got unexpected error: %s", err)
+	}
 
-	if recorder.Result().StatusCode != 401 {
-		t.Fatalf("I was expecting a 401 response, got: %s", recorder.Result().Status)
+	if code != 401 {
+		t.Fatalf("I was expecting a 401 response, got: %d", code)
 	}
 
 }
+
 func TestLogsReturnsNotFoundIfNoBuildsThere(t *testing.T) {
 	mockTekton := tektonFake.NewSimpleClientset(
 		&v1beta1.PipelineRunList{
 			Items: make([]v1beta1.PipelineRun, 0),
 		},
 	)
-	clients := Clients{
-		Tekton: mockTekton,
+	api := BuildsApi{
+		Clients: Clients{
+			Tekton: mockTekton,
+		},
+		Config: Config{
+			BuildIdPrefix:  BuildIdPrefix,
+			BuildNamespace: BuildNamespace,
+		},
 	}
 
-	responder := Logs(
+	code, _, err := Logs(
+		&api,
 		fmt.Sprintf("dummy-tool%sbuild", BuildIdPrefix),
-		&clients,
 		"dummy-namespace",
 		"dummy-tool",
 	)
 
-	recorder := httptest.NewRecorder()
-	responder.WriteResponse(recorder, runtime.JSONProducer())
+	if err != nil {
+		t.Fatalf("Got unexpected error: %s", err)
+	}
 
-	if recorder.Result().StatusCode != 404 {
-		t.Fatalf("I was expecting a 404 response, got: %s", recorder.Result().Status)
+	if code != 404 {
+		t.Fatalf("I was expecting a 404 response, got: %d", code)
 	}
 
 }
@@ -223,22 +240,29 @@ func TestLogsReturnsNotFoundIfApiReturnsError(t *testing.T) {
 	mockTekton.AddReactor("list", "pipelineruns", func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
 		return true, nil, fmt.Errorf("Dummy error!")
 	})
-	clients := Clients{
-		Tekton: &mockTekton,
+	api := BuildsApi{
+		Clients: Clients{
+			Tekton: &mockTekton,
+		},
+		Config: Config{
+			BuildIdPrefix:  BuildIdPrefix,
+			BuildNamespace: BuildNamespace,
+		},
 	}
 
-	responder := Logs(
+	code, _, err := Logs(
+		&api,
 		fmt.Sprintf("dummy-tool%sbuild", BuildIdPrefix),
-		&clients,
 		"dummy-namespace",
 		"dummy-tool",
 	)
 
-	recorder := httptest.NewRecorder()
-	responder.WriteResponse(recorder, runtime.JSONProducer())
+	if err != nil {
+		t.Fatalf("Got unexpected error: %s", err)
+	}
 
-	if recorder.Result().StatusCode != 404 {
-		t.Fatalf("I was expecting a 404 response, got: %s", recorder.Result().Status)
+	if code != 404 {
+		t.Fatalf("I was expecting a 404 response, got: %d", code)
 	}
 
 }
@@ -252,22 +276,29 @@ func TestLogsReturnsNotFoundIfApiReturnsMoreThanOneRun(t *testing.T) {
 			},
 		},
 	)
-	clients := Clients{
-		Tekton: mockTekton,
+	api := BuildsApi{
+		Clients: Clients{
+			Tekton: mockTekton,
+		},
+		Config: Config{
+			BuildIdPrefix:  BuildIdPrefix,
+			BuildNamespace: BuildNamespace,
+		},
 	}
 
-	responder := Logs(
+	code, _, err := Logs(
+		&api,
 		fmt.Sprintf("dummy-tool%sbuild", BuildIdPrefix),
-		&clients,
 		"dummy-namespace",
 		"dummy-tool",
 	)
 
-	recorder := httptest.NewRecorder()
-	responder.WriteResponse(recorder, runtime.JSONProducer())
+	if err != nil {
+		t.Fatalf("Got unexpected error: %s", err)
+	}
 
-	if recorder.Result().StatusCode != 404 {
-		t.Fatalf("I was expecting a 404 response, got: %s", recorder.Result().Status)
+	if code != 404 {
+		t.Fatalf("I was expecting a 404 response, got: %d", code)
 	}
 
 }
@@ -292,31 +323,34 @@ func TestLogsReturnsEmptyLineIfRunHasNotStarted(t *testing.T) {
 			return true, &pipelineRunList, nil
 		},
 	)
-	clients := Clients{
-		Tekton: &mockTekton,
+	api := BuildsApi{
+		Clients: Clients{
+			Tekton: &mockTekton,
+		},
+		Config: Config{
+			BuildIdPrefix:  BuildIdPrefix,
+			BuildNamespace: BuildNamespace,
+		},
 	}
 
-	responder := Logs(
+	code, response, err := Logs(
+		&api,
 		fmt.Sprintf("dummy-tool%sbuild", BuildIdPrefix),
-		&clients,
 		"dummy-namespace",
 		"dummy-tool",
 	)
 
-	recorder := httptest.NewRecorder()
-	responder.WriteResponse(recorder, runtime.JSONProducer())
-
-	if recorder.Result().StatusCode != 200 {
-		t.Fatalf("I was expecting a 200 response, got: %s", recorder.Result().Status)
+	if err != nil {
+		t.Fatalf("Got unexpected error: %s", err)
 	}
 
-	var gottenLogs models.BuildLogs
-	if err := gottenLogs.UnmarshalBinary(recorder.Body.Bytes()); err != nil {
-		t.Fatalf("Got error unmarshalling response: \nerr:%s\nrawResponse:%s", err, recorder.Body.Bytes())
+	if code != 200 {
+		t.Fatalf("I was expecting a 200 response, got: %d", code)
 	}
 
-	if len(gottenLogs.Lines) != 1 || gottenLogs.Lines[0] != "" {
-		t.Fatalf("I was expecting only an empty line, got: %s", gottenLogs)
+	gottenLogs := response.(gen.BuildLogs)
+	if len(*gottenLogs.Lines) != 1 || (*gottenLogs.Lines)[0] != "" {
+		t.Fatalf("I was expecting only an empty line, got: %s", *gottenLogs.Lines)
 	}
 }
 
@@ -356,28 +390,30 @@ func TestLogsReturnsAllLogsConcatenated(t *testing.T) {
 	mockK8s.AddReactor("get", "pods/logs", func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
 		return true, nil, fmt.Errorf("no reaction implemented for verb:get resource:pods/log")
 	})
-	clients := Clients{
-		Tekton: &mockTekton,
-		K8s:    &mockK8s,
+	api := BuildsApi{
+		Clients: Clients{
+			Tekton: &mockTekton,
+			K8s:    &mockK8s,
+		},
+		Config: Config{
+			BuildIdPrefix:  BuildIdPrefix,
+			BuildNamespace: BuildNamespace,
+		},
 	}
 
-	responder := Logs(
+	code, response, err := Logs(
+		&api,
 		fmt.Sprintf("dummy-tool%sbuild", BuildIdPrefix),
-		&clients,
 		"dummy-namespace",
 		"dummy-tool",
 	)
 
-	recorder := httptest.NewRecorder()
-	responder.WriteResponse(recorder, runtime.JSONProducer())
-
-	if recorder.Result().StatusCode != 200 {
-		t.Fatalf("I was expecting a 200 response, got: %s", recorder.Result().Status)
+	if err != nil {
+		t.Fatalf("Got unexpected error: %s", err)
 	}
 
-	var gottenLogs models.BuildLogs
-	if err := gottenLogs.UnmarshalBinary(recorder.Body.Bytes()); err != nil {
-		t.Fatalf("Got error unmarshalling response: \nerr:%s\nrawResponse:%s", err, recorder.Body.Bytes())
+	if code != 200 {
+		t.Fatalf("I was expecting a 200 response, got: %d", code)
 	}
 
 	// We get one line per getLogs fake call (hardcoded upstream)
@@ -386,13 +422,14 @@ func TestLogsReturnsAllLogsConcatenated(t *testing.T) {
 		expectedLines = append(expectedLines, fmt.Sprintf("%s: fake logs", container))
 	}
 
-	if len(gottenLogs.Lines) != len(Containers) {
-		t.Fatalf("I was expecting one line per container, got: %s", gottenLogs)
+	gottenLogs := response.(gen.BuildLogs)
+	if len(*gottenLogs.Lines) != len(Containers) {
+		t.Fatalf("I was expecting one line per container, got: %s", *gottenLogs.Lines)
 	}
 
 	for index, expectedLine := range expectedLines {
-		if expectedLine != gottenLogs.Lines[index] {
-			t.Fatalf("I was expecting:\n%s\nBut got:\n%s", expectedLines, gottenLogs)
+		if expectedLine != (*gottenLogs.Lines)[index] {
+			t.Fatalf("I was expecting:\n%s\nBut got:\n%s", expectedLines, *gottenLogs.Lines)
 		}
 	}
 }
@@ -406,27 +443,33 @@ func TestStartReturnsInternalServerErrorOnException(t *testing.T) {
 			return true, nil, fmt.Errorf("Dummy error")
 		},
 	)
-	clients := Clients{
-		Tekton: &mockTekton,
+	api := BuildsApi{
+		Clients: Clients{
+			Tekton: &mockTekton,
+		},
+		Config: Config{
+			HarborRepository: "dummy-harbor-repository",
+			Builder:          "dummy-builder",
+			OkToKeep:         1,
+			FailedToKeep:     2,
+			BuildIdPrefix:    BuildIdPrefix,
+			BuildNamespace:   BuildNamespace,
+		},
 	}
-	buildConfig := map[string]int{"okBuildsToKeep": 1, "failedBuildsToKeep": 2}
 
-	responder := Start(
+	code, _, err := Start(
+		&api,
 		"dummy-source-url",
 		"dummy-ref",
-		&clients,
 		"dummy-namespace",
 		"dummy-tool",
-		"dummy-harbor-repository",
-		"dummy-builder",
-		buildConfig,
 	)
 
-	recorder := httptest.NewRecorder()
-	responder.WriteResponse(recorder, runtime.JSONProducer())
-
-	if recorder.Result().StatusCode != 500 {
-		t.Fatalf("I was expecting a 500 response, got: %s", recorder.Result().Status)
+	if err != nil {
+		t.Fatalf("Got unexpected error: %s", err)
+	}
+	if code != 500 {
+		t.Fatalf("I was expecting a 500 response, got: %d", code)
 	}
 }
 
@@ -445,60 +488,71 @@ func TestStartReturnsNewBuildName(t *testing.T) {
 			return true, &fakePipelineRun, nil
 		},
 	)
-	clients := Clients{
-		Tekton: &mockTekton,
+	api := BuildsApi{
+		Clients: Clients{
+			Tekton: &mockTekton,
+		},
+		Config: Config{
+			HarborRepository: "dummy-harbor-repository",
+			Builder:          "dummy-builder",
+			OkToKeep:         1,
+			FailedToKeep:     2,
+			BuildIdPrefix:    BuildIdPrefix,
+			BuildNamespace:   BuildNamespace,
+		},
 	}
-	buildConfig := map[string]int{"okBuildsToKeep": 1, "failedBuildsToKeep": 2}
 
-	responder := Start(
+	code, response, err := Start(
+		&api,
 		expectedSourceURL,
 		expectedRef,
-		&clients,
 		"dummy-namespace",
 		"dummy-tool",
-		"dummy-harbor-repository",
-		"dummy-builder",
-		buildConfig,
 	)
 
-	recorder := httptest.NewRecorder()
-	responder.WriteResponse(recorder, runtime.JSONProducer())
-
-	if recorder.Result().StatusCode != 200 {
-		t.Fatalf("I was expecting a 200 response, got: %s", recorder.Result().Status)
+	if err != nil {
+		t.Fatalf("Got unexpected error: %s", err)
+	}
+	if code != 200 {
+		t.Fatalf("I was expecting a 200 response, got: %d", code)
 	}
 
-	var gottenNewBuild models.NewBuild
-	if err := gottenNewBuild.UnmarshalBinary(recorder.Body.Bytes()); err != nil {
-		t.Fatalf("Got error unmarshalling response: \nerr:%s\nrawResponse:%s", err, recorder.Body.Bytes())
+	gottenNewBuild := response.(gen.NewBuild)
+	if *gottenNewBuild.Name != expectedName {
+		t.Fatalf("Got an unexpected name for the new build, got '%s', expected '%s'", *gottenNewBuild.Name, expectedName)
 	}
 
-	if gottenNewBuild.Name != expectedName {
-		t.Fatalf("Got an unexpected name for the new build, got '%s', expected '%s'", gottenNewBuild.Name, expectedName)
+	if *gottenNewBuild.Parameters.Ref != expectedRef {
+		t.Fatalf("Got an unexpected ref for the new build, got '%s', expected '%s'", *gottenNewBuild.Parameters.Ref, expectedRef)
 	}
 
-	if gottenNewBuild.Parameters.Ref != expectedRef {
-		t.Fatalf("Got an unexpected ref for the new build, got '%s', expected '%s'", gottenNewBuild.Parameters.Ref, expectedRef)
-	}
-
-	if gottenNewBuild.Parameters.SourceURL != expectedSourceURL {
-		t.Fatalf("Got an unexpected source url for the new build, got '%s', expected '%s'", gottenNewBuild.Parameters.SourceURL, expectedSourceURL)
+	if *gottenNewBuild.Parameters.SourceUrl != expectedSourceURL {
+		t.Fatalf("Got an unexpected source url for the new build, got '%s', expected '%s'", *gottenNewBuild.Parameters.SourceUrl, expectedSourceURL)
 	}
 }
 
 func TestDeleteReturnsErrorIfNotAllowed(t *testing.T) {
-	responder := Delete(
-		&Clients{},
+	api := BuildsApi{
+		Clients: Clients{},
+		Config: Config{
+			BuildIdPrefix:  BuildIdPrefix,
+			BuildNamespace: BuildNamespace,
+		},
+	}
+
+	code, _, err := Delete(
+		&api,
 		"dummy-namespace",
 		"dummy-build-id",
 		"dummy-tool-name",
 	)
 
-	recorder := httptest.NewRecorder()
-	responder.WriteResponse(recorder, runtime.JSONProducer())
+	if err != nil {
+		t.Fatalf("Got unexpected error: %s", err)
+	}
 
-	if recorder.Result().StatusCode != 401 {
-		t.Fatalf("I was expecting a 401 response, got: %s", recorder.Result().Status)
+	if code != 401 {
+		t.Fatalf("I was expecting a 401 response, got: %d", code)
 	}
 
 }
@@ -509,22 +563,29 @@ func TestDeleteReturnsNotFoundIfNoBuildsThere(t *testing.T) {
 			Items: make([]v1beta1.PipelineRun, 0),
 		},
 	)
-	clients := Clients{
-		Tekton: mockTekton,
+	api := BuildsApi{
+		Clients: Clients{
+			Tekton: mockTekton,
+		},
+		Config: Config{
+			BuildIdPrefix:  BuildIdPrefix,
+			BuildNamespace: BuildNamespace,
+		},
 	}
 
-	responder := Delete(
-		&clients,
+	code, _, err := Delete(
+		&api,
 		"dummy-namespace",
 		fmt.Sprintf("dummy-tool%sbuild", BuildIdPrefix),
 		"dummy-tool",
 	)
 
-	recorder := httptest.NewRecorder()
-	responder.WriteResponse(recorder, runtime.JSONProducer())
+	if err != nil {
+		t.Fatalf("Got unexpected error: %s", err)
+	}
 
-	if recorder.Result().StatusCode != 404 {
-		t.Fatalf("I was expecting a 404 response, got: %s", recorder.Result().Status)
+	if code != 404 {
+		t.Fatalf("I was expecting a 404 response, got: %d", code)
 	}
 
 }
@@ -538,28 +599,35 @@ func TestDeleteReturnsInternalServerErrorOnException(t *testing.T) {
 			return true, nil, fmt.Errorf("Dummy error")
 		},
 	)
-	clients := Clients{
-		Tekton: &mockTekton,
+	api := BuildsApi{
+		Clients: Clients{
+			Tekton: &mockTekton,
+		},
+		Config: Config{
+			BuildIdPrefix:  BuildIdPrefix,
+			BuildNamespace: BuildNamespace,
+		},
 	}
 
-	responder := Delete(
-		&clients,
+	code, _, err := Delete(
+		&api,
 		"dummy-namespace",
 		fmt.Sprintf("dummy-tool%sbuild", BuildIdPrefix),
 		"dummy-tool",
 	)
 
-	recorder := httptest.NewRecorder()
-	responder.WriteResponse(recorder, runtime.JSONProducer())
+	if err != nil {
+		t.Fatalf("Got unexpected error: %s", err)
+	}
 
-	if recorder.Result().StatusCode != 500 {
-		t.Fatalf("I was expecting a 500 response, got: %s", recorder.Result().Status)
+	if code != 500 {
+		t.Fatalf("I was expecting a 500 response, got: %d", code)
 	}
 }
 
 func TestDeleteReturnsDeletedBuildName(t *testing.T) {
 	mockTekton := tektonFake.Clientset{}
-	expectedName := fmt.Sprintf("dummy-tool%sbuild", BuildIdPrefix)
+	expectedId := fmt.Sprintf("dummy-tool%sbuild", BuildIdPrefix)
 	mockTekton.Fake.AddReactor(
 		"delete",
 		"pipelineruns",
@@ -567,30 +635,34 @@ func TestDeleteReturnsDeletedBuildName(t *testing.T) {
 			return true, nil, nil
 		},
 	)
-	clients := Clients{
-		Tekton: &mockTekton,
+	api := BuildsApi{
+		Clients: Clients{
+			Tekton: &mockTekton,
+		},
+		Config: Config{
+			BuildIdPrefix:  BuildIdPrefix,
+			BuildNamespace: BuildNamespace,
+		},
 	}
 
-	responder := Delete(
-		&clients,
+	code, response, err := Delete(
+		&api,
 		"dummy-namespace",
-		expectedName,
+		expectedId,
 		"dummy-tool",
 	)
 
+	if err != nil {
+		t.Fatalf("Got unexpected error: %s", err)
+	}
 	recorder := httptest.NewRecorder()
-	responder.WriteResponse(recorder, runtime.JSONProducer())
 
-	if recorder.Result().StatusCode != 200 {
+	if code != 200 {
 		t.Fatalf("I was expecting a 200 response, got (%s): %v", recorder.Result().Status, recorder.Body.String())
 	}
 
-	var gottenDeletedId models.DeleteResponse
-	if err := gottenDeletedId.UnmarshalBinary(recorder.Body.Bytes()); err != nil {
-		t.Fatalf("Got error unmarshalling response: \nerr:%s\nrawResponse:%s", err, recorder.Body.Bytes())
-	}
-
-	if gottenDeletedId.ID != expectedName {
-		t.Fatalf("Got unexpected build id, expected '%s', got '%s'", expectedName, gottenDeletedId.ID)
+	gottenDeletedId := response.(gen.BuildId)
+	if *gottenDeletedId.Id != expectedId {
+		t.Fatalf("Got unexpected build id, expected '%s', got '%s'", expectedId, *gottenDeletedId.Id)
 	}
 }

@@ -3,14 +3,13 @@ package internal
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"sort"
 	"strings"
 
-	"github.com/go-openapi/runtime/middleware"
 	log "github.com/sirupsen/logrus"
 	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
-	"gitlab.wikimedia.org/repos/toolforge/toolforge-builds-api/gen/models"
-	"gitlab.wikimedia.org/repos/toolforge/toolforge-builds-api/gen/restapi/operations"
+	gen "gitlab.wikimedia.org/repos/toolforge/builds-api/gen"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -101,7 +100,7 @@ func filterPipelineRunsByStatus(pipelineRuns []v1beta1.PipelineRun, filter Build
 	return filteredPipelineRuns
 }
 
-func cleanupOldPipelineRuns(clients *Clients, namespace string, toolName string, buildCleanup map[string]int) []error {
+func cleanupOldPipelineRuns(clients *Clients, namespace string, toolName string, okToKeep int, failedToKeep int) []error {
 	pipelineRuns, err := getPipelineRuns(clients, namespace, metav1.ListOptions{LabelSelector: fmt.Sprintf("user=%s", toolName)})
 	if err != nil {
 		return []error{err}
@@ -114,15 +113,15 @@ func cleanupOldPipelineRuns(clients *Clients, namespace string, toolName string,
 	for _, pipelineRun := range runningPipelineRuns {
 		pipelineRunsToKeep[pipelineRun.Name] = pipelineRun
 	}
-	log.Debugf("cleanupOldPipelineRuns: buildCleanup: %v", buildCleanup)
+	log.Debugf("cleanupOldPipelineRuns: okToKeep, failedToKeep: %d, %d", okToKeep, failedToKeep)
 	for idx, pipelineRun := range successfulPipelineRuns {
-		if idx >= buildCleanup["okBuildsToKeep"] {
+		if idx >= okToKeep {
 			break
 		}
 		pipelineRunsToKeep[pipelineRun.Name] = pipelineRun
 	}
 	for idx, pipelineRun := range failedPipelineRuns {
-		if idx >= buildCleanup["failedBuildsToKeep"] {
+		if idx >= failedToKeep {
 			break
 		}
 		pipelineRunsToKeep[pipelineRun.Name] = pipelineRun
@@ -146,7 +145,7 @@ func cleanupOldPipelineRuns(clients *Clients, namespace string, toolName string,
 }
 
 func getContainerLogs(clients *Clients, container string, taskRun *v1beta1.PipelineRunTaskRunStatus, namespace string) (string, error) {
-	logs := clients.K8s.CoreV1().Pods(BuildNamespace).GetLogs(
+	logs := clients.K8s.CoreV1().Pods(namespace).GetLogs(
 		taskRun.Status.PodName, &v1.PodLogOptions{
 			Timestamps: true,
 			Container:  container,
@@ -199,72 +198,63 @@ func getPipelineRunLogs(pipelineRun *v1beta1.PipelineRun, clients *Clients, name
 	return "", nil
 }
 
-func Logs(buildId string, clients *Clients, namespace string, toolName string) middleware.Responder {
-	if err := ToolIsAllowedForBuild(toolName, buildId); err != nil {
-		return operations.NewLogsUnauthorized().WithPayload(
-			&models.Unauthorized{Message: fmt.Sprintf("%s", err)},
-		)
+func Logs(api *BuildsApi, buildId string, toolName string) (int, interface{}, error) {
+	if err := ToolIsAllowedForBuild(toolName, buildId, api.Config.BuildIdPrefix); err != nil {
+		message := fmt.Sprintf("%s", err)
+		return http.StatusUnauthorized, gen.Unauthorized{Message: &message}, nil
 	}
 
-	pipelineRuns, err := getPipelineRuns(clients, namespace, metav1.ListOptions{FieldSelector: fmt.Sprintf("metadata.name=%s", buildId)})
+	pipelineRuns, err := getPipelineRuns(&api.Clients, api.Config.BuildNamespace, metav1.ListOptions{FieldSelector: fmt.Sprintf("metadata.name=%s", buildId)})
 	if err != nil {
 		log.Warnf(
-			"Got error when listing pipelineruns on namespace %s, maybe new cluster with no runs yet?: %s", namespace, err,
+			"Got error when listing pipelineruns on namespace %s, maybe new cluster with no runs yet?: %s", api.Config.BuildNamespace, err,
 		)
-		return operations.NewLogsNotFound().WithPayload(
-			&models.NotFound{Message: "Unable to find any pipelineruns! New installation?"},
-		)
+		message := "Unable to find any pipelineruns! New installation?"
+		return http.StatusNotFound, gen.NotFound{Message: &message}, nil
 	}
 
 	log.Debugf("Get: Got %d pipeline runs!: %v", len(pipelineRuns), pipelineRuns)
 	if len(pipelineRuns) == 0 {
-		return operations.NewLogsNotFound().WithPayload(
-			&models.NotFound{Message: fmt.Sprintf("Unable to find build with id '%s'", buildId)},
-		)
+		message := fmt.Sprintf("Unable to find build with id '%s'", buildId)
+		return http.StatusNotFound, gen.NotFound{Message: &message}, nil
+
 	} else if len(pipelineRuns) > 1 {
 		message := fmt.Sprintf("Got %d builds matching name %s, only 1 was expected.", len(pipelineRuns), buildId)
 		log.Warning(message)
-		return operations.NewLogsNotFound().WithPayload(&models.NotFound{Message: message})
+		return http.StatusNotFound, gen.NotFound{Message: &message}, nil
 	}
 
 	pipelineRun := pipelineRuns[0]
-	logs, err := getPipelineRunLogs(&pipelineRun, clients, namespace)
+	logs, err := getPipelineRunLogs(&pipelineRun, &api.Clients, api.Config.BuildNamespace)
 	if err != nil {
 		message := fmt.Sprintf("Error getting the logs for %s: %s", buildId, err)
 		log.Errorf(message)
-		return operations.NewLogsInternalServerError().WithPayload(
-			&models.InternalError{Message: message},
-		)
+		return http.StatusInternalServerError, gen.InternalError{Message: &message}, nil
 	}
 
-	return operations.NewLogsOK().WithPayload(
-		&models.BuildLogs{
-			Lines: strings.Split(logs, "\n"),
-		},
-	)
+	lines := strings.Split(logs, "\n")
+	return http.StatusOK, gen.BuildLogs{
+		Lines: &lines,
+	}, nil
 }
 
 func Start(
+	api *BuildsApi,
 	sourceURL string,
 	ref string,
-	clients *Clients,
-	namespace string,
 	toolName string,
-	harborRepository string,
-	builder string,
-	buildCleanup map[string]int,
-) middleware.Responder {
+) (int, interface{}, error) {
 	// TODO: Check quotas
 	// TODO: Create destination project in harbor if it does not exist
-	cleanup_err := cleanupOldPipelineRuns(clients, namespace, toolName, buildCleanup)
+	cleanup_err := cleanupOldPipelineRuns(&api.Clients, api.Config.BuildNamespace, toolName, api.Config.OkToKeep, api.Config.FailedToKeep)
 	for _, err := range cleanup_err {
 		log.Warnf("Got error when cleaning up old pipeline runs: %s", err)
 	}
-	log.Debugf("Starting a new build: ref=%s, toolName=%s, harborRepository=%s, builder=%s", ref, toolName, harborRepository, builder)
+	log.Debugf("Starting a new build: ref=%s, toolName=%s, harborRepository=%s, builder=%s", ref, toolName, api.Config.HarborRepository, api.Config.Builder)
 	newRun := v1beta1.PipelineRun{
 		ObjectMeta: metav1.ObjectMeta{
-			GenerateName: fmt.Sprintf("%s%s", toolName, BuildIdPrefix),
-			Namespace:    BuildNamespace,
+			GenerateName: fmt.Sprintf("%s%s", toolName, api.Config.BuildIdPrefix),
+			Namespace:    api.Config.BuildNamespace,
 			Labels: map[string]string{
 				"user": toolName,
 			},
@@ -276,14 +266,14 @@ func Start(
 				{
 					Name: "BUILDER_IMAGE",
 					Value: v1beta1.ParamValue{
-						StringVal: builder,
+						StringVal: api.Config.Builder,
 						Type:      v1beta1.ParamTypeString,
 					},
 				},
 				{
 					Name: "APP_IMAGE",
 					Value: v1beta1.ParamValue{
-						StringVal: fmt.Sprintf("%s/tool-%s/%s:latest", harborRepository, toolName, toolName),
+						StringVal: fmt.Sprintf("%s/tool-%s/%s:latest", api.Config.HarborRepository, toolName, toolName),
 						Type:      v1beta1.ParamTypeString,
 					},
 				},
@@ -313,45 +303,39 @@ func Start(
 		},
 	}
 
-	pipelineRun, err := clients.Tekton.TektonV1beta1().PipelineRuns(namespace).Create(
+	pipelineRun, err := api.Clients.Tekton.TektonV1beta1().PipelineRuns(api.Config.BuildNamespace).Create(
 		context.TODO(),
 		&newRun,
 		metav1.CreateOptions{},
 	)
 	if err != nil {
-		log.Warnf(
-			"Got error when creating a new pipelinerun on namespace %s: %s", namespace, err,
-		)
-		return operations.NewStartInternalServerError().WithPayload(
-			&models.InternalError{Message: "Unable to create a new build!"},
-		)
+		message := fmt.Sprintf("Got error when creating a new pipelinerun on namespace %s: %s", api.Config.BuildNamespace, err)
+		log.Warn(message)
+		return http.StatusInternalServerError, gen.InternalError{Message: &message}, nil
 	}
 
-	return operations.NewStartOK().WithPayload(
-		&models.NewBuild{
-			Name: pipelineRun.Name,
-			Parameters: &models.NewBuildParameters{
-				Ref:       ref,
-				SourceURL: sourceURL,
-			},
-		},
-	)
+	buildParams := gen.NewBuildParameters{
+		Ref:       &ref,
+		SourceUrl: &sourceURL,
+	}
+	return http.StatusOK, gen.NewBuild{
+		Name:       &pipelineRun.Name,
+		Parameters: &buildParams,
+	}, nil
 }
 
 func Delete(
-	clients *Clients,
-	namespace string,
+	api *BuildsApi,
 	buildId string,
 	toolName string,
-) middleware.Responder {
-	if err := ToolIsAllowedForBuild(toolName, buildId); err != nil {
-		return operations.NewDeleteUnauthorized().WithPayload(
-			&models.Unauthorized{Message: fmt.Sprintf("%s", err)},
-		)
+) (int, interface{}, error) {
+	if err := ToolIsAllowedForBuild(toolName, buildId, api.Config.BuildIdPrefix); err != nil {
+		message := fmt.Sprintf("%s", err)
+		return http.StatusUnauthorized, gen.Unauthorized{Message: &message}, nil
 	}
 	// TODO: Delete also the associated image on harbor
-	log.Debugf("Deleting build: buildId=%s, namespace=%s, toolName=%s", buildId, namespace, toolName)
-	err := clients.Tekton.TektonV1beta1().PipelineRuns(namespace).Delete(
+	log.Debugf("Deleting build: buildId=%s, namespace=%s, toolName=%s", buildId, api.Config.BuildNamespace, toolName)
+	err := api.Clients.Tekton.TektonV1beta1().PipelineRuns(api.Config.BuildNamespace).Delete(
 		context.TODO(),
 		buildId,
 		metav1.DeleteOptions{},
@@ -359,16 +343,40 @@ func Delete(
 	if err != nil {
 		// A bit flaky way of handling, maybe improve in the future
 		if strings.HasSuffix(err.Error(), "not found") {
-			return operations.NewDeleteNotFound().WithPayload(&models.NotFound{Message: fmt.Sprintf("Build with id %s not found", buildId)})
+			message := fmt.Sprintf("Build with id %s not found", buildId)
+			return http.StatusNotFound, gen.NotFound{Message: &message}, nil
 		}
 
 		log.Warnf(
-			"Got error when deleting pipelinerun %s on namespace %s: %s", buildId, namespace, err,
+			"Got error when deleting pipelinerun %s on namespace %s: %s", buildId, api.Config.BuildNamespace, err,
 		)
-		return operations.NewDeleteInternalServerError().WithPayload(
-			&models.InternalError{Message: "Unable to delete build!"},
-		)
+		message := "Unable to delete build!"
+		return http.StatusInternalServerError, gen.InternalError{Message: &message}, nil
 	}
 
-	return operations.NewDeleteOK().WithPayload(&models.DeleteResponse{ID: buildId})
+	return http.StatusOK, gen.BuildId{Id: &buildId}, nil
+}
+
+func Healthcheck(api *BuildsApi) (int, gen.HealthResponse, error) {
+	_, err := api.Clients.K8s.CoreV1().Pods(api.Config.BuildNamespace).List(
+		context.TODO(),
+		metav1.ListOptions{
+			Limit: 1,
+		},
+	)
+	if err != nil {
+		message := fmt.Sprintf("Unable to contact the k8s API: %s", err)
+		status := gen.HealthResponseStatus(gen.ERROR)
+		return http.StatusInternalServerError, gen.HealthResponse{
+			Message: &message,
+			Status:  &status,
+		}, nil
+	}
+
+	message := "All systems normal"
+	status := gen.HealthResponseStatus(gen.OK)
+	return http.StatusOK, gen.HealthResponse{
+		Message: &message,
+		Status:  &status,
+	}, nil
 }

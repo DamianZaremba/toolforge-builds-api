@@ -43,21 +43,21 @@ func TestValidateUserReturnsUserWhenOrgIsToolforge(t *testing.T) {
 }
 
 func TestToolIsAllowedForBuildFailsIfBuildIsNotPrefixedWithUser(t *testing.T) {
-	err := ToolIsAllowedForBuild("user", "nouser-prefixed-buildId")
+	err := ToolIsAllowedForBuild("user", "nouser-prefixed-buildId", BuildIdPrefix)
 	if err == nil {
 		t.Error("I was expecting an error.")
 	}
 }
 
 func TestToolIsAllowedForBuildFailsIfBuildIsPrefixedWithUserButNotBuildIdPrefix(t *testing.T) {
-	err := ToolIsAllowedForBuild("user", "user-prefixed-buildId-without-BuildIdPrefix")
+	err := ToolIsAllowedForBuild("user", "user-prefixed-buildId-without-BuildIdPrefix", BuildIdPrefix)
 	if err == nil {
 		t.Error("I was expecting an error.")
 	}
 }
 
 func TestToolIsAllowedForBuildPassesIfBuildIsPrefixedWithUserAndBuildIdPrefix(t *testing.T) {
-	err := ToolIsAllowedForBuild("user", fmt.Sprintf("user%sprefixed-buildId-with-BuildIdPrefix", BuildIdPrefix))
+	err := ToolIsAllowedForBuild("user", fmt.Sprintf("user%sprefixed-buildId-with-BuildIdPrefix", BuildIdPrefix), BuildIdPrefix)
 	if err != nil {
 		t.Errorf("I was not expecting an error but got %s", err)
 	}

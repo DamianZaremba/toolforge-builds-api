@@ -19,6 +19,10 @@ ifneq ($(strip $(shell command -v kind 2>/dev/null)), )
 KIND=$(shell command -v kind)
 endif
 
+ifneq ($(strip $(shell command -v kind 2>/dev/null)), )
+OAPI=$(shell command -v oapi-codegen)
+endif
+
 PROJECT_SLUG=builds
 IMAGE_NAME=tools-harbor.wmcloud.org/toolforge/$(PROJECT_SLUG)-api:dev
 
@@ -46,17 +50,7 @@ else
 	KEEP_ID=
 endif
 
-SWAGGER=$(DOCKER) run $(KEEP_ID) \
-	--rm \
-	-it \
-	--user $(shell id -u):$(shell id -g) \
-	-e GOPATH=${GOPATH}:/go \
-	-v ${PWD}:${PWD}:rw \
-	-w ${PWD} \
-	quay.io/goswagger/swagger
-
-
-.PHONY: run image gen-api gen-cli get-api-with-main build-api podman-image kind_load rollout build-and-deploy-local check_requirements
+.PHONY: run image gen-api build-api rollout build-and-deploy-local check_requirements
 
 check_requirements:
 ifdef PODMAN
@@ -79,13 +73,18 @@ else
 	exit 1
 endif
 endif
+ifndef OAPI
+	@echo "You need oapi-codegen installed, see https://github.com/deepmap/oapi-codegen"
+	exit 1
+endif
 
 gen-api: check_requirements
-	$(SWAGGER) generate server -t gen -P models.Principal -f ./swagger/swagger_v1.yaml --exclude-main -A toolforge-$(PROJECT_SLUG)
+	$(OAPI) -config openapi/gen_config/api_config.yaml openapi/v1.yaml
+	$(OAPI) -config openapi/gen_config/models_config.yaml openapi/v1.yaml
 	go mod tidy
 
 build-api:
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -buildvcs=false -a -installsuffix cgo -ldflags="-w -s" -o $(PROJECT_SLUG)-api ./cmd/$(PROJECT_SLUG)-api
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -buildvcs=false -a -installsuffix cgo -ldflags="-w -s" -o $(PROJECT_SLUG)-api ./cmd/main.go
 
 image: check_requirements
 ifdef MINIKUBE

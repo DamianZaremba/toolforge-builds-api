@@ -2,6 +2,7 @@ package internal
 
 import (
 	"fmt"
+	"net/http"
 	"regexp"
 	"strings"
 
@@ -40,8 +41,20 @@ func ValidateUser(subjectLine string) (string, error) {
 	return user, err
 }
 
-func ToolIsAllowedForBuild(user string, buildId string) error {
-	if strings.HasPrefix(buildId, fmt.Sprintf("%s%s", user, BuildIdPrefix)) {
+func GetUserFromRequest(request *http.Request) (string, error) {
+	clientSubjectLine := request.Header["Ssl-Client-Subject-Dn"]
+	if len(clientSubjectLine) == 0 {
+		return "", fmt.Errorf("got no authentication header")
+	}
+	user, err := ValidateUser(clientSubjectLine[0])
+	if err != nil {
+		return "", err
+	}
+	return user, nil
+}
+
+func ToolIsAllowedForBuild(user string, buildId string, buildIdPrefix string) error {
+	if strings.HasPrefix(buildId, fmt.Sprintf("%s%s", user, buildIdPrefix)) {
 		return nil
 	}
 

@@ -1,0 +1,233 @@
+openapi: 3.1.0
+info:
+  title: Toolforge builds API
+  version: 0.0.1
+servers:
+  - url: "/v1"
+
+paths:
+  /healthz:
+    get:
+      operationId: healthcheck
+      responses:
+        "200":
+          description: Returns the health status of the service
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+        "503":
+          description: Returned when the service is not ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+      security: []
+  /build:
+    post:
+      operationId: start
+      requestBody:
+        content:
+          "application/json":
+            schema:
+              $ref: "#/components/schemas/BuildStartParams"
+        required: true
+      responses:
+        "200":
+          description: returns the newly created build information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NewBuild"
+        "400":
+          description: Bad parameters passed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BadRequest"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Unauthorized"
+        "500":
+          description: An internal error happened
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InternalError"
+      security:
+        - key: []
+      x-codegen-request-body-name: new_build
+  /build/{id}:
+    delete:
+      operationId: delete
+      parameters:
+        - name: id
+          in: path
+          description: Id of the build
+          required: true
+          style: simple
+          explode: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The build was deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BuildId"
+        "400":
+          description: Bad parameters passed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BadRequest"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Unauthorized"
+        "404":
+          description: The build was not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotFound"
+        "500":
+          description: An internal error happened
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InternalError"
+      security:
+        - key: []
+  /build/{id}/logs:
+    get:
+      operationId: logs
+      parameters:
+        - name: id
+          in: path
+          description: Id of the build
+          required: true
+          style: simple
+          explode: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: returns the logs of a build
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BuildLogs"
+        "400":
+          description: Bad parameters passed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BadRequest"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Unauthorized"
+        "404":
+          description: The build was not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotFound"
+        "500":
+          description: An internal error happened
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InternalError"
+      security:
+        - key: []
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - OK
+            - ERROR
+        message:
+          type: string
+    NotFound:
+      type: object
+      properties:
+        message:
+          type: string
+    BadRequest:
+      type: object
+      properties:
+        message:
+          type: string
+    Unauthorized:
+      type: object
+      properties:
+        message:
+          type: string
+    InternalError:
+      type: object
+      properties:
+        message:
+          type: string
+    BuildLogs:
+      type: object
+      properties:
+        lines:
+          type: array
+          items:
+            type: string
+    NewBuild:
+      type: object
+      properties:
+        name:
+          type: string
+        parameters:
+          $ref: "#/components/schemas/NewBuild_parameters"
+    BuildId:
+      type: object
+      properties:
+        id:
+          type: string
+    principal:
+      type: object
+      properties:
+        user:
+          type: string
+    BuildStartParams:
+      required:
+        - source_url
+      type: object
+      properties:
+        source_url:
+          type: string
+          description:
+            URL to the public git repository that contains the source code
+            to build
+        ref:
+          type: string
+          description: Source code reference to build (ex. a git branch name)
+    NewBuild_parameters:
+      type: object
+      properties:
+        source_url:
+          type: string
+        ref:
+          type: string
+  securitySchemes:
+    key:
+      type: apiKey
+      name: ssl-client-subject-dn
+      in: header

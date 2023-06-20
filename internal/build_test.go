@@ -238,7 +238,6 @@ func TestLogsReturnsErrorIfNotAllowed(t *testing.T) {
 	code, _, err := Logs(
 		&api,
 		"dummy-build-id",
-		"dummy-namespace",
 		"dummy-tool-name",
 	)
 
@@ -271,7 +270,6 @@ func TestLogsReturnsNotFoundIfNoBuildsThere(t *testing.T) {
 	code, _, err := Logs(
 		&api,
 		fmt.Sprintf("dummy-tool%sbuild", BuildIdPrefix),
-		"dummy-namespace",
 		"dummy-tool",
 	)
 
@@ -304,7 +302,6 @@ func TestLogsReturnsNotFoundIfApiReturnsError(t *testing.T) {
 	code, _, err := Logs(
 		&api,
 		fmt.Sprintf("dummy-tool%sbuild", BuildIdPrefix),
-		"dummy-namespace",
 		"dummy-tool",
 	)
 
@@ -340,7 +337,6 @@ func TestLogsReturnsNotFoundIfApiReturnsMoreThanOneRun(t *testing.T) {
 	code, _, err := Logs(
 		&api,
 		fmt.Sprintf("dummy-tool%sbuild", BuildIdPrefix),
-		"dummy-namespace",
 		"dummy-tool",
 	)
 
@@ -387,7 +383,6 @@ func TestLogsReturnsEmptyLineIfRunHasNotStarted(t *testing.T) {
 	code, response, err := Logs(
 		&api,
 		fmt.Sprintf("dummy-tool%sbuild", BuildIdPrefix),
-		"dummy-namespace",
 		"dummy-tool",
 	)
 
@@ -455,7 +450,6 @@ func TestLogsReturnsAllLogsConcatenated(t *testing.T) {
 	code, response, err := Logs(
 		&api,
 		fmt.Sprintf("dummy-tool%sbuild", BuildIdPrefix),
-		"dummy-namespace",
 		"dummy-tool",
 	)
 
@@ -512,7 +506,6 @@ func TestStartReturnsInternalServerErrorOnException(t *testing.T) {
 		&api,
 		"dummy-source-url",
 		"dummy-ref",
-		"dummy-namespace",
 		"dummy-tool",
 	)
 
@@ -557,7 +550,6 @@ func TestStartReturnsNewBuildName(t *testing.T) {
 		&api,
 		expectedSourceURL,
 		expectedRef,
-		"dummy-namespace",
 		"dummy-tool",
 	)
 
@@ -593,7 +585,6 @@ func TestDeleteReturnsErrorIfNotAllowed(t *testing.T) {
 
 	code, _, err := Delete(
 		&api,
-		"dummy-namespace",
 		"dummy-build-id",
 		"dummy-tool-name",
 	)
@@ -626,7 +617,6 @@ func TestDeleteReturnsNotFoundIfNoBuildsThere(t *testing.T) {
 
 	code, _, err := Delete(
 		&api,
-		"dummy-namespace",
 		fmt.Sprintf("dummy-tool%sbuild", BuildIdPrefix),
 		"dummy-tool",
 	)
@@ -662,7 +652,6 @@ func TestDeleteReturnsInternalServerErrorOnException(t *testing.T) {
 
 	code, _, err := Delete(
 		&api,
-		"dummy-namespace",
 		fmt.Sprintf("dummy-tool%sbuild", BuildIdPrefix),
 		"dummy-tool",
 	)
@@ -698,7 +687,6 @@ func TestDeleteReturnsDeletedBuildName(t *testing.T) {
 
 	code, response, err := Delete(
 		&api,
-		"dummy-namespace",
 		expectedId,
 		"dummy-tool",
 	)

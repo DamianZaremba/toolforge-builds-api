@@ -35,9 +35,11 @@ var Containers = [...]string{
 	"step-prepare",
 	"step-copy-stack-toml",
 	"step-detect",
+	"step-inject-buildpacks",
 	"step-analyze",
 	"step-restore",
 	"step-build",
+	"step-fix-permissions",
 	"step-export",
 	"step-results",
 }
@@ -186,6 +188,10 @@ func getPipelineRunLogs(pipelineRun *v1beta1.PipelineRun, clients *Clients, name
 		for _, container := range Containers {
 			newLogs, err := getContainerLogs(clients, container, taskRun, namespace)
 			if err != nil {
+				// As we changed the containers in the runs, some runs don't have the containers we look for
+				if strings.HasPrefix(fmt.Sprintf("%s", err), fmt.Sprintf("container %s is not valid for pod", container)) {
+					continue
+				}
 				return "", err
 			}
 			allLogs = append(allLogs, newLogs)

@@ -35,9 +35,11 @@ var Containers = [...]string{
 	"step-prepare",
 	"step-copy-stack-toml",
 	"step-detect",
+	"step-inject-buildpacks",
 	"step-analyze",
 	"step-restore",
 	"step-build",
+	"step-fix-permissions",
 	"step-export",
 	"step-results",
 }

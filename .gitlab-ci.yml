@@ -23,6 +23,8 @@ pre-commit:
 unit:
   stage: test
   extends: .kokkuri:build-and-run-image
+  tags:
+    - cloud
   variables:
     BUILD_VARIANT: test
     BUILD_CONFIG: .pipeline/blubber.yaml
@@ -32,6 +34,8 @@ unit:
 publish-devimage-toolsbeta:
   extends: .kokkuri:build-and-publish-image
   stage: publish
+  tags:
+    - cloud
   environment:
     name: development
     url: https://toolsbeta-harbor.wmcloud.org/harbor/projects/1693/repositories/$PROJECT_NAME/artifacts-tab/artifacts/dev-mr-$CI_MERGE_REQUEST_IID
@@ -63,6 +67,8 @@ publish-devimage-toolsbeta:
 publish-image-toolsbeta:
   extends: .kokkuri:build-and-publish-image
   stage: deployment
+  tags:
+    - cloud
   environment:
     name: staging
     url: https://toolsbeta-harbor.wmcloud.org/harbor/projects/toolforge/repositories/$PROJECT_NAME/artifacts-tab/artifacts
@@ -95,6 +101,8 @@ publish-image-toolsbeta:
 publish-image-tools:
   extends: .kokkuri:build-and-publish-image
   stage: deployment
+  tags:
+    - cloud
   environment:
     name: production
     url: https://tools-harbor.wmcloud.org/harbor/projects/toolforge/repositories/$PROJECT_NAME/artifacts-tab/artifacts

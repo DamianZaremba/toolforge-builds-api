@@ -273,7 +273,7 @@ func Start(
 				{
 					Name: "APP_IMAGE",
 					Value: v1beta1.ParamValue{
-						StringVal: fmt.Sprintf("%s/tool-%s/%s:latest", api.Config.HarborRepository, toolName, toolName),
+						StringVal: fmt.Sprintf("%s/tool-%s/tool-%s:latest", api.Config.HarborRepository, toolName, toolName),
 						Type:      v1beta1.ParamTypeString,
 					},
 				},

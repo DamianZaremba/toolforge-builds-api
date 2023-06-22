@@ -19,7 +19,7 @@ ifneq ($(strip $(shell command -v kind 2>/dev/null)), )
 KIND=$(shell command -v kind)
 endif
 
-ifneq ($(strip $(shell command -v kind 2>/dev/null)), )
+ifneq ($(strip $(shell command -v oapi-codegen 2>/dev/null)), )
 OAPI=$(shell command -v oapi-codegen)
 endif
 

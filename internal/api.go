@@ -5,7 +5,9 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
+	"github.com/tektoncd/pipeline/pkg/client/clientset/versioned"
 	"gitlab.wikimedia.org/repos/toolforge/builds-api/gen"
+	"k8s.io/client-go/kubernetes"
 )
 
 type UserContextKey string
@@ -22,6 +24,11 @@ type Config struct {
 	FailedToKeep     int
 	BuildNamespace   string
 	BuildIdPrefix    string
+}
+
+type Clients struct {
+	Tekton versioned.Interface
+	K8s    kubernetes.Interface
 }
 
 type BuildsApi struct {

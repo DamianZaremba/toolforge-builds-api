@@ -80,9 +80,9 @@ func (api BuildsApi) Delete(ctx echo.Context, id string) error {
 
 	code, response, err := Delete(&api, id, toolName)
 	if err != nil {
-		return ctx.JSON(code, response)
+		return err
 	}
-	return err
+	return ctx.JSON(code, response)
 }
 
 func (api BuildsApi) Healthcheck(ctx echo.Context) error {

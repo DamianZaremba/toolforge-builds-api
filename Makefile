@@ -1,4 +1,5 @@
 SHELL := /bin/bash
+.DEFAULT_GOAL := build-and-deploy-local
 # For podman, you need to run buildkit:
 # > podman run --rm -d --name buildkitd --privileged moby/buildkit:latest
 #

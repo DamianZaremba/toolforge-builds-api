@@ -48,10 +48,7 @@ func safeDeref[T any](pointer *T) T {
 func (api BuildsApi) Logs(ctx echo.Context, buildId string) error {
 	toolName := getToolFromContext(ctx)
 
-	code, response, err := Logs(&api, buildId, toolName)
-	if err != nil {
-		return err
-	}
+	code, response := Logs(&api, buildId, toolName)
 	return ctx.JSON(code, response)
 }
 
@@ -63,32 +60,23 @@ func (api BuildsApi) Start(ctx echo.Context) error {
 		return ctx.JSON(http.StatusBadRequest, fmt.Sprintf("Bad parameters passed: %s", err))
 	}
 
-	code, response, err := Start(
+	code, response := Start(
 		&api,
 		safeDeref[string](newBuildParameters.SourceUrl),
 		safeDeref[string](newBuildParameters.Ref),
 		toolName,
 	)
-	if err != nil {
-		return err
-	}
 	return ctx.JSON(code, response)
 }
 
 func (api BuildsApi) Delete(ctx echo.Context, id string) error {
 	toolName := getToolFromContext(ctx)
 
-	code, response, err := Delete(&api, id, toolName)
-	if err != nil {
-		return err
-	}
+	code, response := Delete(&api, id, toolName)
 	return ctx.JSON(code, response)
 }
 
 func (api BuildsApi) Healthcheck(ctx echo.Context) error {
-	code, response, err := Healthcheck(&api)
-	if err != nil {
-		return err
-	}
+	code, response := Healthcheck(&api)
 	return ctx.JSON(code, response)
 }

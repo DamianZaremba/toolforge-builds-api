@@ -184,15 +184,11 @@ func TestCleanupOldPipelineRuns(t *testing.T) {
 func TestLogsReturnsErrorIfNotAllowed(t *testing.T) {
 	api := BuildsApi{}
 
-	code, _, err := Logs(
+	code, _ := Logs(
 		&api,
 		"dummy-build-id",
 		"dummy-tool-name",
 	)
-
-	if err != nil {
-		t.Fatalf("Got unexpected error: %s", err)
-	}
 
 	if code != 401 {
 		t.Fatalf("I was expecting a 401 response, got: %d", code)
@@ -216,15 +212,11 @@ func TestLogsReturnsNotFoundIfNoBuildsThere(t *testing.T) {
 		},
 	}
 
-	code, _, err := Logs(
+	code, _ := Logs(
 		&api,
 		fmt.Sprintf("dummy-tool%sbuild", BuildIdPrefix),
 		"dummy-tool",
 	)
-
-	if err != nil {
-		t.Fatalf("Got unexpected error: %s", err)
-	}
 
 	if code != 404 {
 		t.Fatalf("I was expecting a 404 response, got: %d", code)
@@ -248,15 +240,11 @@ func TestLogsReturnsNotFoundIfApiReturnsError(t *testing.T) {
 		},
 	}
 
-	code, _, err := Logs(
+	code, _ := Logs(
 		&api,
 		fmt.Sprintf("dummy-tool%sbuild", BuildIdPrefix),
 		"dummy-tool",
 	)
-
-	if err != nil {
-		t.Fatalf("Got unexpected error: %s", err)
-	}
 
 	if code != 404 {
 		t.Fatalf("I was expecting a 404 response, got: %d", code)
@@ -283,15 +271,11 @@ func TestLogsReturnsNotFoundIfApiReturnsMoreThanOneRun(t *testing.T) {
 		},
 	}
 
-	code, _, err := Logs(
+	code, _ := Logs(
 		&api,
 		fmt.Sprintf("dummy-tool%sbuild", BuildIdPrefix),
 		"dummy-tool",
 	)
-
-	if err != nil {
-		t.Fatalf("Got unexpected error: %s", err)
-	}
 
 	if code != 404 {
 		t.Fatalf("I was expecting a 404 response, got: %d", code)
@@ -329,15 +313,11 @@ func TestLogsReturnsEmptyLineIfRunHasNotStarted(t *testing.T) {
 		},
 	}
 
-	code, response, err := Logs(
+	code, response := Logs(
 		&api,
 		fmt.Sprintf("dummy-tool%sbuild", BuildIdPrefix),
 		"dummy-tool",
 	)
-
-	if err != nil {
-		t.Fatalf("Got unexpected error: %s", err)
-	}
 
 	if code != 200 {
 		t.Fatalf("I was expecting a 200 response, got: %d", code)
@@ -396,15 +376,11 @@ func TestLogsReturnsAllLogsConcatenated(t *testing.T) {
 		},
 	}
 
-	code, response, err := Logs(
+	code, response := Logs(
 		&api,
 		fmt.Sprintf("dummy-tool%sbuild", BuildIdPrefix),
 		"dummy-tool",
 	)
-
-	if err != nil {
-		t.Fatalf("Got unexpected error: %s", err)
-	}
 
 	if code != 200 {
 		t.Fatalf("I was expecting a 200 response, got: %d", code)
@@ -451,16 +427,13 @@ func TestStartReturnsInternalServerErrorOnException(t *testing.T) {
 		},
 	}
 
-	code, _, err := Start(
+	code, _ := Start(
 		&api,
 		"dummy-source-url",
 		"dummy-ref",
 		"dummy-tool",
 	)
 
-	if err != nil {
-		t.Fatalf("Got unexpected error: %s", err)
-	}
 	if code != 500 {
 		t.Fatalf("I was expecting a 500 response, got: %d", code)
 	}
@@ -495,16 +468,13 @@ func TestStartReturnsNewBuildName(t *testing.T) {
 		},
 	}
 
-	code, response, err := Start(
+	code, response := Start(
 		&api,
 		expectedSourceURL,
 		expectedRef,
 		"dummy-tool",
 	)
 
-	if err != nil {
-		t.Fatalf("Got unexpected error: %s", err)
-	}
 	if code != 200 {
 		t.Fatalf("I was expecting a 200 response, got: %d", code)
 	}
@@ -532,15 +502,11 @@ func TestDeleteReturnsErrorIfNotAllowed(t *testing.T) {
 		},
 	}
 
-	code, _, err := Delete(
+	code, _ := Delete(
 		&api,
 		"dummy-build-id",
 		"dummy-tool-name",
 	)
-
-	if err != nil {
-		t.Fatalf("Got unexpected error: %s", err)
-	}
 
 	if code != 401 {
 		t.Fatalf("I was expecting a 401 response, got: %d", code)
@@ -564,15 +530,11 @@ func TestDeleteReturnsNotFoundIfNoBuildsThere(t *testing.T) {
 		},
 	}
 
-	code, _, err := Delete(
+	code, _ := Delete(
 		&api,
 		fmt.Sprintf("dummy-tool%sbuild", BuildIdPrefix),
 		"dummy-tool",
 	)
-
-	if err != nil {
-		t.Fatalf("Got unexpected error: %s", err)
-	}
 
 	if code != 404 {
 		t.Fatalf("I was expecting a 404 response, got: %d", code)
@@ -599,15 +561,11 @@ func TestDeleteReturnsInternalServerErrorOnException(t *testing.T) {
 		},
 	}
 
-	code, _, err := Delete(
+	code, _ := Delete(
 		&api,
 		fmt.Sprintf("dummy-tool%sbuild", BuildIdPrefix),
 		"dummy-tool",
 	)
-
-	if err != nil {
-		t.Fatalf("Got unexpected error: %s", err)
-	}
 
 	if code != 500 {
 		t.Fatalf("I was expecting a 500 response, got: %d", code)
@@ -634,15 +592,12 @@ func TestDeleteReturnsDeletedBuildName(t *testing.T) {
 		},
 	}
 
-	code, response, err := Delete(
+	code, response := Delete(
 		&api,
 		expectedId,
 		"dummy-tool",
 	)
 
-	if err != nil {
-		t.Fatalf("Got unexpected error: %s", err)
-	}
 	recorder := httptest.NewRecorder()
 
 	if code != 200 {

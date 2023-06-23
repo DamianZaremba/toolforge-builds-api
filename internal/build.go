@@ -198,10 +198,10 @@ func getPipelineRunLogs(pipelineRun *v1beta1.PipelineRun, clients *Clients, name
 	return "", nil
 }
 
-func Logs(api *BuildsApi, buildId string, toolName string) (int, interface{}, error) {
+func Logs(api *BuildsApi, buildId string, toolName string) (int, interface{}) {
 	if err := ToolIsAllowedForBuild(toolName, buildId, api.Config.BuildIdPrefix); err != nil {
 		message := fmt.Sprintf("%s", err)
-		return http.StatusUnauthorized, gen.Unauthorized{Message: &message}, nil
+		return http.StatusUnauthorized, gen.Unauthorized{Message: &message}
 	}
 
 	pipelineRuns, err := getPipelineRuns(&api.Clients, api.Config.BuildNamespace, metav1.ListOptions{FieldSelector: fmt.Sprintf("metadata.name=%s", buildId)})
@@ -210,18 +210,18 @@ func Logs(api *BuildsApi, buildId string, toolName string) (int, interface{}, er
 			"Got error when listing pipelineruns on namespace %s, maybe new cluster with no runs yet?: %s", api.Config.BuildNamespace, err,
 		)
 		message := "Unable to find any pipelineruns! New installation?"
-		return http.StatusNotFound, gen.NotFound{Message: &message}, nil
+		return http.StatusNotFound, gen.NotFound{Message: &message}
 	}
 
 	log.Debugf("Get: Got %d pipeline runs!: %v", len(pipelineRuns), pipelineRuns)
 	if len(pipelineRuns) == 0 {
 		message := fmt.Sprintf("Unable to find build with id '%s'", buildId)
-		return http.StatusNotFound, gen.NotFound{Message: &message}, nil
+		return http.StatusNotFound, gen.NotFound{Message: &message}
 
 	} else if len(pipelineRuns) > 1 {
 		message := fmt.Sprintf("Got %d builds matching name %s, only 1 was expected.", len(pipelineRuns), buildId)
 		log.Warning(message)
-		return http.StatusNotFound, gen.NotFound{Message: &message}, nil
+		return http.StatusNotFound, gen.NotFound{Message: &message}
 	}
 
 	pipelineRun := pipelineRuns[0]
@@ -229,13 +229,13 @@ func Logs(api *BuildsApi, buildId string, toolName string) (int, interface{}, er
 	if err != nil {
 		message := fmt.Sprintf("Error getting the logs for %s: %s", buildId, err)
 		log.Errorf(message)
-		return http.StatusInternalServerError, gen.InternalError{Message: &message}, nil
+		return http.StatusInternalServerError, gen.InternalError{Message: &message}
 	}
 
 	lines := strings.Split(logs, "\n")
 	return http.StatusOK, gen.BuildLogs{
 		Lines: &lines,
-	}, nil
+	}
 }
 
 func Start(
@@ -243,7 +243,7 @@ func Start(
 	sourceURL string,
 	ref string,
 	toolName string,
-) (int, interface{}, error) {
+) (int, interface{}) {
 	// TODO: Check quotas
 	// TODO: Create destination project in harbor if it does not exist
 	cleanup_err := cleanupOldPipelineRuns(&api.Clients, api.Config.BuildNamespace, toolName, api.Config.OkToKeep, api.Config.FailedToKeep)
@@ -311,7 +311,7 @@ func Start(
 	if err != nil {
 		message := fmt.Sprintf("Got error when creating a new pipelinerun on namespace %s: %s", api.Config.BuildNamespace, err)
 		log.Warn(message)
-		return http.StatusInternalServerError, gen.InternalError{Message: &message}, nil
+		return http.StatusInternalServerError, gen.InternalError{Message: &message}
 	}
 
 	buildParams := gen.NewBuildParameters{
@@ -321,17 +321,17 @@ func Start(
 	return http.StatusOK, gen.NewBuild{
 		Name:       &pipelineRun.Name,
 		Parameters: &buildParams,
-	}, nil
+	}
 }
 
 func Delete(
 	api *BuildsApi,
 	buildId string,
 	toolName string,
-) (int, interface{}, error) {
+) (int, interface{}) {
 	if err := ToolIsAllowedForBuild(toolName, buildId, api.Config.BuildIdPrefix); err != nil {
 		message := fmt.Sprintf("%s", err)
-		return http.StatusUnauthorized, gen.Unauthorized{Message: &message}, nil
+		return http.StatusUnauthorized, gen.Unauthorized{Message: &message}
 	}
 	// TODO: Delete also the associated image on harbor
 	log.Debugf("Deleting build: buildId=%s, namespace=%s, toolName=%s", buildId, api.Config.BuildNamespace, toolName)
@@ -344,20 +344,20 @@ func Delete(
 		// A bit flaky way of handling, maybe improve in the future
 		if strings.HasSuffix(err.Error(), "not found") {
 			message := fmt.Sprintf("Build with id %s not found", buildId)
-			return http.StatusNotFound, gen.NotFound{Message: &message}, nil
+			return http.StatusNotFound, gen.NotFound{Message: &message}
 		}
 
 		log.Warnf(
 			"Got error when deleting pipelinerun %s on namespace %s: %s", buildId, api.Config.BuildNamespace, err,
 		)
 		message := "Unable to delete build!"
-		return http.StatusInternalServerError, gen.InternalError{Message: &message}, nil
+		return http.StatusInternalServerError, gen.InternalError{Message: &message}
 	}
 
-	return http.StatusOK, gen.BuildId{Id: &buildId}, nil
+	return http.StatusOK, gen.BuildId{Id: &buildId}
 }
 
-func Healthcheck(api *BuildsApi) (int, gen.HealthResponse, error) {
+func Healthcheck(api *BuildsApi) (int, gen.HealthResponse) {
 	_, err := api.Clients.K8s.CoreV1().Pods(api.Config.BuildNamespace).List(
 		context.TODO(),
 		metav1.ListOptions{
@@ -370,7 +370,7 @@ func Healthcheck(api *BuildsApi) (int, gen.HealthResponse, error) {
 		return http.StatusInternalServerError, gen.HealthResponse{
 			Message: &message,
 			Status:  &status,
-		}, nil
+		}
 	}
 
 	message := "All systems normal"
@@ -378,5 +378,5 @@ func Healthcheck(api *BuildsApi) (int, gen.HealthResponse, error) {
 	return http.StatusOK, gen.HealthResponse{
 		Message: &message,
 		Status:  &status,
-	}, nil
+	}
 }

@@ -46,38 +46,14 @@ func main() {
 		log.Fatalf("No HARBOR_REPOSITORY set, one is needed.")
 	}
 
-	var k8sConfig *rest.Config
-	var err error
-	if viper.GetBool("out_of_k8s_run") {
-		// use the current context in kubeconfig
-		kubeconfig := viper.GetString("kubeconfig")
-		k8sConfig, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
-		if err != nil {
-			panic(err.Error())
-		}
-	} else {
-		k8sConfig, err = rest.InClusterConfig()
-		if err != nil {
-			log.Fatalln(err.Error())
-		}
-	}
-
-	// creates the clientset
-	clientset, err := kubernetes.NewForConfig(k8sConfig)
+	kubeconfig := viper.GetString("kubeconfig")
+	outOfK8sRun := viper.GetBool("out_of_k8s_run")
+	clients, err := getApiClients(outOfK8sRun, kubeconfig)
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
-	// creates the tekton clientset
-	tektonClientset, err := versioned.NewForConfig(k8sConfig)
-	if err != nil {
-		log.Fatalln(err.Error())
-	}
-
 	buildsApi := internal.BuildsApi{
-		Clients: internal.Clients{
-			Tekton: tektonClientset,
-			K8s:    clientset,
-		},
+		Clients: *clients,
 		Config: internal.Config{
 			HarborRepository: viper.GetString("harbor_repository"),
 			Builder:          viper.GetString("builder"),
@@ -89,17 +65,66 @@ func main() {
 	}
 	log.Infof("Using config: %v", buildsApi.Config)
 
-	swagger, err := gen.GetSwagger()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error loading swagger spec\n: %s", err)
-		os.Exit(1)
-	}
-
 	//strictHandler := gen.NewStrictHandler(buildsApi, nil)
 	e := echo.New()
 	e.HideBanner = true
+
+	err = addMiddleware(e)
+	if err != nil {
+		log.Fatalf("Error setting up middlewares: %s", err)
+	}
+
+	gen.RegisterHandlersWithBaseURL(e, buildsApi, "/v1")
+	log.Info("Registered routes:")
+	for _, route := range e.Routes() {
+		log.Infof("%v", *route)
+	}
+
+	e.Logger.Fatal(e.Start(fmt.Sprintf("0.0.0.0:%d", port)))
+
+}
+
+func getApiClients(outOfK8sRun bool, kubeconfig string) (*internal.Clients, error) {
+	var k8sConfig *rest.Config
+	var err error
+	if outOfK8sRun {
+		// use the current context in kubeconfig
+		k8sConfig, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		k8sConfig, err = rest.InClusterConfig()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// creates the clientset
+	clientset, err := kubernetes.NewForConfig(k8sConfig)
+	if err != nil {
+		return nil, err
+	}
+	// creates the tekton clientset
+	tektonClientset, err := versioned.NewForConfig(k8sConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	return &internal.Clients{
+		Tekton: tektonClientset,
+		K8s:    clientset,
+	}, nil
+}
+
+func addMiddleware(router *echo.Echo) error {
 	// Log all requests
-	e.Use(echomiddleware.Logger())
+	router.Use(echomiddleware.Logger())
+
+	swagger, err := gen.GetSwagger()
+	if err != nil {
+		return fmt.Errorf("Error loading swagger spec\n: %s", err)
+	}
 
 	// authentication
 	authValidator := middleware.OapiRequestValidatorWithOptions(
@@ -117,10 +142,10 @@ func main() {
 			},
 		},
 	)
-	e.Use(authValidator)
+	router.Use(authValidator)
 	// Set the user on the context for the requests if there's any, "" if there's none
 	// This is needed as the above authenticator does not have access to call next with a new context
-	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+	router.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			uCtx := internal.UserContext{
 				Context: c,
@@ -137,14 +162,6 @@ func main() {
 
 	// Recover from panics and give control to the HTTPError handler
 	// so we reply http
-	e.Use(echomiddleware.Recover())
-
-	gen.RegisterHandlersWithBaseURL(e, buildsApi, "/v1")
-	log.Info("Registered routes:")
-	for _, route := range e.Routes() {
-		log.Infof("%v", *route)
-	}
-
-	e.Logger.Fatal(e.Start(fmt.Sprintf("0.0.0.0:%d", port)))
-
+	router.Use(echomiddleware.Recover())
+	return nil
 }

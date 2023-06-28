@@ -172,6 +172,18 @@ func getBuildConditionFromPipelineRun(run *v1beta1.PipelineRun) gen.BuildConditi
 	return *buildCondition
 }
 
+func getpipelineRunParam(pipelineRun v1beta1.PipelineRun, name string) string {
+	for _, param := range pipelineRun.Spec.Params {
+		if param.Name == name {
+			return fmt.Sprintf("%s", param.Value.StringVal)
+		}
+	}
+	log.Warnf(
+		"pipelineRunParam %s not found in pipelineRun %s in namespace %s", name, pipelineRun.Name, pipelineRun.Namespace,
+	)
+	return "unknown"
+}
+
 func getBuild(run v1beta1.PipelineRun) *gen.Build {
 	var startTime string
 	var endTime string
@@ -183,6 +195,10 @@ func getBuild(run v1beta1.PipelineRun) *gen.Build {
 		endTime = run.Status.CompletionTime.Format(time.RFC3339)
 	}
 
+	sourceurl := getpipelineRunParam(run, "SOURCE_URL")
+	ref := getpipelineRunParam(run, "SOURCE_REFERENCE")
+	destinationimage := getpipelineRunParam(run, "APP_IMAGE")
+
 	return &gen.Build{
 		BuildId:   &run.Name,
 		StartTime: &startTime,
@@ -190,10 +206,10 @@ func getBuild(run v1beta1.PipelineRun) *gen.Build {
 		Status:    buildCondition.Status,
 		Message:   buildCondition.Message,
 		Parameters: &gen.BuildParameters{
-			SourceUrl: &run.Spec.Params[2].Value.StringVal,
-			Ref:       &run.Spec.Params[3].Value.StringVal,
+			SourceUrl: &sourceurl,
+			Ref:       &ref,
 		},
-		DestinationImage: &run.Spec.Params[1].Value.StringVal,
+		DestinationImage: &destinationimage,
 	}
 }
 
@@ -471,6 +487,38 @@ func Delete(
 	}
 
 	return http.StatusOK, gen.BuildId{Id: &buildId}
+}
+
+func Get(
+	api *BuildsApi,
+	id string,
+	toolName string,
+) (int, interface{}, error) {
+	if err := ToolIsAllowedForBuild(toolName, id, api.Config.BuildIdPrefix); err != nil {
+		message := fmt.Sprintf("%s", err)
+		return http.StatusUnauthorized, gen.Unauthorized{Message: &message}, nil
+	}
+	log.Debugf("Getting build: buildId=%s, namespace=%s, toolName=%s", id, api.Config.BuildNamespace, toolName)
+
+	pipelineRuns, err := getPipelineRuns(&api.Clients, api.Config.BuildNamespace, metav1.ListOptions{FieldSelector: fmt.Sprintf("metadata.name=%s", id)})
+	if err != nil {
+		log.Warnf(
+			"Got error when getting pipelinerun %s on namespace %s: %s", id, api.Config.BuildNamespace, err,
+		)
+		message := "Unable to get build! This might be a bug. Please contact a Toolforge admin."
+		return http.StatusInternalServerError, gen.InternalError{Message: &message}, nil
+	}
+
+	if len(pipelineRuns) == 0 {
+		message := fmt.Sprintf("Build with id %s not found.", id)
+		return http.StatusNotFound, gen.NotFound{Message: &message}, nil
+	}
+
+	// NOTE: we assume here the first pipelineRun from the search is what we are looking for.
+	// In k8s/tekton two objects cannot share metadata.name in the same namespace anyway
+
+	build := getBuild(pipelineRuns[0])
+	return http.StatusOK, build, err
 }
 
 func Healthcheck(api *BuildsApi) (int, gen.HealthResponse) {

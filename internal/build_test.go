@@ -930,3 +930,237 @@ func TestListReturnsBuilds(t *testing.T) {
 		t.Fatalf("Got unexpected build id, expected '%s', got '%s'", expectedBuildId, *gottenBuilds[0].BuildId)
 	}
 }
+
+func TestGetPipelineRunParam(t *testing.T) {
+	type param struct {
+		name  string
+		value string
+	}
+
+	data := [4]param{
+		{
+			name:  "BUILDER_IMAGE",
+			value: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder-classic:22",
+		},
+		{
+			name:  "APP_IMAGE",
+			value: "192.168.188.129/tool-minikube-user/tool-raymond:latest",
+		},
+		{
+			name:  "SOURCE_URL",
+			value: "https://github.com/david-caro/wm-lol",
+		},
+		{
+			name:  "SOURCE_REFERENCE",
+			value: "value4",
+		},
+	}
+
+	pipelinerun := v1beta1.PipelineRun{
+		ObjectMeta: v1.ObjectMeta{Name: "test", Namespace: "test", Labels: map[string]string{"user": "test"}},
+		Spec: v1beta1.PipelineRunSpec{
+			Params: []v1beta1.Param{
+				{Name: data[0].name, Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: data[0].value}},
+				{Name: data[1].name, Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: data[1].value}},
+				{Name: data[2].name, Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: data[2].value}},
+				{Name: data[3].name, Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: data[3].value}},
+			},
+		},
+		Status: v1beta1.PipelineRunStatus{
+			Status: knative.Status{Conditions: knative.Conditions{{Type: "Succeeded", Status: "True", Message: "All Tasks Succeeded", Reason: "Succeeded"}}},
+			PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{
+				CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)},
+				StartTime:      &v1.Time{Time: time.Date(2023, 6, 8, 15, 0, 0, 0, time.UTC)},
+			},
+		},
+	}
+
+	// valid params
+	for _, element := range data {
+		result := getpipelineRunParam(pipelinerun, element.name)
+		if result != element.value {
+			t.Fatalf("Unexpected getpipelineRunParam() result for param '%s'. Expected '%s', but got '%s'.", element.name, element.value, result)
+		}
+	}
+
+	// invalid param
+	expected := "unknown"
+	result := getpipelineRunParam(pipelinerun, "non-existant")
+	if result != expected {
+		t.Fatalf("Unexpected getpipelineRunParam() result for non-existant param. Expected '%s', but got '%s'.", expected, result)
+	}
+}
+
+func TestGetReturnsBuildsOk(t *testing.T) {
+	toolName := "dummy-tool"
+	buildId := fmt.Sprintf("%s%sbuild", toolName, BuildIdPrefix)
+	mockTekton := tektonFake.NewSimpleClientset(
+		&v1beta1.PipelineRunList{
+			Items: []v1beta1.PipelineRun{
+				{
+					ObjectMeta: v1.ObjectMeta{Name: buildId, Namespace: BuildNamespace, Labels: map[string]string{"user": toolName}},
+					Spec: v1beta1.PipelineRunSpec{
+						Params: []v1beta1.Param{
+							{Name: "BUILDER_IMAGE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder-classic:22"}},
+							{Name: "APP_IMAGE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "192.168.188.129/tool-minikube-user/tool-raymond:latest"}},
+							{Name: "SOURCE_URL", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "https://github.com/david-caro/wm-lol"}},
+							{Name: "SOURCE_REFERENCE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "value4"}},
+						},
+					},
+					Status: v1beta1.PipelineRunStatus{
+						Status: knative.Status{Conditions: knative.Conditions{{Type: "Succeeded", Status: "True", Message: "All Tasks Succeeded", Reason: "Succeeded"}}},
+						PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{
+							CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)},
+							StartTime:      &v1.Time{Time: time.Date(2023, 6, 8, 15, 0, 0, 0, time.UTC)},
+						},
+					},
+				},
+			},
+		},
+	)
+	api := BuildsApi{
+		Clients: Clients{
+			Tekton: mockTekton,
+		},
+		Config: Config{
+			BuildIdPrefix:  BuildIdPrefix,
+			BuildNamespace: BuildNamespace,
+		},
+	}
+
+	recorder := httptest.NewRecorder()
+	code, response, err := Get(
+		&api,
+		buildId,
+		toolName,
+	)
+
+	if err != nil {
+		t.Fatalf("I was expecting no error, but got: %s", err)
+	}
+
+	expected_code := http.StatusOK
+	if code != expected_code {
+		t.Fatalf("I was expecting a '%d' response, got (%d): %v", expected_code, code, recorder.Body.String())
+	}
+
+	build := response.(*gen.Build)
+	if *build.BuildId != buildId {
+		t.Fatalf("Got unexpected build id, expected '%s', got '%s'", buildId, *build.BuildId)
+	}
+}
+
+func TestGetReturnsBuildsNotAuth(t *testing.T) {
+	toolName := "dummy-tool"
+	buildId := "some-non-authorized-build-name"
+	mockTekton := tektonFake.NewSimpleClientset()
+	api := BuildsApi{
+		Clients: Clients{
+			Tekton: mockTekton,
+		},
+		Config: Config{
+			BuildIdPrefix:  BuildIdPrefix,
+			BuildNamespace: BuildNamespace,
+		},
+	}
+
+	recorder := httptest.NewRecorder()
+	code, response, err := Get(
+		&api,
+		buildId,
+		toolName,
+	)
+
+	if err != nil {
+		t.Fatalf("I was expecting no internal error, but got: %s", err)
+	}
+
+	expected_code := http.StatusUnauthorized
+	if code != expected_code {
+		t.Fatalf("I was expecting a '%d' response, got '%d'. %v", expected_code, code, recorder.Body.String())
+	}
+
+	expected_response := fmt.Sprintf("user %s not allowed to act on build %s", toolName, buildId)
+	resp := response.(gen.Unauthorized)
+	if *resp.Message != expected_response {
+		t.Fatalf("Expected response '%s' but got '%s'", expected_response, *resp.Message)
+	}
+}
+
+func TestGetReturnsBuildsNotFound(t *testing.T) {
+	toolName := "dummy-tool"
+	buildId := fmt.Sprintf("%s%sbuild", toolName, BuildIdPrefix)
+	mockTekton := tektonFake.NewSimpleClientset()
+	api := BuildsApi{
+		Clients: Clients{
+			Tekton: mockTekton,
+		},
+		Config: Config{
+			BuildIdPrefix:  BuildIdPrefix,
+			BuildNamespace: BuildNamespace,
+		},
+	}
+
+	recorder := httptest.NewRecorder()
+	code, response, err := Get(
+		&api,
+		buildId,
+		toolName,
+	)
+
+	if err != nil {
+		t.Fatalf("I was expecting no internal error, but got: %s", err)
+	}
+
+	expected_code := http.StatusNotFound
+	if code != expected_code {
+		t.Fatalf("I was expecting a '%d' response, got '%d'. %v", expected_code, code, recorder.Body.String())
+	}
+
+	expected_response := fmt.Sprintf("Build with id %s not found.", buildId)
+	resp := response.(gen.NotFound)
+	if *resp.Message != expected_response {
+		t.Fatalf("Expected response '%s' but got '%s'", expected_response, *resp.Message)
+	}
+}
+
+func TestGetReturnsAPIError(t *testing.T) {
+	toolName := "dummy-tool"
+	buildId := fmt.Sprintf("%s%sbuild", toolName, BuildIdPrefix)
+
+	mockTekton := tektonFake.Clientset{}
+	mockTekton.AddReactor("list", "pipelineruns", func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
+		return true, nil, fmt.Errorf("Dummy error!")
+	})
+	api := BuildsApi{
+		Clients: Clients{
+			Tekton: &mockTekton,
+		},
+		Config: Config{
+			BuildIdPrefix:  BuildIdPrefix,
+			BuildNamespace: BuildNamespace,
+		},
+	}
+
+	recorder := httptest.NewRecorder()
+	code, response, err := Get(
+		&api,
+		buildId,
+		toolName,
+	)
+
+	if err != nil {
+		t.Fatalf("I was expecting no internal error, but got: %s", err)
+	}
+
+	expected_code := http.StatusInternalServerError
+	if code != expected_code {
+		t.Fatalf("I was expecting a '%d' response, got '%d'. %v", expected_code, code, recorder.Body.String())
+	}
+
+	expected_response := "Unable to get build! This might be a bug. Please contact a Toolforge admin."
+	resp := response.(gen.InternalError)
+	if *resp.Message != expected_response {
+		t.Fatalf("Expected response '%s' but got '%s'", expected_response, *resp.Message)
+	}
+}

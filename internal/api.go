@@ -97,3 +97,13 @@ func (api BuildsApi) List(ctx echo.Context) error {
 	code, response := List(&api, toolName)
 	return ctx.JSON(code, response)
 }
+
+func (api BuildsApi) Get(ctx echo.Context, id string) error {
+	toolName := getToolFromContext(ctx)
+
+	code, response, err := Get(&api, id, toolName)
+	if err != nil {
+		return err
+	}
+	return ctx.JSON(code, response)
+}

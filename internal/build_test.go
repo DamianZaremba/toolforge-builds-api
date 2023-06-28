@@ -930,3 +930,63 @@ func TestListReturnsBuilds(t *testing.T) {
 		t.Fatalf("Got unexpected build id, expected '%s', got '%s'", expectedBuildId, *gottenBuilds[0].BuildId)
 	}
 }
+
+func TestGetPipelineRunParam(t *testing.T) {
+	type param struct {
+		name  string
+		value string
+	}
+
+	data := [4]param{
+		{
+			name:  "BUILDER_IMAGE",
+			value: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder-classic:22",
+		},
+		{
+			name:  "APP_IMAGE",
+			value: "192.168.188.129/tool-minikube-user/tool-raymond:latest",
+		},
+		{
+			name:  "SOURCE_URL",
+			value: "https://github.com/david-caro/wm-lol",
+		},
+		{
+			name:  "SOURCE_REFERENCE",
+			value: "value4",
+		},
+	}
+
+	pipelinerun := v1beta1.PipelineRun{
+		ObjectMeta: v1.ObjectMeta{Name: "test", Namespace: "test", Labels: map[string]string{"user": "test"}},
+		Spec: v1beta1.PipelineRunSpec{
+			Params: []v1beta1.Param{
+				{Name: data[0].name, Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: data[0].value}},
+				{Name: data[1].name, Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: data[1].value}},
+				{Name: data[2].name, Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: data[2].value}},
+				{Name: data[3].name, Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: data[3].value}},
+			},
+		},
+		Status: v1beta1.PipelineRunStatus{
+			Status: knative.Status{Conditions: knative.Conditions{{Type: "Succeeded", Status: "True", Message: "All Tasks Succeeded", Reason: "Succeeded"}}},
+			PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{
+				CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)},
+				StartTime:      &v1.Time{Time: time.Date(2023, 6, 8, 15, 0, 0, 0, time.UTC)},
+			},
+		},
+	}
+
+	// valid params
+	for _, element := range data {
+		result := getpipelineRunParam(pipelinerun, element.name)
+		if result != element.value {
+			t.Fatalf("Unexpected getpipelineRunParam() result for param '%s'. Expected '%s', but got '%s'.", element.name, element.value, result)
+		}
+	}
+
+	// invalid param
+	expected := "unknown"
+	result := getpipelineRunParam(pipelinerun, "non-existant")
+	if result != expected {
+		t.Fatalf("Unexpected getpipelineRunParam() result for non-existant param. Expected '%s', but got '%s'.", expected, result)
+	}
+}

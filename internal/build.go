@@ -6,12 +6,14 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	gen "gitlab.wikimedia.org/repos/toolforge/builds-api/gen"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"knative.dev/pkg/apis"
 )
 
 type BuildStatus string
@@ -355,6 +357,109 @@ func Delete(
 	}
 
 	return http.StatusOK, gen.BuildId{Id: &buildId}, nil
+}
+
+func _get_pipelineRunParam(pipelineRun v1beta1.PipelineRun, name string) (string, error) {
+	for _, param := range pipelineRun.Spec.Params {
+		if param.Name == name {
+			return fmt.Sprintf("%s", param.Value), nil
+		}
+	}
+	return "", fmt.Errorf("pipelineRun %s param %s not found", pipelineRun.Name, name)
+}
+
+func _get_pipelinerun_readable_status(status v1.ConditionStatus, reason string) string {
+	if status == "Unknown" && reason == "Running" {
+		return "running"
+	}
+	if status == "True" {
+		return "ok"
+	} else if status == "False" {
+		if strings.HasSuffix(reason, "Cancelled") {
+			return "cancelled"
+		} else {
+			return "error"
+		}
+	}
+	return strings.ToLower(fmt.Sprintf("%s", status))
+}
+
+func _fill_build(id string, pipelineRun v1beta1.PipelineRun) (gen.Build, error) {
+	destination_url, err := _get_pipelineRunParam(pipelineRun, "APP_IMAGE")
+	if err != nil {
+		return gen.Build{}, err
+	}
+
+	source_url, err := _get_pipelineRunParam(pipelineRun, "SOURCE_URL")
+	if err != nil {
+		return gen.Build{}, err
+	}
+
+	ref, err := _get_pipelineRunParam(pipelineRun, "SOURCE_REFERENCE")
+	if err != nil {
+		return gen.Build{}, err
+	}
+
+	info := pipelineRun.Status.GetCondition(apis.ConditionSucceeded)
+	var startTime, endTime, status, message string
+
+	if info != nil {
+		startTime = pipelineRun.Status.StartTime.Format(time.RFC3339)
+		if pipelineRun.Status.CompletionTime != nil {
+			endTime = pipelineRun.Status.CompletionTime.Format(time.RFC3339)
+		} else {
+			endTime = "N/A"
+		}
+		status = _get_pipelinerun_readable_status(info.Status, info.Reason)
+		message = info.Message
+	} else {
+		startTime = "N/A"
+		status = "not started"
+		endTime = "N/A"
+		message = "N/A"
+	}
+
+	build := gen.Build{
+		Id:             &id,
+		SourceUrl:      &source_url,
+		Ref:            &ref,
+		DestinationUrl: &destination_url,
+		Status:         &status,
+		StartTime:      &startTime,
+		EndTime:        &endTime,
+		Message:        &message,
+	}
+
+	return build, nil
+}
+
+func Get(
+	api *BuildsApi,
+	id string,
+	toolName string,
+) (int, interface{}, error) {
+	if err := ToolIsAllowedForBuild(toolName, id, api.Config.BuildIdPrefix); err != nil {
+		message := fmt.Sprintf("%s", err)
+		return http.StatusUnauthorized, gen.Unauthorized{Message: &message}, nil
+	}
+	log.Debugf("Getting build: buildId=%s, namespace=%s, toolName=%s", id, api.Config.BuildNamespace, toolName)
+
+	pipelineRuns, err := getPipelineRuns(&api.Clients, api.Config.BuildNamespace, metav1.ListOptions{FieldSelector: fmt.Sprintf("metadata.name=%s", id)})
+	if err != nil || len(pipelineRuns) == 0 {
+		// A bit flaky way of handling, maybe improve in the future
+		if strings.HasSuffix(err.Error(), "not found") {
+			message := fmt.Sprintf("Build with id %s not found", id)
+			return http.StatusNotFound, gen.NotFound{Message: &message}, nil
+		}
+		log.Warnf(
+			"Got error when getting pipelinerun %s on namespace %s: %s", id, api.Config.BuildNamespace, err,
+		)
+		message := "Unable to get build!"
+		return http.StatusInternalServerError, gen.InternalError{Message: &message}, nil
+	}
+
+	build, err := _fill_build(id, pipelineRuns[0])
+	return http.StatusOK, build, err
 }
 
 func Healthcheck(api *BuildsApi) (int, gen.HealthResponse, error) {

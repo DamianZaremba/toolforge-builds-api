@@ -18,6 +18,18 @@ type BadRequest struct {
 	Message *string `json:"message,omitempty"`
 }
 
+// Build defines model for Build.
+type Build struct {
+	DestinationUrl *string `json:"destination_url,omitempty"`
+	EndTime        *string `json:"end_time,omitempty"`
+	Id             *string `json:"id,omitempty"`
+	Message        *string `json:"message,omitempty"`
+	Ref            *string `json:"ref,omitempty"`
+	SourceUrl      *string `json:"source_url,omitempty"`
+	StartTime      *string `json:"start_time,omitempty"`
+	Status         *string `json:"status,omitempty"`
+}
+
 // BuildId defines model for BuildId.
 type BuildId struct {
 	Id *string `json:"id,omitempty"`

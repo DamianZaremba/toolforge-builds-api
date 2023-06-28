@@ -99,3 +99,13 @@ func (api BuildsApi) Healthcheck(ctx echo.Context) error {
 	}
 	return ctx.JSON(code, response)
 }
+
+func (api BuildsApi) GetBuildId(ctx echo.Context, id string) error {
+	toolName := getToolFromContext(ctx)
+
+	code, response, err := Get(&api, id, toolName)
+	if err != nil {
+		return err
+	}
+	return ctx.JSON(code, response)
+}

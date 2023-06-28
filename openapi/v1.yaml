@@ -86,6 +86,52 @@ paths:
       security:
         - key: []
   /build/{id}:
+    get:
+      operation: get
+      parameters:
+        - name: id
+          in: path
+          description: Id of the build
+          required: true
+          style: simple
+          explode: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The build was found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Build"
+        "400":
+          description: Bad parameters passed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BadRequest"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Unauthorized"
+        "404":
+          description: The build was not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotFound"
+        "500":
+          description: An internal error happened
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InternalError"
+      security:
+        - key: []
+
+
     delete:
       operationId: delete
       parameters:

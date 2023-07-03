@@ -1,7 +1,6 @@
 include:
   - project: "repos/cloud/cicd/gitlab-ci"
     file: "toolforge-cd/golang_test_and_publish.yaml"
-    ref: "use_new_flows"
 
 variables:
   PROJECT_NAME: builds-api

@@ -7,6 +7,17 @@ const (
 	KeyScopes = "key.Scopes"
 )
 
+// Defines values for BuildStatus.
+const (
+	CANCELLED BuildStatus = "CANCELLED"
+	FAILURE   BuildStatus = "FAILURE"
+	PENDING   BuildStatus = "PENDING"
+	RUNNING   BuildStatus = "RUNNING"
+	SUCCESS   BuildStatus = "SUCCESS"
+	TIMEOUT   BuildStatus = "TIMEOUT"
+	UNKNOWN   BuildStatus = "UNKNOWN"
+)
+
 // Defines values for HealthResponseStatus.
 const (
 	ERROR HealthResponseStatus = "ERROR"
@@ -16,6 +27,25 @@ const (
 // BadRequest defines model for BadRequest.
 type BadRequest struct {
 	Message *string `json:"message,omitempty"`
+}
+
+// Build defines model for Build.
+type Build struct {
+	EndTime    *string          `json:"end_time,omitempty"`
+	Message    *string          `json:"message,omitempty"`
+	Name       *string          `json:"name,omitempty"`
+	Parameters *BuildParameters `json:"parameters,omitempty"`
+	Reason     *string          `json:"reason,omitempty"`
+	StartTime  *string          `json:"start_time,omitempty"`
+	Status     *BuildStatus     `json:"status,omitempty"`
+	Tasks      *[]BuildTask     `json:"tasks,omitempty"`
+}
+
+// BuildCondition defines model for BuildCondition.
+type BuildCondition struct {
+	Message *string      `json:"message,omitempty"`
+	Reason  *string      `json:"reason,omitempty"`
+	Status  *BuildStatus `json:"status,omitempty"`
 }
 
 // BuildId defines model for BuildId.
@@ -28,6 +58,16 @@ type BuildLogs struct {
 	Lines *[]string `json:"lines,omitempty"`
 }
 
+// BuildParameters defines model for BuildParameters.
+type BuildParameters struct {
+	BuilderImage  *string `json:"builder_image,omitempty"`
+	ImageName     *string `json:"image_name,omitempty"`
+	ImageTag      *string `json:"image_tag,omitempty"`
+	Ref           *string `json:"ref,omitempty"`
+	RepositoryUrl *string `json:"repository_url,omitempty"`
+	SourceUrl     *string `json:"source_url,omitempty"`
+}
+
 // BuildStartParams defines model for BuildStartParams.
 type BuildStartParams struct {
 	// Ref Source code reference to build (ex. a git branch name)
@@ -35,6 +75,28 @@ type BuildStartParams struct {
 
 	// SourceUrl URL to the public git repository that contains the source code to build
 	SourceUrl string `json:"source_url"`
+}
+
+// BuildStatus defines model for BuildStatus.
+type BuildStatus string
+
+// BuildTask defines model for BuildTask.
+type BuildTask struct {
+	EndTime        string                `json:"end_time"`
+	InitContainers *[]BuildTaskCondition `json:"init_containers,omitempty"`
+	Message        string                `json:"message"`
+	Name           string                `json:"name"`
+	Reason         string                `json:"reason"`
+	StartTime      string                `json:"start_time"`
+	Status         BuildStatus           `json:"status"`
+	Steps          []BuildTaskCondition  `json:"steps"`
+}
+
+// BuildTaskCondition defines model for BuildTaskCondition.
+type BuildTaskCondition struct {
+	Name   *string      `json:"name,omitempty"`
+	Reason *string      `json:"reason,omitempty"`
+	Status *BuildStatus `json:"status,omitempty"`
 }
 
 // HealthResponse defines model for HealthResponse.

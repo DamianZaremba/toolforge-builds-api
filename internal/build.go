@@ -6,23 +6,13 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	gen "gitlab.wikimedia.org/repos/toolforge/builds-api/gen"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-)
-
-type BuildStatus string
-
-const (
-	BuildStateRunning   BuildStatus = "running"
-	BuildStateError     BuildStatus = "error"
-	BuildStateOk        BuildStatus = "ok"
-	BuildStateCancelled BuildStatus = "cancelled"
-	BuildStateTimedOut  BuildStatus = "timeout"
-	BuildStateUnknown   BuildStatus = "unknown"
 )
 
 // TODO: Get the list of containers from the pod and sort by the task spec
@@ -50,6 +40,9 @@ func getPipelineRuns(clients *Clients, namespace string, listoptions metav1.List
 		listoptions,
 	)
 	if err != nil {
+		log.Warnf(
+			"Got error when listing pipelineruns on namespace %s (%v), maybe new cluster with no runs yet?: %s", namespace, listoptions, err,
+		)
 		return nil, err
 	}
 	sort.Slice(pipelineRuns.Items, func(i, j int) bool {
@@ -58,42 +51,73 @@ func getPipelineRuns(clients *Clients, namespace string, listoptions metav1.List
 	return pipelineRuns.Items, nil
 }
 
-func getBuildStatusFromPipelineRun(pipelineRun v1beta1.PipelineRun) BuildStatus {
+func getStatusFromPipelineRun(run *v1beta1.PipelineRun) gen.BuildStatus {
 
-	if pipelineRun.Status.CompletionTime == nil {
-		return BuildStateRunning
+	if run.Status.CompletionTime == nil {
+		return gen.RUNNING
 	}
 
-	if pipelineRun.Status.Conditions == nil {
-		return BuildStateError
+	if run.Status.Conditions == nil {
+		return gen.FAILURE
 	}
 
-	for _, condition := range pipelineRun.Status.Conditions {
+	for _, condition := range run.Status.Conditions {
 		if condition.Type == "Succeeded" && condition.Status == "True" {
-			return BuildStateOk
+			return gen.SUCCESS
 		}
 
 		if condition.Type == "Succeeded" && condition.Status == "False" {
-			return BuildStateError
+			return gen.FAILURE
 		}
 
 		if condition.Type == "Cancelled" {
-			return BuildStateCancelled
+			return gen.CANCELLED
 		}
 		// TODO: use v1beta1.PipelineRunTimedOut when tekton >= 0.48.0
 		if condition.Type == "TimedOut" {
-			return BuildStateTimedOut
+			return gen.TIMEOUT
 		}
 
 	}
 
-	return BuildStateUnknown
+	return gen.UNKNOWN
 }
 
-func filterPipelineRunsByStatus(pipelineRuns []v1beta1.PipelineRun, filter BuildStatus) []v1beta1.PipelineRun {
+func getStatusFromTaskRunStatus(taskRunStatus *v1beta1.PipelineRunTaskRunStatus) gen.BuildStatus {
+
+	if taskRunStatus.Status.CompletionTime == nil {
+		return gen.RUNNING
+	}
+
+	if taskRunStatus.Status.Conditions == nil {
+		return gen.FAILURE
+	}
+
+	for _, condition := range taskRunStatus.Status.Conditions {
+		if condition.Type == "Succeeded" && condition.Status == "True" {
+			return gen.SUCCESS
+		}
+
+		if condition.Type == "Succeeded" && condition.Status == "False" {
+			return gen.FAILURE
+		}
+
+		if condition.Type == "Cancelled" {
+			return gen.CANCELLED
+		}
+		// TODO: use v1beta1.PipelineRunTimedOut when tekton >= 0.48.0
+		if condition.Type == "TimedOut" {
+			return gen.TIMEOUT
+		}
+
+	}
+
+	return gen.UNKNOWN
+}
+func filterPipelineRunsByStatus(pipelineRuns []v1beta1.PipelineRun, filter gen.BuildStatus) []v1beta1.PipelineRun {
 	var filteredPipelineRuns []v1beta1.PipelineRun
 	for _, pipelineRun := range pipelineRuns {
-		if getBuildStatusFromPipelineRun(pipelineRun) == filter {
+		if getStatusFromPipelineRun(&pipelineRun) == filter {
 			filteredPipelineRuns = append(filteredPipelineRuns, pipelineRun)
 		}
 	}
@@ -106,9 +130,9 @@ func cleanupOldPipelineRuns(clients *Clients, namespace string, toolName string,
 		return []error{err}
 	}
 	log.Debugf("Found %d pipelineruns. Cleaning up old runs...", len(pipelineRuns))
-	runningPipelineRuns := filterPipelineRunsByStatus(pipelineRuns, BuildStateRunning)
-	successfulPipelineRuns := filterPipelineRunsByStatus(pipelineRuns, BuildStateOk)
-	failedPipelineRuns := filterPipelineRunsByStatus(pipelineRuns, BuildStateError)
+	runningPipelineRuns := filterPipelineRunsByStatus(pipelineRuns, gen.RUNNING)
+	successfulPipelineRuns := filterPipelineRunsByStatus(pipelineRuns, gen.SUCCESS)
+	failedPipelineRuns := filterPipelineRunsByStatus(pipelineRuns, gen.FAILURE)
 	pipelineRunsToKeep := map[string]v1beta1.PipelineRun{}
 	for _, pipelineRun := range runningPipelineRuns {
 		pipelineRunsToKeep[pipelineRun.Name] = pipelineRun
@@ -206,14 +230,10 @@ func Logs(api *BuildsApi, buildId string, toolName string) (int, interface{}) {
 
 	pipelineRuns, err := getPipelineRuns(&api.Clients, api.Config.BuildNamespace, metav1.ListOptions{FieldSelector: fmt.Sprintf("metadata.name=%s", buildId)})
 	if err != nil {
-		log.Warnf(
-			"Got error when listing pipelineruns on namespace %s, maybe new cluster with no runs yet?: %s", api.Config.BuildNamespace, err,
-		)
 		message := "Unable to find any pipelineruns! New installation?"
 		return http.StatusNotFound, gen.NotFound{Message: &message}
 	}
 
-	log.Debugf("Get: Got %d pipeline runs!: %v", len(pipelineRuns), pipelineRuns)
 	if len(pipelineRuns) == 0 {
 		message := fmt.Sprintf("Unable to find build with id '%s'", buildId)
 		return http.StatusNotFound, gen.NotFound{Message: &message}
@@ -379,4 +399,184 @@ func Healthcheck(api *BuildsApi) (int, gen.HealthResponse) {
 		Message: &message,
 		Status:  &status,
 	}
+}
+
+func getTaskRunSteps(taskRun *v1beta1.PipelineRunTaskRunStatus) []gen.BuildTaskCondition {
+	steps := make([]gen.BuildTaskCondition, len(taskRun.Status.Steps))
+	for i, step := range taskRun.Status.Steps {
+		status := gen.UNKNOWN
+		reason := ""
+		if step.Terminated != nil && step.Terminated.ExitCode != 0 {
+			reason = step.Terminated.Reason
+			if strings.HasSuffix(reason, "Cancelled") {
+				status = gen.CANCELLED
+			} else {
+				status = gen.FAILURE
+			}
+		} else if step.Terminated != nil && step.Terminated.ExitCode == 0 {
+			status = gen.SUCCESS
+			reason = step.Terminated.Reason
+		} else if step.Waiting != nil {
+			status = gen.PENDING
+			reason = step.Waiting.Reason
+		} else if step.Running != nil {
+			status = gen.RUNNING
+			reason = fmt.Sprintf("started at [%s]", step.Running.StartedAt)
+		}
+
+		steps[i] = gen.BuildTaskCondition{
+			Name:   &step.Name,
+			Status: &status,
+			Reason: &reason,
+		}
+	}
+	return steps
+}
+
+func getInitContainerSteps(runName string, taskName string, api *BuildsApi) []gen.BuildTaskCondition {
+	podName := fmt.Sprintf("%s-%s-pod", runName, taskName)
+	podData, err := api.Clients.K8s.CoreV1().Pods(api.Config.BuildNamespace).Get(
+		context.TODO(),
+		podName,
+		metav1.GetOptions{},
+	)
+	if err != nil {
+		log.Printf("Error getting pod %s: %s", podName, err)
+		return []gen.BuildTaskCondition{}
+	}
+	steps := make([]gen.BuildTaskCondition, len(podData.Status.InitContainerStatuses))
+	for i, step := range podData.Status.InitContainerStatuses {
+		status := gen.UNKNOWN
+		state := step.State
+		reason := ""
+		if state.Terminated != nil && state.Terminated.ExitCode != 0 {
+			reason = fmt.Sprintf("%s:%s", state.Terminated.Reason, state.Terminated.Message)
+			status = gen.FAILURE
+		} else if state.Terminated != nil && state.Terminated.ExitCode == 0 {
+			status = gen.SUCCESS
+			reason = state.Terminated.Reason
+		} else if state.Waiting != nil {
+			status = gen.PENDING
+			reason = state.Waiting.Reason
+		}
+
+		steps[i] = gen.BuildTaskCondition{
+			Name:   &step.Name,
+			Status: &status,
+			Reason: &reason,
+		}
+	}
+	return steps
+}
+
+func getPipelineRunConditionInfo(run *v1beta1.PipelineRun) *gen.BuildCondition {
+	status := getStatusFromPipelineRun(run)
+	for _, condition := range run.Status.Conditions {
+		if condition.Type == "Succeeded" {
+			return &gen.BuildCondition{
+				Message: &condition.Message,
+				Reason:  &condition.Reason,
+				Status:  &status,
+			}
+		}
+	}
+	return &gen.BuildCondition{}
+}
+
+func getTaskRunStatusConditionInfo(run *v1beta1.PipelineRunTaskRunStatus) *gen.BuildCondition {
+	status := getStatusFromTaskRunStatus(run)
+	for _, condition := range run.Status.Conditions {
+		if condition.Type == "Succeeded" {
+			return &gen.BuildCondition{
+				Message: &condition.Message,
+				Reason:  &condition.Reason,
+				Status:  &status,
+			}
+		}
+	}
+	return &gen.BuildCondition{}
+}
+
+func getBuild(run *v1beta1.PipelineRun, api *BuildsApi) *gen.Build {
+	info := getPipelineRunConditionInfo(run)
+	endTime := run.Status.CompletionTime.Format(time.RFC3339)
+	startTime := run.Status.StartTime.Format(time.RFC3339)
+
+	tasks := make([]gen.BuildTask, len(run.Status.TaskRuns))
+	i := 0
+	for _, taskrun := range run.Status.TaskRuns {
+		taskInfo := getTaskRunStatusConditionInfo(taskrun)
+		taskEndTime := taskrun.Status.CompletionTime.Format(time.RFC3339)
+		taskStartTime := taskrun.Status.StartTime.Format(time.RFC3339)
+		taskRunSteps := getTaskRunSteps(taskrun)
+		initContainerSteps := []gen.BuildTaskCondition{}
+
+		allPending := true
+		for _, step := range taskrun.Status.Steps {
+			if step.Waiting == nil {
+				allPending = false
+				break
+			}
+		}
+
+		if allPending && (*taskInfo.Status == gen.CANCELLED || *taskInfo.Status == gen.FAILURE) {
+			initContainerSteps = getInitContainerSteps(run.Name, taskrun.PipelineTaskName, api)
+		} else {
+			initContainerSteps = []gen.BuildTaskCondition{}
+		}
+
+		tasks[i] = gen.BuildTask{
+			EndTime:        taskEndTime,
+			Message:        *taskInfo.Message,
+			Name:           taskrun.PipelineTaskName,
+			Reason:         *taskInfo.Reason,
+			StartTime:      taskStartTime,
+			Status:         *taskInfo.Status,
+			Steps:          taskRunSteps,
+			InitContainers: &initContainerSteps,
+		}
+		i++
+	}
+
+	appImageValues := strings.Split(run.Spec.Params[1].Value.StringVal, "/")
+	imageRepo := fmt.Sprintf("%s/%s", appImageValues[0], appImageValues[1])
+	imageName := strings.Split(appImageValues[len(appImageValues)-1], ":")[0]
+	imageTag := strings.Split(appImageValues[len(appImageValues)-1], ":")[1]
+
+	return &gen.Build{
+		EndTime: &endTime,
+		Message: info.Message,
+		Name:    &run.Name,
+		Parameters: &gen.BuildParameters{
+			BuilderImage:  &run.Spec.Params[0].Value.StringVal,
+			ImageName:     &imageName,
+			ImageTag:      &imageTag,
+			Ref:           &run.Spec.Params[3].Value.StringVal,
+			RepositoryUrl: &imageRepo,
+			SourceUrl:     &run.Spec.Params[2].Value.StringVal,
+		},
+		Reason:    info.Reason,
+		StartTime: &startTime,
+		Status:    info.Status,
+		Tasks:     &tasks,
+	}
+}
+
+func List(
+	api *BuildsApi,
+	toolName string,
+) (int, interface{}, error) {
+	log.Debugf("Listing builds: toolName=%s, namespace=%s", toolName, api.Config.BuildNamespace)
+	pipelineRuns, err := getPipelineRuns(&api.Clients, api.Config.BuildNamespace, metav1.ListOptions{LabelSelector: fmt.Sprintf("user=%s", toolName)})
+	if err != nil {
+		message := fmt.Sprintf("Got error when listing %s's pipelineruns on namespace %s: %s", toolName, api.Config.BuildNamespace, err)
+		return http.StatusInternalServerError, gen.InternalError{Message: &message}, nil
+	}
+	log.Debugf("Found %d pipelineruns for %s", len(pipelineRuns), toolName)
+
+	builds := make([]gen.Build, len(pipelineRuns))
+	for i, run := range pipelineRuns {
+		builds[i] = *getBuild(&run, api)
+	}
+	return http.StatusOK, builds, nil
 }

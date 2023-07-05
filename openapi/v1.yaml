@@ -60,6 +60,31 @@ paths:
       security:
         - key: []
       x-codegen-request-body-name: new_build
+    get:
+      operationId: list
+      responses:
+        "200":
+          description: Returns the list of builds
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Build"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Unauthorized"
+        "500":
+          description: An internal error happened
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InternalError"
+      security:
+        - key: []
   /build/{id}:
     delete:
       operationId: delete
@@ -226,6 +251,94 @@ components:
           type: string
         ref:
           type: string
+    Build:
+      allOf:
+        - $ref: "#/components/schemas/BuildCondition"
+        - type: object
+          properties:
+            name:
+              type: string
+            start_time:
+              type: string
+            end_time:
+              type: string
+            parameters:
+              $ref: "#/components/schemas/BuildParameters"
+            tasks:
+              type: array
+              items:
+                $ref: "#/components/schemas/BuildTask"
+    BuildParameters:
+      type: object
+      properties:
+        image_name:
+          type: string
+        image_tag:
+          type: string
+        repository_url:
+          type: string
+        source_url:
+          type: string
+        ref:
+          type: string
+        builder_image:
+          type: string
+    BuildTask:
+      allOf:
+        - $ref: "#/components/schemas/BuildCondition"
+        - type: object
+          required:
+            - name
+            - start_time
+            - end_time
+            - status
+            - reason
+            - message
+            - steps
+          properties:
+            name:
+              type: string
+            start_time:
+              type: string
+            end_time:
+              type: string
+            steps:
+              type: array
+              items:
+                $ref: "#/components/schemas/BuildTaskCondition"
+            init_containers:
+              type: array
+              items:
+                $ref: "#/components/schemas/BuildTaskCondition"
+    BuildCondition:
+      type: object
+      properties:
+        status:
+          $ref: "#/components/schemas/BuildStatus"
+        reason:
+          type: string
+        message:
+          type: string
+    BuildTaskCondition:
+      type: object
+      properties:
+        name:
+          type: string
+        status:
+          $ref: "#/components/schemas/BuildStatus"
+        reason:
+          type: string
+    BuildStatus:
+      type: string
+      enum:
+        - PENDING
+        - RUNNING
+        - SUCCESS
+        - FAILURE
+        - CANCELLED
+        - TIMEOUT
+        - UNKNOWN
+
   securitySchemes:
     key:
       type: apiKey

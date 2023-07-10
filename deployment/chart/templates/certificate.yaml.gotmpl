@@ -8,6 +8,7 @@ metadata:
 spec:
   dnsNames:
     - "builds-api.{{ .Release.Namespace }}.svc"
+    - "builds-api.{{ .Release.Namespace }}.svc.{{ .Values.certificates.internalClusterDomain }}"
   secretName: "{{ .Values.api.secretName }}"
   revisionHistoryLimit: 1
   issuerRef:

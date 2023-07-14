@@ -1,7 +1,6 @@
 include:
   - project: "repos/cloud/cicd/gitlab-ci"
     file: "toolforge-cd/test_and_image_and_helm.yaml"
-    ref: add_release
 
 variables:
   PROJECT_NAME: builds-api

@@ -25,22 +25,23 @@ const (
 	BuildStateUnknown   BuildStatus = "unknown"
 )
 
-// TODO: Get the list of containers from the pod and sort by the task spec
-var Containers = [...]string{
-	"place-tools",
-	"step-init",
-	"place-scripts",
-	"step-clone",
-	"step-prepare",
-	"step-copy-stack-toml",
-	"step-detect",
-	"step-inject-buildpacks",
-	"step-analyze",
-	"step-restore",
-	"step-build",
-	"step-fix-permissions",
-	"step-export",
-	"step-results",
+func getContainersFromPod(client *Clients, podName string, namespace string) ([]string, error) {
+	pod, err := client.K8s.CoreV1().Pods(namespace).Get(
+		context.TODO(),
+		podName,
+		metav1.GetOptions{},
+	)
+	if err != nil {
+		return nil, err
+	}
+	var containers []string
+	for _, container := range pod.Spec.InitContainers {
+		containers = append(containers, container.Name)
+	}
+	for _, container := range pod.Spec.Containers {
+		containers = append(containers, container.Name)
+	}
+	return containers, nil
 }
 
 func getPipelineRuns(clients *Clients, namespace string, listoptions metav1.ListOptions) ([]v1beta1.PipelineRun, error) {
@@ -144,9 +145,9 @@ func cleanupOldPipelineRuns(clients *Clients, namespace string, toolName string,
 	return deleteErrors
 }
 
-func getContainerLogs(clients *Clients, container string, taskRun *v1beta1.PipelineRunTaskRunStatus, namespace string) (string, error) {
+func getContainerLogs(clients *Clients, container string, podName string, namespace string) (string, error) {
 	logs := clients.K8s.CoreV1().Pods(namespace).GetLogs(
-		taskRun.Status.PodName, &v1.PodLogOptions{
+		podName, &v1.PodLogOptions{
 			Timestamps: true,
 			Container:  container,
 		},
@@ -164,7 +165,10 @@ func getContainerLogs(clients *Clients, container string, taskRun *v1beta1.Pipel
 
 	logLines := make([]string, strings.Count("\n", stringLogs))
 	for _, logLine := range strings.Split(stringLogs, "\n") {
-		logLines = append(logLines, fmt.Sprintf("%s: %s", container, logLine))
+		if logLine != "" {
+			logLine = fmt.Sprintf("%s: %s", container, logLine)
+		}
+		logLines = append(logLines, logLine)
 	}
 
 	return strings.Join(logLines, "\n"), nil
@@ -178,10 +182,18 @@ func getPipelineRunLogs(pipelineRun *v1beta1.PipelineRun, clients *Clients, name
 		return "", nil
 	}
 
+	allLogs := make([]string, 0)
 	for _, taskRun := range pipelineRun.Status.TaskRuns {
-		var allLogs = make([]string, 0, len(Containers))
-		for _, container := range Containers {
-			newLogs, err := getContainerLogs(clients, container, taskRun, namespace)
+		containers, err := getContainersFromPod(
+			clients,
+			taskRun.Status.PodName,
+			namespace,
+		)
+		if err != nil {
+			return "", err
+		}
+		for _, container := range containers {
+			newLogs, err := getContainerLogs(clients, container, taskRun.Status.PodName, namespace)
 			if err != nil {
 				// As we changed the containers in the runs, some runs don't have the containers we look for
 				if strings.HasPrefix(fmt.Sprintf("%s", err), fmt.Sprintf("container %s is not valid for pod", container)) {
@@ -191,11 +203,8 @@ func getPipelineRunLogs(pipelineRun *v1beta1.PipelineRun, clients *Clients, name
 			}
 			allLogs = append(allLogs, newLogs)
 		}
-		return strings.Join(allLogs, "\n"), nil
 	}
-
-	// TODO: check if we should instead show something more
-	return "", nil
+	return strings.Join(allLogs, "\n"), nil
 }
 
 func Logs(api *BuildsApi, buildId string, toolName string) (int, interface{}, error) {

@@ -25,22 +25,12 @@ const (
 	BuildStateUnknown   BuildStatus = "unknown"
 )
 
-// TODO: Get the list of containers from the pod and sort by the task spec
-var Containers = [...]string{
-	"place-tools",
-	"step-init",
-	"place-scripts",
-	"step-clone",
-	"step-prepare",
-	"step-copy-stack-toml",
-	"step-detect",
-	"step-inject-buildpacks",
-	"step-analyze",
-	"step-restore",
-	"step-build",
-	"step-fix-permissions",
-	"step-export",
-	"step-results",
+func getContainersFromTaskRun(taskRun *v1beta1.PipelineRunTaskRunStatus) []string {
+	var containers []string
+	for _, container := range taskRun.Status.Steps {
+		containers = append(containers, container.Name)
+	}
+	return containers
 }
 
 func getPipelineRuns(clients *Clients, namespace string, listoptions metav1.ListOptions) ([]v1beta1.PipelineRun, error) {
@@ -177,11 +167,16 @@ func getPipelineRunLogs(pipelineRun *v1beta1.PipelineRun, clients *Clients, name
 	if !pipelineRun.HasStarted() {
 		return "", nil
 	}
+	taskRunKeys := make([]string, 0, len(pipelineRun.Status.TaskRuns))
+	for k := range pipelineRun.Status.TaskRuns {
+		taskRunKeys = append(taskRunKeys, k)
+	}
+	containers := getContainersFromTaskRun(pipelineRun.Status.TaskRuns[taskRunKeys[0]])
 
-	for _, taskRun := range pipelineRun.Status.TaskRuns {
-		var allLogs = make([]string, 0, len(Containers))
-		for _, container := range Containers {
-			newLogs, err := getContainerLogs(clients, container, taskRun, namespace)
+	for _, taskRunkey := range taskRunKeys {
+		allLogs := make([]string, 0, len(containers))
+		for _, container := range containers {
+			newLogs, err := getContainerLogs(clients, container, pipelineRun.Status.TaskRuns[taskRunkey], namespace)
 			if err != nil {
 				// As we changed the containers in the runs, some runs don't have the containers we look for
 				if strings.HasPrefix(fmt.Sprintf("%s", err), fmt.Sprintf("container %s is not valid for pod", container)) {
@@ -193,8 +188,6 @@ func getPipelineRunLogs(pipelineRun *v1beta1.PipelineRun, clients *Clients, name
 		}
 		return strings.Join(allLogs, "\n"), nil
 	}
-
-	// TODO: check if we should instead show something more
 	return "", nil
 }
 

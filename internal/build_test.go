@@ -363,6 +363,19 @@ func TestLogsReturnsAllLogsConcatenated(t *testing.T) {
 								Status: &v1beta1.TaskRunStatus{
 									TaskRunStatusFields: v1beta1.TaskRunStatusFields{
 										PodName: "dummy-pod",
+										Steps: []v1beta1.StepState{
+											{Name: "clone"},
+											{Name: "prepare"},
+											{Name: "copy-stack-toml"},
+											{Name: "detect"},
+											{Name: "inject-buildpacks"},
+											{Name: "analyze"},
+											{Name: "restore"},
+											{Name: "build"},
+											{Name: "fix-permissions"},
+											{Name: "export"},
+											{Name: "results"},
+										},
 									},
 								},
 							},
@@ -412,12 +425,13 @@ func TestLogsReturnsAllLogsConcatenated(t *testing.T) {
 
 	// We get one line per getLogs fake call (hardcoded upstream)
 	expectedLines := make([]string, 0)
-	for _, container := range Containers {
-		expectedLines = append(expectedLines, fmt.Sprintf("%s: fake logs", container))
+	containers := fakePipelineRunList.Items[0].Status.TaskRuns["task-run-one"].Status.Steps
+	for _, container := range containers {
+		expectedLines = append(expectedLines, fmt.Sprintf("%s: fake logs", container.Name))
 	}
 
 	gottenLogs := response.(gen.BuildLogs)
-	if len(*gottenLogs.Lines) != len(Containers) {
+	if len(*gottenLogs.Lines) != len(containers) {
 		t.Fatalf("I was expecting one line per container, got: %s", *gottenLogs.Lines)
 	}
 

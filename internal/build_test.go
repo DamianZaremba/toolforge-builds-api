@@ -10,6 +10,7 @@ import (
 	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	tektonFake "github.com/tektoncd/pipeline/pkg/client/clientset/versioned/fake"
 	"gitlab.wikimedia.org/repos/toolforge/builds-api/gen"
+	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8sRuntime "k8s.io/apimachinery/pkg/runtime"
 	k8sFake "k8s.io/client-go/kubernetes/fake"
@@ -351,6 +352,7 @@ func TestLogsReturnsEmptyLineIfRunHasNotStarted(t *testing.T) {
 
 func TestLogsReturnsAllLogsConcatenated(t *testing.T) {
 	mockTekton := tektonFake.Clientset{}
+	podName := "dummy-pod"
 	// avoid the object from being collected
 	fakePipelineRunList := v1beta1.PipelineRunList{
 		Items: []v1beta1.PipelineRun{
@@ -362,7 +364,7 @@ func TestLogsReturnsAllLogsConcatenated(t *testing.T) {
 							"task-run-one": {
 								Status: &v1beta1.TaskRunStatus{
 									TaskRunStatusFields: v1beta1.TaskRunStatusFields{
-										PodName: "dummy-pod",
+										PodName: podName,
 									},
 								},
 							},
@@ -379,7 +381,29 @@ func TestLogsReturnsAllLogsConcatenated(t *testing.T) {
 			return true, &fakePipelineRunList, nil
 		},
 	)
-	mockK8s := k8sFake.Clientset{}
+	mockK8s := *k8sFake.NewSimpleClientset(
+		k8sRuntime.Object(&corev1.Pod{
+			ObjectMeta: v1.ObjectMeta{
+				Name:      podName,
+				Namespace: BuildNamespace,
+			},
+			Spec: corev1.PodSpec{
+				Containers: []corev1.Container{
+					{Name: "step-clone"},
+					{Name: "step-prepare"},
+					{Name: "step-copy-stack-toml"},
+					{Name: "step-detect"},
+					{Name: "step-inject-buildpacks"},
+					{Name: "step-analyze"},
+					{Name: "step-restore"},
+					{Name: "step-build"},
+					{Name: "step-fix-permissions"},
+					{Name: "step-export"},
+					{Name: "step-results"},
+				},
+			},
+		}),
+	)
 	// The mocking of getLogs always returns one line "fake logs", it's hardcoded in the fake upstream
 	// that's why we return `nil` as the return value does not matter
 	mockK8s.AddReactor("get", "pods/logs", func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
@@ -410,14 +434,16 @@ func TestLogsReturnsAllLogsConcatenated(t *testing.T) {
 		t.Fatalf("I was expecting a 200 response, got: %d", code)
 	}
 
+	containers, _ := getContainersFromPod(&api.Clients, podName, BuildNamespace)
+
 	// We get one line per getLogs fake call (hardcoded upstream)
 	expectedLines := make([]string, 0)
-	for _, container := range Containers {
+	for _, container := range containers {
 		expectedLines = append(expectedLines, fmt.Sprintf("%s: fake logs", container))
 	}
 
 	gottenLogs := response.(gen.BuildLogs)
-	if len(*gottenLogs.Lines) != len(Containers) {
+	if len(*gottenLogs.Lines) != len(containers) {
 		t.Fatalf("I was expecting one line per container, got: %s", *gottenLogs.Lines)
 	}
 

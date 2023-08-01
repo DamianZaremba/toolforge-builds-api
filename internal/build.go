@@ -1,8 +1,11 @@
 package internal
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"sort"
 	"strings"
@@ -31,6 +34,83 @@ var Containers = [...]string{
 	"step-fix-permissions",
 	"step-export",
 	"step-results",
+}
+
+func ToolNameToHarborProjectName(toolName string) (string, error) {
+	if !ToolforgeNameRegex.MatchString(toolName) {
+		message := fmt.Sprintf("Name %s is not a valid toolforge tool name.", toolName)
+		log.Error(message)
+		return "", fmt.Errorf(message)
+	}
+
+	toolName = fmt.Sprintf("%s%s", HarborProjectPrefix, toolName)
+	formattedName := ""
+	prevChar := ""
+	for _, char := range toolName {
+		if strings.Contains(HarborSpecialChars, string(char)) && strings.Contains(HarborSpecialChars, prevChar) {
+			formattedName += HarborSpecialCharFiller
+		}
+		formattedName += string(char)
+		prevChar = string(char)
+	}
+
+	if !HarborNameRegex.MatchString(formattedName) {
+		message := fmt.Sprintf("Formatted name %s is not a valid harbor project name.", formattedName)
+		log.Error(message)
+		return "", fmt.Errorf(message)
+	}
+	return formattedName, nil
+}
+
+func CreateHarborProjectForTool(api *BuildsApi, toolName string) error {
+	harborProjectName, err := ToolNameToHarborProjectName(toolName)
+	if err != nil {
+		return err
+	}
+	log.Debugf("Attempting to create harbor project %s", harborProjectName)
+
+	requestBody := map[string]interface{}{
+		"project_name": harborProjectName,
+		"public":       true,
+		"registry_id":  nil,
+	}
+	requestBodyBytes, _ := json.Marshal(requestBody)
+	url := fmt.Sprintf("%s/api/v2.0/projects", api.Config.HarborRepository)
+	request, _ := http.NewRequest("POST", url, bytes.NewBuffer(requestBodyBytes))
+	userAgent := "WMCS toolforge-builds-api Go-http-client"
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("User-Agent", userAgent)
+	username := api.Config.HarborUsername
+	password := api.Config.HarborPassword
+	request.SetBasicAuth(username, password)
+
+	response, err := api.Clients.Http.Do(request)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode == http.StatusCreated {
+		log.Debugf("Created harbor project %s", harborProjectName)
+		return nil
+	}
+
+	responseBody := make(map[string][]map[string]interface{})
+	err = json.NewDecoder(response.Body).Decode(&responseBody)
+	if err != nil {
+		body, _ := io.ReadAll(response.Body)
+		return fmt.Errorf(string(body))
+	}
+	message := ""
+	for _, err := range responseBody["errors"] {
+		message += fmt.Sprintf("%s: %s\n", err["code"], err["message"])
+	}
+
+	if response.StatusCode == http.StatusConflict {
+		log.Debug(message)
+		return nil
+	}
+	return fmt.Errorf("failed to create harbor project: %s", message)
 }
 
 func getPipelineRuns(clients *Clients, namespace string, listoptions metav1.ListOptions) ([]v1beta1.PipelineRun, error) {
@@ -264,7 +344,12 @@ func Start(
 	toolName string,
 ) (int, interface{}) {
 	// TODO: Check quotas
-	// TODO: Create destination project in harbor if it does not exist
+	err := CreateHarborProjectForTool(api, toolName)
+	if err != nil {
+		message := fmt.Sprintf("Failed to create harbor project for tool %s: %s", toolName, err)
+		log.Error(message)
+		return http.StatusInternalServerError, gen.InternalError{Message: &message}
+	}
 	cleanup_err := cleanupOldPipelineRuns(&api.Clients, api.Config.BuildNamespace, toolName, api.Config.OkToKeep, api.Config.FailedToKeep)
 	for _, err := range cleanup_err {
 		log.Warnf("Got error when cleaning up old pipeline runs: %s", err)
@@ -292,7 +377,7 @@ func Start(
 				{
 					Name: "APP_IMAGE",
 					Value: v1beta1.ParamValue{
-						StringVal: fmt.Sprintf("%s/tool-%s/tool-%s:latest", api.Config.HarborRepository, toolName, toolName),
+						StringVal: fmt.Sprintf("%s/tool-%s/tool-%s:latest", strings.Split(api.Config.HarborRepository, "//")[1], toolName, toolName),
 						Type:      v1beta1.ParamTypeString,
 					},
 				},

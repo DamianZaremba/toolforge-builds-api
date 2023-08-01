@@ -3,6 +3,7 @@ package internal
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -16,6 +17,132 @@ import (
 	k8sTesting "k8s.io/client-go/testing"
 	knative "knative.dev/pkg/apis/duck/v1beta1"
 )
+
+func TestToolNameToHarborProjectNameReturnsErrorIfNameIsInvalidToolforgeToolName(t *testing.T) {
+	invalidToolNames := []string{
+		"_username",
+		".example",
+		"name$",
+		"123_",
+		"my username",
+		"!invalid",
+	}
+	for _, toolName := range invalidToolNames {
+		_, err := ToolNameToHarborProjectName(toolName)
+		if err == nil {
+			t.Fatalf("I was expecting an error, got: %s", err)
+		}
+	}
+}
+
+func TestToolNameToHarborProjectNameReturnsCorrectHarborProjectName(t *testing.T) {
+	testToolNames := [][]string{
+		{
+			"my-user--name",
+			"tool-my-user-char.sep-name",
+		},
+		{
+			"hello---world",
+			"tool-hello-char.sep-char.sep-world",
+		},
+		{
+			"this-is--a---123----user",
+			"tool-this-is-char.sep-a-char.sep-char.sep-123-char.sep-char.sep-char.sep-user",
+		},
+		{
+			"wikidata-redirects-conflicts-reports",
+			"tool-wikidata-redirects-conflicts-reports",
+		},
+		{
+			"wdq_checker",
+			"tool-wdq_checker",
+		},
+		{
+			"mixed_-_special-_-chars",
+			"tool-mixed_char.sep-char.sep_special-char.sep_char.sep-chars",
+		},
+	}
+
+	for index, test := range testToolNames {
+		toolName := test[0]
+		expected := test[1]
+		result, err := ToolNameToHarborProjectName(toolName)
+		if err != nil {
+			t.Fatalf("Unexpected error: %s", err)
+		}
+		if result != expected {
+			t.Fatalf(
+				"Test %d failed, expected: %s, got: %s",
+				index,
+				expected,
+				result,
+			)
+		}
+	}
+}
+
+func TestCreateHarborProjectForToolReturnsErrorIfHarborApiReturnsUnexpectedError(t *testing.T) {
+	testServer1 := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		rw.WriteHeader(http.StatusUnauthorized)
+		rw.Write([]byte(fmt.Sprintf(`{"errors":[{ "code": %d, "message": "dummy error" }]}`, http.StatusUnauthorized)))
+	}))
+	testServer2 := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		rw.WriteHeader(http.StatusBadGateway)
+	}))
+	defer testServer1.Close()
+	defer testServer2.Close()
+	api := BuildsApi{
+		Clients: Clients{
+			Http: &http.Client{},
+		},
+		Config: Config{
+			HarborRepository: testServer1.URL,
+			HarborUsername:   "dummy-harbor-username",
+			HarborPassword:   "dummy-harbor-password",
+		},
+	}
+	err := CreateHarborProjectForTool(&api, "dummy-tool-name")
+	if err == nil {
+		t.Fatalf("I was expecting an error, got: %s", err)
+	}
+	api.Config.HarborRepository = testServer2.URL
+	err = CreateHarborProjectForTool(&api, "dummy-tool-name")
+	if err == nil {
+		t.Fatalf("I was expecting an error, got: %s", err)
+	}
+}
+
+func TestCreateHarborProjectForToolReturnsNilIfProjectWasCreatedOrAlreadyExists(t *testing.T) {
+	testServer1 := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		rw.WriteHeader(http.StatusCreated)
+	}))
+	testServer2 := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		rw.WriteHeader(http.StatusConflict)
+		rw.Write([]byte(fmt.Sprintf(`{"errors":[{ "code": %d, "message": "dummy error" }]}`, http.StatusConflict)))
+
+	}))
+	defer testServer1.Close()
+	defer testServer2.Close()
+	api := BuildsApi{
+		Clients: Clients{
+			Http: &http.Client{},
+		},
+		Config: Config{
+			HarborRepository: testServer1.URL,
+			HarborUsername:   "dummy-harbor-username",
+			HarborPassword:   "dummy-harbor-password",
+		},
+	}
+	err := CreateHarborProjectForTool(&api, "dummy-tool-name")
+	if err != nil {
+		t.Fatalf("I was not expecting an error, got: %s", err)
+	}
+	api.Config.HarborRepository = testServer2.URL
+	err = CreateHarborProjectForTool(&api, "dummy-tool-name")
+	if err != nil {
+		t.Fatalf("I was not expecting an error, got: %s", err)
+	}
+}
 
 func TestGetPipelineRunsReturnsErrorIfApiReturnsError(t *testing.T) {
 	mockTekton := tektonFake.Clientset{}
@@ -405,6 +532,10 @@ func TestLogsReturnsAllLogsConcatenated(t *testing.T) {
 }
 
 func TestStartReturnsInternalServerErrorOnException(t *testing.T) {
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer testServer.Close()
 	mockTekton := tektonFake.Clientset{}
 	mockTekton.Fake.AddReactor(
 		"create",
@@ -416,9 +547,12 @@ func TestStartReturnsInternalServerErrorOnException(t *testing.T) {
 	api := BuildsApi{
 		Clients: Clients{
 			Tekton: &mockTekton,
+			Http:   &http.Client{},
 		},
 		Config: Config{
-			HarborRepository: "dummy-harbor-repository",
+			HarborRepository: testServer.URL,
+			HarborUsername:   "dummy-harbor-username",
+			HarborPassword:   "dummy-harbor-password",
 			Builder:          "dummy-builder",
 			OkToKeep:         1,
 			FailedToKeep:     2,
@@ -439,7 +573,40 @@ func TestStartReturnsInternalServerErrorOnException(t *testing.T) {
 	}
 }
 
+func TestStartReturnsInternalServerErrorIfCreateHarborProjectForToolReturnsError(t *testing.T) {
+	testServer := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		rw.WriteHeader(http.StatusUnauthorized)
+		rw.Write([]byte(fmt.Sprintf(`{"errors":[{ "code": %d, "message": "dummy error" }]}`, http.StatusUnauthorized)))
+	}))
+	defer testServer.Close()
+	api := BuildsApi{
+		Clients: Clients{
+			Http: &http.Client{},
+		},
+		Config: Config{
+			HarborRepository: testServer.URL,
+			HarborUsername:   "dummy-harbor-username",
+			HarborPassword:   "dummy-harbor-password",
+		},
+	}
+
+	code, _ := Start(
+		&api,
+		"dummy-source-url",
+		"dummy-ref",
+		"dummy-tool",
+	)
+
+	if code != 500 {
+		t.Fatalf("I was expecting a 500 response, got: %d", code)
+	}
+}
+
 func TestStartReturnsNewBuildName(t *testing.T) {
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer testServer.Close()
 	mockTekton := tektonFake.Clientset{}
 	expectedName := "new-pipelinerun"
 	expectedRef := "dummy-ref"
@@ -457,9 +624,12 @@ func TestStartReturnsNewBuildName(t *testing.T) {
 	api := BuildsApi{
 		Clients: Clients{
 			Tekton: &mockTekton,
+			Http:   &http.Client{},
 		},
 		Config: Config{
-			HarborRepository: "dummy-harbor-repository",
+			HarborRepository: testServer.URL,
+			HarborUsername:   "dummy-harbor-username",
+			HarborPassword:   "dummy-harbor-password",
 			Builder:          "dummy-builder",
 			OkToKeep:         1,
 			FailedToKeep:     2,

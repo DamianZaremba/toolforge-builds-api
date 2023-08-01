@@ -34,6 +34,8 @@ certificates:
 config:
   debug: false
   port: 8000
-  harborRepository: tools-harbor.wmcloud.org
+  harborRepository: https://tools-harbor.wmcloud.org
+  harborUsername: "PLACEHOLDER"
+  harborPassword: "PLACEHOLDER"
   okBuildsToKeep: 1
   failedBuildsToKeep: 2

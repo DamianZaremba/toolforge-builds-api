@@ -1,5 +1,4 @@
 replicas: 2
-chartRepository: tools
 
 image:
   # name and tag are currently used by CI
@@ -27,7 +26,7 @@ nginx:
     pullpolicy: Always
 
 certificates:
-  internalClusterDomain: "{{ .Values.chartRepository }}.local"
+  internalClusterDomain: "cluster.local"
   apiGatewayCa:
     name: api-gateway-backend-ca
     kind: ClusterIssuer

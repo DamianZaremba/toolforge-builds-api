@@ -51,73 +51,72 @@ func getPipelineRuns(clients *Clients, namespace string, listoptions metav1.List
 	return pipelineRuns.Items, nil
 }
 
-func getStatusFromPipelineRun(run *v1beta1.PipelineRun) gen.BuildStatus {
-
-	if run.Status.CompletionTime == nil {
-		return gen.RUNNING
-	}
+func getBuildConditionFromPipelineRun(run *v1beta1.PipelineRun) gen.BuildCondition {
+	buildCondition := &gen.BuildCondition{}
+	message := ""
+	var status gen.BuildStatus
 
 	if run.Status.Conditions == nil {
-		return gen.FAILURE
+		status = gen.BUILDUNKNOWN
+		message = fmt.Sprintf("build status is unknown. Check the logs with `toolforge build logs %s`", run.Name)
+		buildCondition.Status = &status
+		buildCondition.Message = &message
+		return *buildCondition
 	}
 
 	for _, condition := range run.Status.Conditions {
-		if condition.Type == "Succeeded" && condition.Status == "True" {
-			return gen.SUCCESS
+		message = condition.Message
+		if condition.Status == "False" {
+			// only add the `check the logs...` information to unsuccessful builds
+			message += fmt.Sprintf(". Check the logs with `toolforge build logs %s`", run.Name)
 		}
-
-		if condition.Type == "Succeeded" && condition.Status == "False" {
-			return gen.FAILURE
+		//NOTE: ORDER MATTERS
+		if run.Status.CompletionTime == nil && condition.Status == "Unknown" {
+			status = gen.BUILDRUNNING
+		} else if condition.Status == "False" && condition.Reason == "PipelineRunCancelled" {
+			status = gen.BUILDCANCELLED
+		} else if condition.Status == "False" && condition.Reason == "PipelineRunTimeout" {
+			status = gen.BUILDTIMEOUT
+		} else if condition.Status == "False" {
+			status = gen.BUILDFAILURE
+		} else if condition.Status == "True" {
+			status = gen.BUILDSUCCESS
 		}
-
-		if condition.Type == "Cancelled" {
-			return gen.CANCELLED
-		}
-		// TODO: use v1beta1.PipelineRunTimedOut when tekton >= 0.48.0
-		if condition.Type == "TimedOut" {
-			return gen.TIMEOUT
-		}
-
 	}
-
-	return gen.UNKNOWN
+	buildCondition.Status = &status
+	buildCondition.Message = &message
+	return *buildCondition
 }
 
-func getStatusFromTaskRunStatus(taskRunStatus *v1beta1.PipelineRunTaskRunStatus) gen.BuildStatus {
-
-	if taskRunStatus.Status.CompletionTime == nil {
-		return gen.RUNNING
+func getBuild(run v1beta1.PipelineRun) *gen.Build {
+	var startTime string
+	var endTime string
+	buildCondition := getBuildConditionFromPipelineRun(&run)
+	if run.Status.StartTime != nil {
+		startTime = run.Status.StartTime.Format(time.RFC3339)
+	}
+	if run.Status.CompletionTime != nil {
+		endTime = run.Status.CompletionTime.Format(time.RFC3339)
 	}
 
-	if taskRunStatus.Status.Conditions == nil {
-		return gen.FAILURE
+	return &gen.Build{
+		BuildId:   &run.Name,
+		StartTime: &startTime,
+		EndTime:   &endTime,
+		Status:    buildCondition.Status,
+		Message:   buildCondition.Message,
+		Parameters: &gen.BuildParameters{
+			SourceUrl: &run.Spec.Params[2].Value.StringVal,
+			Ref:       &run.Spec.Params[3].Value.StringVal,
+		},
+		DestinationImage: &run.Spec.Params[1].Value.StringVal,
 	}
-
-	for _, condition := range taskRunStatus.Status.Conditions {
-		if condition.Type == "Succeeded" && condition.Status == "True" {
-			return gen.SUCCESS
-		}
-
-		if condition.Type == "Succeeded" && condition.Status == "False" {
-			return gen.FAILURE
-		}
-
-		if condition.Type == "Cancelled" {
-			return gen.CANCELLED
-		}
-		// TODO: use v1beta1.PipelineRunTimedOut when tekton >= 0.48.0
-		if condition.Type == "TimedOut" {
-			return gen.TIMEOUT
-		}
-
-	}
-
-	return gen.UNKNOWN
 }
+
 func filterPipelineRunsByStatus(pipelineRuns []v1beta1.PipelineRun, filter gen.BuildStatus) []v1beta1.PipelineRun {
 	var filteredPipelineRuns []v1beta1.PipelineRun
 	for _, pipelineRun := range pipelineRuns {
-		if getStatusFromPipelineRun(&pipelineRun) == filter {
+		if *getBuildConditionFromPipelineRun(&pipelineRun).Status == filter {
 			filteredPipelineRuns = append(filteredPipelineRuns, pipelineRun)
 		}
 	}
@@ -130,9 +129,9 @@ func cleanupOldPipelineRuns(clients *Clients, namespace string, toolName string,
 		return []error{err}
 	}
 	log.Debugf("Found %d pipelineruns. Cleaning up old runs...", len(pipelineRuns))
-	runningPipelineRuns := filterPipelineRunsByStatus(pipelineRuns, gen.RUNNING)
-	successfulPipelineRuns := filterPipelineRunsByStatus(pipelineRuns, gen.SUCCESS)
-	failedPipelineRuns := filterPipelineRunsByStatus(pipelineRuns, gen.FAILURE)
+	runningPipelineRuns := filterPipelineRunsByStatus(pipelineRuns, gen.BUILDRUNNING)
+	successfulPipelineRuns := filterPipelineRunsByStatus(pipelineRuns, gen.BUILDSUCCESS)
+	failedPipelineRuns := filterPipelineRunsByStatus(pipelineRuns, gen.BUILDFAILURE)
 	pipelineRunsToKeep := map[string]v1beta1.PipelineRun{}
 	for _, pipelineRun := range runningPipelineRuns {
 		pipelineRunsToKeep[pipelineRun.Name] = pipelineRun
@@ -401,167 +400,6 @@ func Healthcheck(api *BuildsApi) (int, gen.HealthResponse, error) {
 	}, nil
 }
 
-func getTaskRunSteps(taskRun *v1beta1.PipelineRunTaskRunStatus) []gen.BuildTaskCondition {
-	steps := make([]gen.BuildTaskCondition, len(taskRun.Status.Steps))
-	for i, step := range taskRun.Status.Steps {
-		status := gen.UNKNOWN
-		reason := ""
-		if step.Terminated != nil && step.Terminated.ExitCode != 0 {
-			reason = step.Terminated.Reason
-			if strings.HasSuffix(reason, "Cancelled") {
-				status = gen.CANCELLED
-			} else {
-				status = gen.FAILURE
-			}
-		} else if step.Terminated != nil && step.Terminated.ExitCode == 0 {
-			status = gen.SUCCESS
-			reason = step.Terminated.Reason
-		} else if step.Waiting != nil {
-			status = gen.PENDING
-			reason = step.Waiting.Reason
-		} else if step.Running != nil {
-			status = gen.RUNNING
-			reason = fmt.Sprintf("started at [%s]", step.Running.StartedAt)
-		}
-
-		steps[i] = gen.BuildTaskCondition{
-			Name:   &step.Name,
-			Status: &status,
-			Reason: &reason,
-		}
-	}
-	return steps
-}
-
-func getInitContainerSteps(runName string, taskName string, api *BuildsApi) []gen.BuildTaskCondition {
-	podName := fmt.Sprintf("%s-%s-pod", runName, taskName)
-	podData, err := api.Clients.K8s.CoreV1().Pods(api.Config.BuildNamespace).Get(
-		context.TODO(),
-		podName,
-		metav1.GetOptions{},
-	)
-	if err != nil {
-		log.Printf("Error getting pod %s: %s", podName, err)
-		return []gen.BuildTaskCondition{}
-	}
-	steps := make([]gen.BuildTaskCondition, len(podData.Status.InitContainerStatuses))
-	for i, step := range podData.Status.InitContainerStatuses {
-		status := gen.UNKNOWN
-		state := step.State
-		reason := ""
-		if state.Terminated != nil && state.Terminated.ExitCode != 0 {
-			reason = fmt.Sprintf("%s:%s", state.Terminated.Reason, state.Terminated.Message)
-			status = gen.FAILURE
-		} else if state.Terminated != nil && state.Terminated.ExitCode == 0 {
-			status = gen.SUCCESS
-			reason = state.Terminated.Reason
-		} else if state.Waiting != nil {
-			status = gen.PENDING
-			reason = state.Waiting.Reason
-		}
-
-		steps[i] = gen.BuildTaskCondition{
-			Name:   &step.Name,
-			Status: &status,
-			Reason: &reason,
-		}
-	}
-	return steps
-}
-
-func getPipelineRunConditionInfo(run *v1beta1.PipelineRun) *gen.BuildCondition {
-	status := getStatusFromPipelineRun(run)
-	for _, condition := range run.Status.Conditions {
-		if condition.Type == "Succeeded" {
-			return &gen.BuildCondition{
-				Message: &condition.Message,
-				Reason:  &condition.Reason,
-				Status:  &status,
-			}
-		}
-	}
-	return &gen.BuildCondition{}
-}
-
-func getTaskRunStatusConditionInfo(run *v1beta1.PipelineRunTaskRunStatus) *gen.BuildCondition {
-	status := getStatusFromTaskRunStatus(run)
-	for _, condition := range run.Status.Conditions {
-		if condition.Type == "Succeeded" {
-			return &gen.BuildCondition{
-				Message: &condition.Message,
-				Reason:  &condition.Reason,
-				Status:  &status,
-			}
-		}
-	}
-	return &gen.BuildCondition{}
-}
-
-func getBuild(run *v1beta1.PipelineRun, api *BuildsApi) *gen.Build {
-	info := getPipelineRunConditionInfo(run)
-	endTime := run.Status.CompletionTime.Format(time.RFC3339)
-	startTime := run.Status.StartTime.Format(time.RFC3339)
-
-	tasks := make([]gen.BuildTask, len(run.Status.TaskRuns))
-	i := 0
-	for _, taskrun := range run.Status.TaskRuns {
-		taskInfo := getTaskRunStatusConditionInfo(taskrun)
-		taskEndTime := taskrun.Status.CompletionTime.Format(time.RFC3339)
-		taskStartTime := taskrun.Status.StartTime.Format(time.RFC3339)
-		taskRunSteps := getTaskRunSteps(taskrun)
-		initContainerSteps := []gen.BuildTaskCondition{}
-
-		allPending := true
-		for _, step := range taskrun.Status.Steps {
-			if step.Waiting == nil {
-				allPending = false
-				break
-			}
-		}
-
-		if allPending && (*taskInfo.Status == gen.CANCELLED || *taskInfo.Status == gen.FAILURE) {
-			initContainerSteps = getInitContainerSteps(run.Name, taskrun.PipelineTaskName, api)
-		} else {
-			initContainerSteps = []gen.BuildTaskCondition{}
-		}
-
-		tasks[i] = gen.BuildTask{
-			EndTime:        taskEndTime,
-			Message:        *taskInfo.Message,
-			Name:           taskrun.PipelineTaskName,
-			Reason:         *taskInfo.Reason,
-			StartTime:      taskStartTime,
-			Status:         *taskInfo.Status,
-			Steps:          taskRunSteps,
-			InitContainers: &initContainerSteps,
-		}
-		i++
-	}
-
-	appImageValues := strings.Split(run.Spec.Params[1].Value.StringVal, "/")
-	imageRepo := fmt.Sprintf("%s/%s", appImageValues[0], appImageValues[1])
-	imageName := strings.Split(appImageValues[len(appImageValues)-1], ":")[0]
-	imageTag := strings.Split(appImageValues[len(appImageValues)-1], ":")[1]
-
-	return &gen.Build{
-		EndTime: &endTime,
-		Message: info.Message,
-		Name:    &run.Name,
-		Parameters: &gen.BuildParameters{
-			BuilderImage:  &run.Spec.Params[0].Value.StringVal,
-			ImageName:     &imageName,
-			ImageTag:      &imageTag,
-			Ref:           &run.Spec.Params[3].Value.StringVal,
-			RepositoryUrl: &imageRepo,
-			SourceUrl:     &run.Spec.Params[2].Value.StringVal,
-		},
-		Reason:    info.Reason,
-		StartTime: &startTime,
-		Status:    info.Status,
-		Tasks:     &tasks,
-	}
-}
-
 func List(
 	api *BuildsApi,
 	toolName string,
@@ -576,7 +414,7 @@ func List(
 
 	builds := make([]gen.Build, len(pipelineRuns))
 	for i, run := range pipelineRuns {
-		builds[i] = *getBuild(&run, api)
+		builds[i] = *getBuild(run)
 	}
 	return http.StatusOK, builds, nil
 }

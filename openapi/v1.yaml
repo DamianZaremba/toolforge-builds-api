@@ -256,7 +256,7 @@ components:
         - $ref: "#/components/schemas/BuildCondition"
         - type: object
           properties:
-            name:
+            build_id:
               type: string
             start_time:
               type: string
@@ -264,80 +264,31 @@ components:
               type: string
             parameters:
               $ref: "#/components/schemas/BuildParameters"
-            tasks:
-              type: array
-              items:
-                $ref: "#/components/schemas/BuildTask"
+            destination_image:
+              type: string
     BuildParameters:
       type: object
       properties:
-        image_name:
-          type: string
-        image_tag:
-          type: string
-        repository_url:
-          type: string
         source_url:
           type: string
         ref:
           type: string
-        builder_image:
-          type: string
-    BuildTask:
-      allOf:
-        - $ref: "#/components/schemas/BuildCondition"
-        - type: object
-          required:
-            - name
-            - start_time
-            - end_time
-            - status
-            - reason
-            - message
-            - steps
-          properties:
-            name:
-              type: string
-            start_time:
-              type: string
-            end_time:
-              type: string
-            steps:
-              type: array
-              items:
-                $ref: "#/components/schemas/BuildTaskCondition"
-            init_containers:
-              type: array
-              items:
-                $ref: "#/components/schemas/BuildTaskCondition"
     BuildCondition:
       type: object
       properties:
         status:
           $ref: "#/components/schemas/BuildStatus"
-        reason:
-          type: string
         message:
-          type: string
-    BuildTaskCondition:
-      type: object
-      properties:
-        name:
-          type: string
-        status:
-          $ref: "#/components/schemas/BuildStatus"
-        reason:
           type: string
     BuildStatus:
       type: string
       enum:
-        - PENDING
-        - RUNNING
-        - SUCCESS
-        - FAILURE
-        - CANCELLED
-        - TIMEOUT
-        - UNKNOWN
+        - BUILD_RUNNING
+        - BUILD_SUCCESS
+        - BUILD_FAILURE
+        - BUILD_CANCELLED
+        - BUILD_TIMEOUT
+        - BUILD_UNKNOWN
 
   securitySchemes:
     key:

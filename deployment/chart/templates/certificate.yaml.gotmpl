@@ -24,7 +24,9 @@ metadata:
   labels:
     name: "builds-api"
 spec:
-  commonName: builds-api.{{ .Release.Namespace }}.svc
+  dnsNames:
+    - "builds-api.{{ .Release.Namespace }}.svc"
+    - "builds-api.{{ .Release.Namespace }}.svc.{{ .Values.certificates.internalClusterDomain }}"
   secretName: "{{ .Release.Name }}-api-gateway-server"
   usages:
     - server auth

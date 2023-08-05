@@ -60,6 +60,31 @@ paths:
       security:
         - key: []
       x-codegen-request-body-name: new_build
+    get:
+      operationId: list
+      responses:
+        "200":
+          description: Returns the list of builds
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Build"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Unauthorized"
+        "500":
+          description: An internal error happened
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InternalError"
+      security:
+        - key: []
   /build/{id}:
     delete:
       operationId: delete
@@ -226,6 +251,45 @@ components:
           type: string
         ref:
           type: string
+    Build:
+      allOf:
+        - $ref: "#/components/schemas/BuildCondition"
+        - type: object
+          properties:
+            build_id:
+              type: string
+            start_time:
+              type: string
+            end_time:
+              type: string
+            parameters:
+              $ref: "#/components/schemas/BuildParameters"
+            destination_image:
+              type: string
+    BuildParameters:
+      type: object
+      properties:
+        source_url:
+          type: string
+        ref:
+          type: string
+    BuildCondition:
+      type: object
+      properties:
+        status:
+          $ref: "#/components/schemas/BuildStatus"
+        message:
+          type: string
+    BuildStatus:
+      type: string
+      enum:
+        - BUILD_RUNNING
+        - BUILD_SUCCESS
+        - BUILD_FAILURE
+        - BUILD_CANCELLED
+        - BUILD_TIMEOUT
+        - BUILD_UNKNOWN
+
   securitySchemes:
     key:
       type: apiKey

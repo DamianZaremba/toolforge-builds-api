@@ -110,12 +110,15 @@ func TestCleanupOldPipelineRuns(t *testing.T) {
 				{
 					ObjectMeta: v1.ObjectMeta{Name: "pipelinerun-failed2", Namespace: "dummy-namespace", Labels: map[string]string{"user": "test-user"}},
 					Status: v1beta1.PipelineRunStatus{
+						Status:                  knative.Status{Conditions: knative.Conditions{{Type: "Succeeded", Status: "False"}}},
 						PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)}},
 					},
 				},
 				{
 					ObjectMeta: v1.ObjectMeta{Name: "pipelinerun-running", Namespace: "dummy-namespace", Labels: map[string]string{"user": "test-user"}},
-					Status:     v1beta1.PipelineRunStatus{},
+					Status: v1beta1.PipelineRunStatus{
+						Status: knative.Status{Conditions: knative.Conditions{{Type: "Succeeded", Status: "Unknown"}}},
+					},
 				},
 				{
 					ObjectMeta: v1.ObjectMeta{Name: "pipelinerun-timedout", Namespace: "dummy-namespace", Labels: map[string]string{"user": "test-user"}},
@@ -607,5 +610,98 @@ func TestDeleteReturnsDeletedBuildName(t *testing.T) {
 	gottenDeletedId := response.(gen.BuildId)
 	if *gottenDeletedId.Id != expectedId {
 		t.Fatalf("Got unexpected build id, expected '%s', got '%s'", expectedId, *gottenDeletedId.Id)
+	}
+}
+
+func TestListReturnsInternalServerErrorOnException(t *testing.T) {
+	mockTekton := tektonFake.Clientset{}
+	mockTekton.Fake.AddReactor(
+		"list",
+		"pipelineruns",
+		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
+			return true, nil, fmt.Errorf("Dummy error")
+		},
+	)
+	api := BuildsApi{
+		Clients: Clients{
+			Tekton: &mockTekton,
+		},
+		Config: Config{
+			BuildIdPrefix:  BuildIdPrefix,
+			BuildNamespace: BuildNamespace,
+		},
+	}
+
+	code, _, err := List(
+		&api,
+		"dummy-tool",
+	)
+
+	if err != nil {
+		t.Fatalf("Got unexpected error: %s", err)
+	}
+
+	if code != 500 {
+		t.Fatalf("I was expecting a 500 response, got: %d", code)
+	}
+}
+
+func TestListReturnsBuilds(t *testing.T) {
+	toolName := "dummy-tool"
+	expectedBuildId := fmt.Sprintf("%s%sbuild", toolName, BuildIdPrefix)
+	mockTekton := tektonFake.NewSimpleClientset(
+		&v1beta1.PipelineRunList{
+			Items: []v1beta1.PipelineRun{
+				{
+					ObjectMeta: v1.ObjectMeta{Name: expectedBuildId, Namespace: BuildNamespace, Labels: map[string]string{"user": toolName}},
+					Spec: v1beta1.PipelineRunSpec{
+						Params: []v1beta1.Param{
+							{Name: "BUILDER_IMAGE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder-classic:22"}},
+							{Name: "APP_IMAGE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "192.168.188.129/tool-minikube-user/tool-raymond:latest"}},
+							{Name: "SOURCE_URL", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "https://github.com/david-caro/wm-lol"}},
+							{Name: "SOURCE_REFERENCE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "value4"}},
+						},
+					},
+					Status: v1beta1.PipelineRunStatus{
+						Status: knative.Status{Conditions: knative.Conditions{{Type: "Succeeded", Status: "True", Message: "All Tasks Succeeded", Reason: "Succeeded"}}},
+						PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{
+							CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)},
+							StartTime:      &v1.Time{Time: time.Date(2023, 6, 8, 15, 0, 0, 0, time.UTC)},
+						},
+					},
+				},
+			},
+		},
+	)
+	api := BuildsApi{
+		Clients: Clients{
+			Tekton: mockTekton,
+		},
+		Config: Config{
+			BuildIdPrefix:  BuildIdPrefix,
+			BuildNamespace: BuildNamespace,
+		},
+	}
+
+	code, response, err := List(
+		&api,
+		toolName,
+	)
+
+	if err != nil {
+		t.Fatalf("Got unexpected error: %s", err)
+	}
+	recorder := httptest.NewRecorder()
+
+	if code != 200 {
+		t.Fatalf("I was expecting a 200 response, got (%s): %v", recorder.Result().Status, recorder.Body.String())
+	}
+
+	gottenBuilds := response.([]gen.Build)
+	if len(gottenBuilds) != 1 {
+		t.Fatalf("Got unexpected number of builds, expected 1, got %d", len(gottenBuilds))
+	}
+	if *gottenBuilds[0].BuildId != expectedBuildId {
+		t.Fatalf("Got unexpected build id, expected '%s', got '%s'", expectedBuildId, *gottenBuilds[0].BuildId)
 	}
 }

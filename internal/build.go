@@ -6,23 +6,13 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	gen "gitlab.wikimedia.org/repos/toolforge/builds-api/gen"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-)
-
-type BuildStatus string
-
-const (
-	BuildStateRunning   BuildStatus = "running"
-	BuildStateError     BuildStatus = "error"
-	BuildStateOk        BuildStatus = "ok"
-	BuildStateCancelled BuildStatus = "cancelled"
-	BuildStateTimedOut  BuildStatus = "timeout"
-	BuildStateUnknown   BuildStatus = "unknown"
 )
 
 // TODO: Get the list of containers from the pod and sort by the task spec
@@ -50,6 +40,9 @@ func getPipelineRuns(clients *Clients, namespace string, listoptions metav1.List
 		listoptions,
 	)
 	if err != nil {
+		log.Warnf(
+			"Got error when listing pipelineruns on namespace %s (%v), maybe new cluster with no runs yet?: %s", namespace, listoptions, err,
+		)
 		return nil, err
 	}
 	sort.Slice(pipelineRuns.Items, func(i, j int) bool {
@@ -58,42 +51,72 @@ func getPipelineRuns(clients *Clients, namespace string, listoptions metav1.List
 	return pipelineRuns.Items, nil
 }
 
-func getBuildStatusFromPipelineRun(pipelineRun v1beta1.PipelineRun) BuildStatus {
+func getBuildConditionFromPipelineRun(run *v1beta1.PipelineRun) gen.BuildCondition {
+	buildCondition := &gen.BuildCondition{}
+	message := ""
+	var status gen.BuildStatus
 
-	if pipelineRun.Status.CompletionTime == nil {
-		return BuildStateRunning
+	if run.Status.Conditions == nil {
+		status = gen.BUILDUNKNOWN
+		message = fmt.Sprintf("build status is unknown. Check the logs with `toolforge build logs %s`", run.Name)
+		buildCondition.Status = &status
+		buildCondition.Message = &message
+		return *buildCondition
 	}
 
-	if pipelineRun.Status.Conditions == nil {
-		return BuildStateError
+	for _, condition := range run.Status.Conditions {
+		message = condition.Message
+		if condition.Status == "False" {
+			// only add the `check the logs...` information to unsuccessful builds
+			message += fmt.Sprintf(". Check the logs with `toolforge build logs %s`", run.Name)
+		}
+		//NOTE: ORDER MATTERS
+		if run.Status.CompletionTime == nil && condition.Status == "Unknown" {
+			status = gen.BUILDRUNNING
+		} else if condition.Status == "False" && condition.Reason == "PipelineRunCancelled" {
+			status = gen.BUILDCANCELLED
+		} else if condition.Status == "False" && condition.Reason == "PipelineRunTimeout" {
+			status = gen.BUILDTIMEOUT
+		} else if condition.Status == "False" {
+			status = gen.BUILDFAILURE
+		} else if condition.Status == "True" {
+			status = gen.BUILDSUCCESS
+		}
 	}
-
-	for _, condition := range pipelineRun.Status.Conditions {
-		if condition.Type == "Succeeded" && condition.Status == "True" {
-			return BuildStateOk
-		}
-
-		if condition.Type == "Succeeded" && condition.Status == "False" {
-			return BuildStateError
-		}
-
-		if condition.Type == "Cancelled" {
-			return BuildStateCancelled
-		}
-		// TODO: use v1beta1.PipelineRunTimedOut when tekton >= 0.48.0
-		if condition.Type == "TimedOut" {
-			return BuildStateTimedOut
-		}
-
-	}
-
-	return BuildStateUnknown
+	buildCondition.Status = &status
+	buildCondition.Message = &message
+	return *buildCondition
 }
 
-func filterPipelineRunsByStatus(pipelineRuns []v1beta1.PipelineRun, filter BuildStatus) []v1beta1.PipelineRun {
+func getBuild(run v1beta1.PipelineRun) *gen.Build {
+	var startTime string
+	var endTime string
+	buildCondition := getBuildConditionFromPipelineRun(&run)
+	if run.Status.StartTime != nil {
+		startTime = run.Status.StartTime.Format(time.RFC3339)
+	}
+	if run.Status.CompletionTime != nil {
+		endTime = run.Status.CompletionTime.Format(time.RFC3339)
+	}
+
+	return &gen.Build{
+		BuildId:   &run.Name,
+		StartTime: &startTime,
+		EndTime:   &endTime,
+		Status:    buildCondition.Status,
+		Message:   buildCondition.Message,
+		Parameters: &gen.BuildParameters{
+			SourceUrl: &run.Spec.Params[2].Value.StringVal,
+			Ref:       &run.Spec.Params[3].Value.StringVal,
+		},
+		DestinationImage: &run.Spec.Params[1].Value.StringVal,
+	}
+}
+
+func filterPipelineRunsByStatus(pipelineRuns []v1beta1.PipelineRun, filter gen.BuildStatus) []v1beta1.PipelineRun {
 	var filteredPipelineRuns []v1beta1.PipelineRun
 	for _, pipelineRun := range pipelineRuns {
-		if getBuildStatusFromPipelineRun(pipelineRun) == filter {
+		if *getBuildConditionFromPipelineRun(&pipelineRun).Status == filter {
 			filteredPipelineRuns = append(filteredPipelineRuns, pipelineRun)
 		}
 	}
@@ -106,9 +129,9 @@ func cleanupOldPipelineRuns(clients *Clients, namespace string, toolName string,
 		return []error{err}
 	}
 	log.Debugf("Found %d pipelineruns. Cleaning up old runs...", len(pipelineRuns))
-	runningPipelineRuns := filterPipelineRunsByStatus(pipelineRuns, BuildStateRunning)
-	successfulPipelineRuns := filterPipelineRunsByStatus(pipelineRuns, BuildStateOk)
-	failedPipelineRuns := filterPipelineRunsByStatus(pipelineRuns, BuildStateError)
+	runningPipelineRuns := filterPipelineRunsByStatus(pipelineRuns, gen.BUILDRUNNING)
+	successfulPipelineRuns := filterPipelineRunsByStatus(pipelineRuns, gen.BUILDSUCCESS)
+	failedPipelineRuns := filterPipelineRunsByStatus(pipelineRuns, gen.BUILDFAILURE)
 	pipelineRunsToKeep := map[string]v1beta1.PipelineRun{}
 	for _, pipelineRun := range runningPipelineRuns {
 		pipelineRunsToKeep[pipelineRun.Name] = pipelineRun
@@ -206,14 +229,10 @@ func Logs(api *BuildsApi, buildId string, toolName string) (int, interface{}) {
 
 	pipelineRuns, err := getPipelineRuns(&api.Clients, api.Config.BuildNamespace, metav1.ListOptions{FieldSelector: fmt.Sprintf("metadata.name=%s", buildId)})
 	if err != nil {
-		log.Warnf(
-			"Got error when listing pipelineruns on namespace %s, maybe new cluster with no runs yet?: %s", api.Config.BuildNamespace, err,
-		)
 		message := "Unable to find any pipelineruns! New installation?"
 		return http.StatusNotFound, gen.NotFound{Message: &message}
 	}
 
-	log.Debugf("Get: Got %d pipeline runs!: %v", len(pipelineRuns), pipelineRuns)
 	if len(pipelineRuns) == 0 {
 		message := fmt.Sprintf("Unable to find build with id '%s'", buildId)
 		return http.StatusNotFound, gen.NotFound{Message: &message}
@@ -379,4 +398,23 @@ func Healthcheck(api *BuildsApi) (int, gen.HealthResponse) {
 		Message: &message,
 		Status:  &status,
 	}
+}
+
+func List(
+	api *BuildsApi,
+	toolName string,
+) (int, interface{}, error) {
+	log.Debugf("Listing builds: toolName=%s, namespace=%s", toolName, api.Config.BuildNamespace)
+	pipelineRuns, err := getPipelineRuns(&api.Clients, api.Config.BuildNamespace, metav1.ListOptions{LabelSelector: fmt.Sprintf("user=%s", toolName)})
+	if err != nil {
+		message := fmt.Sprintf("Got error when listing %s's pipelineruns on namespace %s: %s", toolName, api.Config.BuildNamespace, err)
+		return http.StatusInternalServerError, gen.InternalError{Message: &message}, nil
+	}
+	log.Debugf("Found %d pipelineruns for %s", len(pipelineRuns), toolName)
+
+	builds := make([]gen.Build, len(pipelineRuns))
+	for i, run := range pipelineRuns {
+		builds[i] = *getBuild(run)
+	}
+	return http.StatusOK, builds, nil
 }

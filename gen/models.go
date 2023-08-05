@@ -7,6 +7,16 @@ const (
 	KeyScopes = "key.Scopes"
 )
 
+// Defines values for BuildStatus.
+const (
+	BUILDCANCELLED BuildStatus = "BUILD_CANCELLED"
+	BUILDFAILURE   BuildStatus = "BUILD_FAILURE"
+	BUILDRUNNING   BuildStatus = "BUILD_RUNNING"
+	BUILDSUCCESS   BuildStatus = "BUILD_SUCCESS"
+	BUILDTIMEOUT   BuildStatus = "BUILD_TIMEOUT"
+	BUILDUNKNOWN   BuildStatus = "BUILD_UNKNOWN"
+)
+
 // Defines values for HealthResponseStatus.
 const (
 	ERROR HealthResponseStatus = "ERROR"
@@ -16,6 +26,23 @@ const (
 // BadRequest defines model for BadRequest.
 type BadRequest struct {
 	Message *string `json:"message,omitempty"`
+}
+
+// Build defines model for Build.
+type Build struct {
+	BuildId          *string          `json:"build_id,omitempty"`
+	DestinationImage *string          `json:"destination_image,omitempty"`
+	EndTime          *string          `json:"end_time,omitempty"`
+	Message          *string          `json:"message,omitempty"`
+	Parameters       *BuildParameters `json:"parameters,omitempty"`
+	StartTime        *string          `json:"start_time,omitempty"`
+	Status           *BuildStatus     `json:"status,omitempty"`
+}
+
+// BuildCondition defines model for BuildCondition.
+type BuildCondition struct {
+	Message *string      `json:"message,omitempty"`
+	Status  *BuildStatus `json:"status,omitempty"`
 }
 
 // BuildId defines model for BuildId.
@@ -28,6 +55,12 @@ type BuildLogs struct {
 	Lines *[]string `json:"lines,omitempty"`
 }
 
+// BuildParameters defines model for BuildParameters.
+type BuildParameters struct {
+	Ref       *string `json:"ref,omitempty"`
+	SourceUrl *string `json:"source_url,omitempty"`
+}
+
 // BuildStartParams defines model for BuildStartParams.
 type BuildStartParams struct {
 	// Ref Source code reference to build (ex. a git branch name)
@@ -36,6 +69,9 @@ type BuildStartParams struct {
 	// SourceUrl URL to the public git repository that contains the source code to build
 	SourceUrl string `json:"source_url"`
 }
+
+// BuildStatus defines model for BuildStatus.
+type BuildStatus string
 
 // HealthResponse defines model for HealthResponse.
 type HealthResponse struct {

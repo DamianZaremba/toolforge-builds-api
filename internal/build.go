@@ -151,8 +151,10 @@ func getBuildConditionFromPipelineRun(run *v1beta1.PipelineRun) gen.BuildConditi
 			message += fmt.Sprintf(". Check the logs with `toolforge build logs %s`", run.Name)
 		}
 		//NOTE: ORDER MATTERS
-		if run.Status.CompletionTime == nil && condition.Status == "Unknown" {
+		if condition.Status == "Unknown" && run.Status.CompletionTime == nil {
 			status = gen.BUILDRUNNING
+		} else if condition.Status == "Unknown" && condition.Reason == "PipelineRunCancelled" {
+			status = gen.BUILDCANCELLED
 		} else if condition.Status == "False" && condition.Reason == "PipelineRunCancelled" {
 			status = gen.BUILDCANCELLED
 		} else if condition.Status == "False" && condition.Reason == "PipelineRunTimeout" {
@@ -461,6 +463,88 @@ func Delete(
 	return http.StatusOK, gen.BuildId{Id: &buildId}
 }
 
+func List(
+	api *BuildsApi,
+	toolName string,
+) (int, interface{}) {
+	log.Debugf("Listing builds: toolName=%s, namespace=%s", toolName, api.Config.BuildNamespace)
+	pipelineRuns, err := getPipelineRuns(&api.Clients, api.Config.BuildNamespace, metav1.ListOptions{LabelSelector: fmt.Sprintf("user=%s", toolName)})
+	if err != nil {
+		message := fmt.Sprintf("Got error when listing %s's pipelineruns on namespace %s: %s", toolName, api.Config.BuildNamespace, err)
+		return http.StatusInternalServerError, gen.InternalError{Message: &message}
+	}
+	log.Debugf("Found %d pipelineruns for %s", len(pipelineRuns), toolName)
+
+	builds := make([]gen.Build, len(pipelineRuns))
+	for i, run := range pipelineRuns {
+		builds[i] = *getBuild(run)
+	}
+	return http.StatusOK, builds
+}
+
+func Cancel(
+	api *BuildsApi,
+	buildId string,
+	toolName string,
+) (int, interface{}) {
+	if err := ToolIsAllowedForBuild(toolName, buildId, api.Config.BuildIdPrefix); err != nil {
+		message := fmt.Sprintf("%s", err)
+		return http.StatusUnauthorized, gen.Unauthorized{Message: &message}
+	}
+	log.Debugf("Getting build: buildId=%s, namespace=%s, toolName=%s", buildId, api.Config.BuildNamespace, toolName)
+	pipelineRun, err := api.Clients.Tekton.TektonV1beta1().PipelineRuns(api.Config.BuildNamespace).Get(
+		context.TODO(),
+		buildId,
+		metav1.GetOptions{},
+	)
+	if err != nil {
+		if strings.HasSuffix(err.Error(), "not found") {
+			message := fmt.Sprintf("Build with id %s not found", buildId)
+			return http.StatusNotFound, gen.NotFound{Message: &message}
+		}
+
+		log.Warnf(
+			"Got error when getting pipelinerun %s on namespace %s: %s", buildId, api.Config.BuildNamespace, err,
+		)
+		message := "Error: Unable to cancel build!"
+		return http.StatusInternalServerError, gen.InternalError{Message: &message}
+	}
+
+	buildCondition := getBuildConditionFromPipelineRun(pipelineRun)
+
+	switch *buildCondition.Status {
+	case gen.BUILDSUCCESS, gen.BUILDFAILURE, gen.BUILDTIMEOUT:
+		message := fmt.Sprintf("Build %s cannot be cancelled because it has already completed", buildId)
+		log.Warnf(message)
+		return http.StatusConflict, gen.Conflict{Message: &message}
+	case gen.BUILDCANCELLED:
+		message := fmt.Sprintf("Build %s cannot be cancelled again. It has already been cancelled", buildId)
+		log.Warnf(message)
+		return http.StatusConflict, gen.Conflict{Message: &message}
+	}
+
+	pipelineRun.Spec.Status = "Cancelled"
+
+	log.Debugf("Updating build: buildId=%s, namespace=%s, toolName=%s", buildId, api.Config.BuildNamespace, toolName)
+	_, err = api.Clients.Tekton.TektonV1beta1().PipelineRuns(api.Config.BuildNamespace).Update(
+		context.TODO(),
+		pipelineRun,
+		metav1.UpdateOptions{},
+	)
+	if err != nil {
+		log.Warnf(
+			"Got error when updating pipelinerun %s on namespace %s: %s", buildId, api.Config.BuildNamespace, err,
+		)
+		message := "Unable to cancel build!"
+		return http.StatusInternalServerError, gen.InternalError{Message: &message}
+	}
+
+	// TODO: Figure out how to verify that the successful Update() call actually cancelled the build.
+	// Right now we just assume it did and the only way to verify is to maybe poll for a few seconds?
+	// Maybe check logs if it can be found there?
+	return http.StatusOK, gen.BuildId{Id: &buildId}
+}
+
 func Healthcheck(api *BuildsApi) (int, gen.HealthResponse) {
 	_, err := api.Clients.K8s.CoreV1().Pods(api.Config.BuildNamespace).List(
 		context.TODO(),
@@ -483,23 +567,4 @@ func Healthcheck(api *BuildsApi) (int, gen.HealthResponse) {
 		Message: &message,
 		Status:  &status,
 	}
-}
-
-func List(
-	api *BuildsApi,
-	toolName string,
-) (int, interface{}) {
-	log.Debugf("Listing builds: toolName=%s, namespace=%s", toolName, api.Config.BuildNamespace)
-	pipelineRuns, err := getPipelineRuns(&api.Clients, api.Config.BuildNamespace, metav1.ListOptions{LabelSelector: fmt.Sprintf("user=%s", toolName)})
-	if err != nil {
-		message := fmt.Sprintf("Got error when listing %s's pipelineruns on namespace %s: %s", toolName, api.Config.BuildNamespace, err)
-		return http.StatusInternalServerError, gen.InternalError{Message: &message}
-	}
-	log.Debugf("Found %d pipelineruns for %s", len(pipelineRuns), toolName)
-
-	builds := make([]gen.Build, len(pipelineRuns))
-	for i, run := range pipelineRuns {
-		builds[i] = *getBuild(run)
-	}
-	return http.StatusOK, builds
 }

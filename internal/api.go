@@ -86,6 +86,13 @@ func (api BuildsApi) Delete(ctx echo.Context, id string) error {
 	return ctx.JSON(code, response)
 }
 
+func (api BuildsApi) Cancel(ctx echo.Context, id string) error {
+	toolName := getToolFromContext(ctx)
+
+	code, response := Cancel(&api, id, toolName)
+	return ctx.JSON(code, response)
+}
+
 func (api BuildsApi) Healthcheck(ctx echo.Context) error {
 	code, response := Healthcheck(&api)
 	return ctx.JSON(code, response)

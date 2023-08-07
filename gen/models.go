@@ -73,6 +73,11 @@ type BuildStartParams struct {
 // BuildStatus defines model for BuildStatus.
 type BuildStatus string
 
+// Conflict defines model for Conflict.
+type Conflict struct {
+	Message *string `json:"message,omitempty"`
+}
+
 // HealthResponse defines model for HealthResponse.
 type HealthResponse struct {
 	Message *string               `json:"message,omitempty"`

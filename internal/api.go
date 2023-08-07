@@ -83,6 +83,13 @@ func (api BuildsApi) Delete(ctx echo.Context, id string) error {
 	return ctx.JSON(code, response)
 }
 
+func (api BuildsApi) Cancel(ctx echo.Context, id string) error {
+	toolName := getToolFromContext(ctx)
+
+	code, response := Cancel(&api, id, toolName)
+	return ctx.JSON(code, response)
+}
+
 func (api BuildsApi) Healthcheck(ctx echo.Context) error {
 	code, response := Healthcheck(&api)
 	return ctx.JSON(code, response)
@@ -91,9 +98,6 @@ func (api BuildsApi) Healthcheck(ctx echo.Context) error {
 func (api BuildsApi) List(ctx echo.Context) error {
 	toolName := getToolFromContext(ctx)
 
-	code, response, err := List(&api, toolName)
-	if err != nil {
-		return err
-	}
+	code, response := List(&api, toolName)
 	return ctx.JSON(code, response)
 }

@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
+	"time"
 
 	"github.com/deepmap/oapi-codegen/pkg/middleware"
 	"github.com/getkin/kin-openapi/openapi3filter"
@@ -45,6 +47,14 @@ func main() {
 	if harborRepository == "" {
 		log.Fatalf("No HARBOR_REPOSITORY set, one is needed.")
 	}
+	harborUsername := viper.GetString("HARBOR_USERNAME")
+	if harborUsername == "" {
+		log.Fatalf("No HARBOR_USERNAME set, one is needed.")
+	}
+	harborPassword := viper.GetString("HARBOR_PASSWORD")
+	if harborPassword == "" {
+		log.Fatalf("No HARBOR_PASSWORD set, one is needed.")
+	}
 
 	kubeconfig := viper.GetString("kubeconfig")
 	outOfK8sRun := viper.GetBool("out_of_k8s_run")
@@ -56,6 +66,8 @@ func main() {
 		Clients: *clients,
 		Config: internal.Config{
 			HarborRepository: viper.GetString("harbor_repository"),
+			HarborUsername:   viper.GetString("harbor_username"),
+			HarborPassword:   viper.GetString("harbor_password"),
 			Builder:          viper.GetString("builder"),
 			OkToKeep:         viper.GetInt("ok_builds_to_keep"),
 			FailedToKeep:     viper.GetInt("failed_builds_to_keep"),
@@ -110,10 +122,13 @@ func getApiClients(outOfK8sRun bool, kubeconfig string) (*internal.Clients, erro
 	if err != nil {
 		return nil, err
 	}
+	// create the http client
+	http := &http.Client{Timeout: 60 * time.Second}
 
 	return &internal.Clients{
 		Tekton: tektonClientset,
 		K8s:    clientset,
+		Http:   http,
 	}, nil
 }
 

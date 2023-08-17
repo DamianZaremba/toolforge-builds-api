@@ -19,6 +19,8 @@ type UserContext struct {
 
 type Config struct {
 	HarborRepository string
+	HarborUsername   string
+	HarborPassword   string
 	Builder          string
 	OkToKeep         int
 	FailedToKeep     int
@@ -29,6 +31,7 @@ type Config struct {
 type Clients struct {
 	Tekton versioned.Interface
 	K8s    kubernetes.Interface
+	Http   *http.Client
 }
 
 type BuildsApi struct {

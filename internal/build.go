@@ -403,12 +403,12 @@ func Healthcheck(api *BuildsApi) (int, gen.HealthResponse) {
 func List(
 	api *BuildsApi,
 	toolName string,
-) (int, interface{}, error) {
+) (int, interface{}) {
 	log.Debugf("Listing builds: toolName=%s, namespace=%s", toolName, api.Config.BuildNamespace)
 	pipelineRuns, err := getPipelineRuns(&api.Clients, api.Config.BuildNamespace, metav1.ListOptions{LabelSelector: fmt.Sprintf("user=%s", toolName)})
 	if err != nil {
 		message := fmt.Sprintf("Got error when listing %s's pipelineruns on namespace %s: %s", toolName, api.Config.BuildNamespace, err)
-		return http.StatusInternalServerError, gen.InternalError{Message: &message}, nil
+		return http.StatusInternalServerError, gen.InternalError{Message: &message}
 	}
 	log.Debugf("Found %d pipelineruns for %s", len(pipelineRuns), toolName)
 
@@ -416,5 +416,5 @@ func List(
 	for i, run := range pipelineRuns {
 		builds[i] = *getBuild(run)
 	}
-	return http.StatusOK, builds, nil
+	return http.StatusOK, builds
 }

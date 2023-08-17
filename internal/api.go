@@ -94,9 +94,6 @@ func (api BuildsApi) Healthcheck(ctx echo.Context) error {
 func (api BuildsApi) List(ctx echo.Context) error {
 	toolName := getToolFromContext(ctx)
 
-	code, response, err := List(&api, toolName)
-	if err != nil {
-		return err
-	}
+	code, response := List(&api, toolName)
 	return ctx.JSON(code, response)
 }

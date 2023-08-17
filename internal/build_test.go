@@ -802,14 +802,10 @@ func TestListReturnsInternalServerErrorOnException(t *testing.T) {
 		},
 	}
 
-	code, _, err := List(
+	code, _ := List(
 		&api,
 		"dummy-tool",
 	)
-
-	if err != nil {
-		t.Fatalf("Got unexpected error: %s", err)
-	}
 
 	if code != 500 {
 		t.Fatalf("I was expecting a 500 response, got: %d", code)
@@ -853,14 +849,11 @@ func TestListReturnsBuilds(t *testing.T) {
 		},
 	}
 
-	code, response, err := List(
+	code, response := List(
 		&api,
 		toolName,
 	)
 
-	if err != nil {
-		t.Fatalf("Got unexpected error: %s", err)
-	}
 	recorder := httptest.NewRecorder()
 
 	if code != 200 {

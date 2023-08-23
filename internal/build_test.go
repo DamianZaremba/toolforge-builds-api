@@ -208,57 +208,89 @@ func TestCleanupOldPipelineRuns(t *testing.T) {
 		&v1beta1.PipelineRunList{
 			Items: []v1beta1.PipelineRun{
 				{
-					ObjectMeta: v1.ObjectMeta{Name: "pipelinerun-wrong-user", Namespace: "dummy-namespace", Labels: map[string]string{"user": "wrong-user"}},
+					ObjectMeta: v1.ObjectMeta{
+						Name: "pipelinerun-cancelled", Namespace: "dummy-namespace",
+						CreationTimestamp: v1.Time{Time: time.Date(2023, 6, 8, 23, 0, 0, 0, time.UTC)},
+						Labels:            map[string]string{"user": "test-user"}},
 					Status: v1beta1.PipelineRunStatus{
-						Status:                  knative.Status{Conditions: knative.Conditions{{Type: "Succeeded", Status: "True"}}},
-						PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 22, 0, 0, 0, time.UTC)}},
-					},
-				},
-				{
-					ObjectMeta: v1.ObjectMeta{Name: "pipelinerun-succeeded1", Namespace: "dummy-namespace", Labels: map[string]string{"user": "test-user"}},
-					Status: v1beta1.PipelineRunStatus{
-						Status:                  knative.Status{Conditions: knative.Conditions{{Type: "Succeeded", Status: "True"}}},
+						Status:                  knative.Status{Conditions: knative.Conditions{{Reason: "Cancelled", Status: "False"}}},
 						PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)}},
 					},
 				},
 				{
-					ObjectMeta: v1.ObjectMeta{Name: "pipelinerun-succeeded2", Namespace: "dummy-namespace", Labels: map[string]string{"user": "test-user"}},
+					ObjectMeta: v1.ObjectMeta{
+						Name: "pipelinerun-failed1", Namespace: "dummy-namespace",
+						CreationTimestamp: v1.Time{Time: time.Date(2023, 6, 8, 22, 0, 0, 0, time.UTC)},
+						Labels:            map[string]string{"user": "test-user"}},
 					Status: v1beta1.PipelineRunStatus{
-						Status:                  knative.Status{Conditions: knative.Conditions{{Type: "Succeeded", Status: "True"}}},
+						Status:                  knative.Status{Conditions: knative.Conditions{{Reason: "Failed", Status: "False"}}},
+						PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 15, 0, 0, 0, time.UTC)}},
+					},
+				},
+				{
+					ObjectMeta: v1.ObjectMeta{
+						Name: "pipelinerun-failed2", Namespace: "dummy-namespace",
+						CreationTimestamp: v1.Time{Time: time.Date(2023, 6, 8, 22, 0, 0, 0, time.UTC)},
+						Labels:            map[string]string{"user": "test-user"}},
+					Status: v1beta1.PipelineRunStatus{
+						Status:                  knative.Status{Conditions: knative.Conditions{{Reason: "CreateRunFailed", Status: "False"}}},
+						PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)}},
+					},
+				},
+				{
+					ObjectMeta: v1.ObjectMeta{
+						Name: "pipelinerun-running1", Namespace: "dummy-namespace",
+						CreationTimestamp: v1.Time{Time: time.Date(2023, 6, 8, 21, 0, 0, 0, time.UTC)},
+						Labels:            map[string]string{"user": "test-user"}},
+					Status: v1beta1.PipelineRunStatus{
+						Status: knative.Status{Conditions: knative.Conditions{{Reason: "Running", Status: "Unknown"}}},
+					},
+				},
+				{
+					ObjectMeta: v1.ObjectMeta{
+						Name: "pipelinerun-running2", Namespace: "dummy-namespace",
+						CreationTimestamp: v1.Time{Time: time.Date(2023, 6, 8, 20, 0, 0, 0, time.UTC)},
+						Labels:            map[string]string{"user": "test-user"}},
+					Status: v1beta1.PipelineRunStatus{
+						Status: knative.Status{Conditions: knative.Conditions{{Reason: "Running", Status: "Unknown"}}},
+					},
+				},
+				{
+					ObjectMeta: v1.ObjectMeta{
+						Name: "pipelinerun-running3", Namespace: "dummy-namespace",
+						CreationTimestamp: v1.Time{Time: time.Date(2023, 6, 8, 19, 0, 0, 0, time.UTC)},
+						Labels:            map[string]string{"user": "test-user"}},
+					Status: v1beta1.PipelineRunStatus{
+						Status: knative.Status{Conditions: knative.Conditions{{Reason: "Running", Status: "Unknown"}}},
+					},
+				},
+				{
+					ObjectMeta: v1.ObjectMeta{
+						Name: "pipelinerun-succeeded1", Namespace: "dummy-namespace",
+						CreationTimestamp: v1.Time{Time: time.Date(2023, 6, 8, 18, 0, 0, 0, time.UTC)},
+						Labels:            map[string]string{"user": "test-user"}},
+					Status: v1beta1.PipelineRunStatus{
+						Status:                  knative.Status{Conditions: knative.Conditions{{Reason: "Succeeded", Status: "True"}}},
 						PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 18, 0, 0, 0, time.UTC)}},
 					},
 				},
 				{
-					ObjectMeta: v1.ObjectMeta{Name: "pipelinerun-failed1", Namespace: "dummy-namespace", Labels: map[string]string{"user": "test-user"}},
+					ObjectMeta: v1.ObjectMeta{
+						Name: "pipelinerun-succeeded2", Namespace: "dummy-namespace",
+						CreationTimestamp: v1.Time{Time: time.Date(2023, 6, 8, 17, 0, 0, 0, time.UTC)},
+						Labels:            map[string]string{"user": "test-user"}},
 					Status: v1beta1.PipelineRunStatus{
-						Status:                  knative.Status{Conditions: knative.Conditions{{Type: "Succeeded", Status: "False"}}},
+						Status:                  knative.Status{Conditions: knative.Conditions{{Reason: "Succeeded", Status: "True"}}},
 						PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)}},
 					},
 				},
 				{
-					ObjectMeta: v1.ObjectMeta{Name: "pipelinerun-failed2", Namespace: "dummy-namespace", Labels: map[string]string{"user": "test-user"}},
+					ObjectMeta: v1.ObjectMeta{
+						Name: "pipelinerun-timedout", Namespace: "dummy-namespace",
+						CreationTimestamp: v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)},
+						Labels:            map[string]string{"user": "test-user"}},
 					Status: v1beta1.PipelineRunStatus{
-						Status:                  knative.Status{Conditions: knative.Conditions{{Type: "Succeeded", Status: "False"}}},
-						PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)}},
-					},
-				},
-				{
-					ObjectMeta: v1.ObjectMeta{Name: "pipelinerun-running", Namespace: "dummy-namespace", Labels: map[string]string{"user": "test-user"}},
-					Status: v1beta1.PipelineRunStatus{
-						Status: knative.Status{Conditions: knative.Conditions{{Type: "Succeeded", Status: "Unknown"}}},
-					},
-				},
-				{
-					ObjectMeta: v1.ObjectMeta{Name: "pipelinerun-timedout", Namespace: "dummy-namespace", Labels: map[string]string{"user": "test-user"}},
-					Status: v1beta1.PipelineRunStatus{
-						Status:                  knative.Status{Conditions: knative.Conditions{{Type: "TimedOut"}}},
-						PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)}},
-					},
-				},
-				{
-					ObjectMeta: v1.ObjectMeta{Name: "pipelinerun-cancelled", Namespace: "dummy-namespace", Labels: map[string]string{"user": "test-user"}},
-					Status: v1beta1.PipelineRunStatus{
-						Status:                  knative.Status{Conditions: knative.Conditions{{Type: "Cancelled"}}},
+						Status:                  knative.Status{Conditions: knative.Conditions{{Reason: "PipelineRunTimeout", Status: "False"}}},
 						PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)}},
 					},
 				},
@@ -278,11 +310,12 @@ func TestCleanupOldPipelineRuns(t *testing.T) {
 	}
 
 	expectedPipelineRunNames := map[string]bool{
-		"pipelinerun-wrong-user": false,
-		"pipelinerun-succeeded2": true,
+		"pipelinerun-succeeded1": true,
 		"pipelinerun-failed1":    true,
 		"pipelinerun-failed2":    true,
-		"pipelinerun-running":    true,
+		"pipelinerun-running1":   true,
+		"pipelinerun-running2":   true,
+		"pipelinerun-running3":   true,
 	}
 
 	cleanupOldPipelineRuns(&api.Clients, "dummy-namespace", "test-user", api.Config.OkToKeep, api.Config.FailedToKeep)

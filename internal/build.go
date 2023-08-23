@@ -155,6 +155,10 @@ func getBuildConditionFromPipelineRun(run *v1beta1.PipelineRun) gen.BuildConditi
 		if run.Status.CompletionTime == nil && condition.Status == "Unknown" {
 			status = gen.BUILDRUNNING
 		} else if condition.Status == "False" && condition.Reason == "PipelineRunCancelled" {
+			// TODO: remove this block when We are more confident that
+			// legacy PipelineRuns (that uses "PipelineRunCancelled") has been cleaned up
+			status = gen.BUILDCANCELLED
+		} else if condition.Status == "False" && condition.Reason == "Cancelled" {
 			status = gen.BUILDCANCELLED
 		} else if condition.Status == "False" && condition.Reason == "PipelineRunTimeout" {
 			status = gen.BUILDTIMEOUT

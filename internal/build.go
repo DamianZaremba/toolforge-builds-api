@@ -133,37 +133,40 @@ func getPipelineRuns(clients *Clients, namespace string, listoptions metav1.List
 }
 
 func getBuildConditionFromPipelineRun(run *v1beta1.PipelineRun) gen.BuildCondition {
-	buildCondition := &gen.BuildCondition{}
-	message := ""
-	var status gen.BuildStatus
+	status := gen.BUILDUNKNOWN
+	message := fmt.Sprintf("build status is unknown. Check the logs with `toolforge build logs %s`", run.Name)
+	buildCondition := &gen.BuildCondition{
+		Status:  &status,
+		Message: &message,
+	}
 
 	if run.Status.Conditions == nil {
-		status = gen.BUILDUNKNOWN
-		message = fmt.Sprintf("build status is unknown. Check the logs with `toolforge build logs %s`", run.Name)
-		buildCondition.Status = &status
-		buildCondition.Message = &message
 		return *buildCondition
 	}
 
 	for _, condition := range run.Status.Conditions {
 		message = condition.Message
-		if condition.Status == "False" {
+
+		if condition.Status == "True" {
+			status = gen.BUILDSUCCESS
+		} else if condition.Reason == "Running" {
+			status = gen.BUILDRUNNING
+		} else if condition.Status == "False" {
+			status = gen.BUILDFAILURE
 			// only add the `check the logs...` information to unsuccessful builds
 			message += fmt.Sprintf(". Check the logs with `toolforge build logs %s`", run.Name)
 		}
-		//NOTE: ORDER MATTERS
-		if run.Status.CompletionTime == nil && condition.Status == "Unknown" {
-			status = gen.BUILDRUNNING
-		} else if condition.Status == "False" && condition.Reason == "PipelineRunCancelled" {
-			status = gen.BUILDCANCELLED
-		} else if condition.Status == "False" && condition.Reason == "PipelineRunTimeout" {
+
+		if condition.Reason == "PipelineRunTimeout" {
 			status = gen.BUILDTIMEOUT
-		} else if condition.Status == "False" {
-			status = gen.BUILDFAILURE
-		} else if condition.Status == "True" {
-			status = gen.BUILDSUCCESS
+		} else if condition.Reason == "PipelineRunCancelled" || // TODO: remove this line when we can safely assume legacy pipelineruns has been cleaned up
+			condition.Reason == "Cancelled" ||
+			condition.Reason == "CancelledRunFinally" ||
+			condition.Reason == "StoppedRunFinally" {
+			status = gen.BUILDCANCELLED
 		}
 	}
+
 	buildCondition.Status = &status
 	buildCondition.Message = &message
 	return *buildCondition
@@ -217,7 +220,6 @@ func cleanupOldPipelineRuns(clients *Clients, namespace string, toolName string,
 	for _, pipelineRun := range runningPipelineRuns {
 		pipelineRunsToKeep[pipelineRun.Name] = pipelineRun
 	}
-	log.Debugf("cleanupOldPipelineRuns: okToKeep, failedToKeep: %d, %d", okToKeep, failedToKeep)
 	for idx, pipelineRun := range successfulPipelineRuns {
 		if idx >= okToKeep {
 			break

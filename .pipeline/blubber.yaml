@@ -7,7 +7,7 @@ variants:
       in: /src
     builders:
      - custom:
-         requirements: [.]
+         requirements: [go.mod, go.sum]
          command:
            - go
            - mod
@@ -16,16 +16,20 @@ variants:
   test:
     includes:
       - download-deps
-    entrypoint:
-      - go
-      - test
-      - ./...
+    builders:
+     - custom:
+         requirements: [./]
+         command:
+           - go
+           - test
+           - ./...
 
   build:
     includes:
       - download-deps
     builders:
      - custom:
+         requirements: [./]
          command:
            - make
            - build-api

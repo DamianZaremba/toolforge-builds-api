@@ -1,8 +1,8 @@
 apiVersion: cert-manager.io/v1
 kind: Issuer
 metadata:
-  name: "{{ .Values.api.secretName }}"
+  name: "{{ .Values.api.certSecretName }}"
   labels:
-    name: "{{ .Values.api.secretName }}"
+    name: "{{ .Values.api.certSecretName }}"
 spec:
   selfSigned: {}

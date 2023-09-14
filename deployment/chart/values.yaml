@@ -17,7 +17,7 @@ resources:
 
 api:
   failurePolicy: Fail
-  secretName: builds-api-certs
+  certSecretName: builds-api-certs
 
 nginx:
   image:

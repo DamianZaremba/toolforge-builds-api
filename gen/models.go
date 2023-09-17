@@ -50,9 +50,9 @@ type BuildId struct {
 	Id *string `json:"id,omitempty"`
 }
 
-// BuildLogs defines model for BuildLogs.
-type BuildLogs struct {
-	Lines *[]string `json:"lines,omitempty"`
+// BuildLog defines model for BuildLog.
+type BuildLog struct {
+	Line *string `json:"line,omitempty"`
 }
 
 // BuildParameters defines model for BuildParameters.
@@ -112,6 +112,12 @@ type NotFound struct {
 // Unauthorized defines model for Unauthorized.
 type Unauthorized struct {
 	Message *string `json:"message,omitempty"`
+}
+
+// LogsParams defines parameters for Logs.
+type LogsParams struct {
+	// Follow Follow the logs
+	Follow *bool `form:"follow,omitempty" json:"follow,omitempty"`
 }
 
 // StartJSONRequestBody defines body for Start for application/json ContentType.

@@ -55,10 +55,10 @@ func safeDeref[T any](pointer *T) T {
 	return *pointer
 }
 
-func (api BuildsApi) Logs(ctx echo.Context, buildId string) error {
+func (api BuildsApi) Logs(ctx echo.Context, buildId string, params gen.LogsParams) error {
 	toolName := getToolFromContext(ctx)
 
-	code, response := Logs(&api, buildId, toolName)
+	code, response := Logs(ctx, &api, buildId, toolName, *params.Follow)
 	return ctx.JSON(code, response)
 }
 

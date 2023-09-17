@@ -2,12 +2,15 @@ package internal
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/labstack/echo/v4"
 	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	tektonFake "github.com/tektoncd/pipeline/pkg/client/clientset/versioned/fake"
 	"gitlab.wikimedia.org/repos/toolforge/builds-api/gen"
@@ -349,9 +352,11 @@ func TestLogsReturnsErrorIfNotAllowed(t *testing.T) {
 	api := BuildsApi{}
 
 	code, _ := Logs(
+		nil,
 		&api,
 		"dummy-build-id",
 		"dummy-tool-name",
+		true,
 	)
 
 	if code != 401 {
@@ -377,9 +382,11 @@ func TestLogsReturnsNotFoundIfNoBuildsThere(t *testing.T) {
 	}
 
 	code, _ := Logs(
+		nil,
 		&api,
 		fmt.Sprintf("dummy-tool%sbuild", BuildIdPrefix),
 		"dummy-tool",
+		true,
 	)
 
 	if code != 404 {
@@ -405,9 +412,11 @@ func TestLogsReturnsNotFoundIfApiReturnsError(t *testing.T) {
 	}
 
 	code, _ := Logs(
+		nil,
 		&api,
 		fmt.Sprintf("dummy-tool%sbuild", BuildIdPrefix),
 		"dummy-tool",
+		true,
 	)
 
 	if code != 404 {
@@ -436,9 +445,11 @@ func TestLogsReturnsNotFoundIfApiReturnsMoreThanOneRun(t *testing.T) {
 	}
 
 	code, _ := Logs(
+		nil,
 		&api,
 		fmt.Sprintf("dummy-tool%sbuild", BuildIdPrefix),
 		"dummy-tool",
+		true,
 	)
 
 	if code != 404 {
@@ -478,18 +489,20 @@ func TestLogsReturnsEmptyLineIfRunHasNotStarted(t *testing.T) {
 	}
 
 	code, response := Logs(
+		nil,
 		&api,
 		fmt.Sprintf("dummy-tool%sbuild", BuildIdPrefix),
 		"dummy-tool",
+		true,
 	)
 
 	if code != 200 {
 		t.Fatalf("I was expecting a 200 response, got: %d", code)
 	}
 
-	gottenLogs := response.(gen.BuildLogs)
-	if len(*gottenLogs.Lines) != 1 || (*gottenLogs.Lines)[0] != "" {
-		t.Fatalf("I was expecting only an empty line, got: %s", *gottenLogs.Lines)
+	gottenLog := response.(gen.BuildLog)
+	if *gottenLog.Line != "" {
+		t.Fatalf("I was expecting only an empty line, got: %s", *gottenLog.Line)
 	}
 }
 
@@ -556,6 +569,9 @@ func TestLogsReturnsAllLogsConcatenated(t *testing.T) {
 	mockK8s.AddReactor("get", "pods/logs", func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
 		return true, nil, fmt.Errorf("no reaction implemented for verb:get resource:pods/log")
 	})
+	e := echo.New()
+	rec := httptest.NewRecorder()
+	ctx := e.NewContext(nil, rec)
 	api := BuildsApi{
 		Clients: Clients{
 			Tekton: &mockTekton,
@@ -567,31 +583,46 @@ func TestLogsReturnsAllLogsConcatenated(t *testing.T) {
 		},
 	}
 
-	code, response := Logs(
+	code, _ := Logs(
+		ctx,
 		&api,
 		fmt.Sprintf("dummy-tool%sbuild", BuildIdPrefix),
 		"dummy-tool",
+		false,
 	)
 
 	if code != 200 {
 		t.Fatalf("I was expecting a 200 response, got: %d", code)
 	}
 
-	// We get one line per getLogs fake call (hardcoded upstream)
+	// // We get one line per getLogs fake call (hardcoded upstream)
 	expectedLines := make([]string, 0)
 	containers, _ := getContainersFromPod(&api.Clients, podName, BuildNamespace)
 	for _, container := range containers {
-		expectedLines = append(expectedLines, fmt.Sprintf("%s: fake logs", container))
+		expectedLines = append(expectedLines, fmt.Sprintf("[%s] fake logs", container))
+		expectedLines = append(expectedLines, "\n")
+	}
+	expectedLines = expectedLines[:len(expectedLines)-1] // the last "\n" is not needed
+
+	gottenLines := make([]string, 0)
+	var log gen.BuildLog
+	for _, logStr := range strings.Split(rec.Body.String(), "\n") {
+		if logStr != "" {
+			err := json.Unmarshal([]byte(logStr), &log)
+			if err != nil {
+				t.Fatalf("Unexpected error: %s", err)
+			}
+			gottenLines = append(gottenLines, *log.Line)
+		}
 	}
 
-	gottenLogs := response.(gen.BuildLogs)
-	if len(*gottenLogs.Lines) != len(containers) {
-		t.Fatalf("I was expecting one line per container, got: %s", *gottenLogs.Lines)
+	if len(gottenLines) != len(expectedLines) {
+		t.Fatalf("I was expecting %d lines of log, got: %d", len(expectedLines), len(gottenLines))
 	}
 
 	for index, expectedLine := range expectedLines {
-		if expectedLine != (*gottenLogs.Lines)[index] {
-			t.Fatalf("I was expecting:\n%s\nBut got:\n%s", expectedLines, *gottenLogs.Lines)
+		if expectedLine != gottenLines[index] {
+			t.Fatalf("I was expecting:\n%s\nBut got:\n%s", expectedLine, gottenLines[index])
 		}
 	}
 }

@@ -182,17 +182,22 @@ paths:
           in: path
           description: Id of the build
           required: true
-          style: simple
-          explode: false
           schema:
             type: string
+        - name: follow
+          in: query
+          description: Follow the logs
+          required: false
+          schema:
+            type: boolean
+            default: false
       responses:
         "200":
-          description: returns the logs of a build
+          description: returns the closing string of the log ( main body of logs are returned as stream)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/BuildLogs"
+                $ref: "#/components/schemas/BuildLog"
         "400":
           description: Bad parameters passed
           content:
@@ -251,13 +256,11 @@ components:
       properties:
         message:
           type: string
-    BuildLogs:
+    BuildLog:
       type: object
       properties:
-        lines:
-          type: array
-          items:
-            type: string
+        line:
+          type: string
     NewBuild:
       type: object
       properties:

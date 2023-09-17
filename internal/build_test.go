@@ -2,12 +2,16 @@ package internal
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/labstack/echo/v4"
 	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	tektonFake "github.com/tektoncd/pipeline/pkg/client/clientset/versioned/fake"
 	"gitlab.wikimedia.org/repos/toolforge/builds-api/gen"
@@ -349,13 +353,412 @@ func TestCleanupOldPipelineRuns(t *testing.T) {
 
 }
 
+func TestStreamLogsForContainerForIncompleteLogLines(t *testing.T) {
+	container := "dummy-container"
+	testLogs := [][]string{
+		{
+			"2001-00-00T00:00:00.000000000Z log message 1",
+			"log message 2\n2002-00-00T00:00:00.000000000Z log message 3",
+			"log message 4\n2003-00-00T00:00:00.000000000Z",
+			"\n2004-00-00T00:00:00.000000000Z log message 5\n2005-00-00T00:00:00.000000000Z log message 6",
+			"log message 7\n2006-00-00T00:00:00.000000000Z log message 8\n2007-00-00T00:00:00.000000000Z",
+			"\n2008-00-00T00:00:00.000000000Z log message 9\n2009-00-00T00:00:00.000000000Z log message 10\n2010-00-00T00:00:00.000000000Z",
+			"\n2011-00-00T00:00:00.000000000Z log message 11\n2012-00-00T00:00:00.000000000Z",
+			" log message 12\n",
+			"2013-00-00T00:00:00.000000000Z log message 13\n",
+			"2014-00-00T00:00:00.000000000Z log message 14\n",
+			"2015-00-00T00:00:00.000000000Z log message 15",
+			"log message 16\n",
+			"log message 17",
+		},
+		{
+			"2001-00-00T00:00:00.000000000Z log message 1\n",
+			"2002-00-00T00:00:00.000000000Z log message 2\n",
+			"2003-00-00T00:00:00.000000000Z log message 3\n",
+			"2004-00-00T00:00:00.000000000Z log message 4\n",
+			"2005-00-00T00:00:00.000000000Z log message 5\n",
+			"2006-00-00T00:00:00.000000000Z log message 6\n",
+			"2007-00-00T00:00:00.000000000Z log message 7\n",
+		},
+	}
+	expectedTestResults := [][]string{
+		{
+			fmt.Sprintf("[%s] 2001-00-00T00:00:00.000000000Z log message 1log message 2", container),
+			fmt.Sprintf("[%s] 2002-00-00T00:00:00.000000000Z log message 3log message 4", container),
+			fmt.Sprintf("[%s] 2003-00-00T00:00:00.000000000Z", container),
+			fmt.Sprintf("[%s] 2004-00-00T00:00:00.000000000Z log message 5", container),
+			fmt.Sprintf("[%s] 2005-00-00T00:00:00.000000000Z log message 6log message 7", container),
+			fmt.Sprintf("[%s] 2006-00-00T00:00:00.000000000Z log message 8", container),
+			fmt.Sprintf("[%s] 2007-00-00T00:00:00.000000000Z", container),
+			fmt.Sprintf("[%s] 2008-00-00T00:00:00.000000000Z log message 9", container),
+			fmt.Sprintf("[%s] 2009-00-00T00:00:00.000000000Z log message 10", container),
+			fmt.Sprintf("[%s] 2010-00-00T00:00:00.000000000Z", container),
+			fmt.Sprintf("[%s] 2011-00-00T00:00:00.000000000Z log message 11", container),
+			fmt.Sprintf("[%s] 2012-00-00T00:00:00.000000000Z log message 12", container),
+			fmt.Sprintf("[%s] 2013-00-00T00:00:00.000000000Z log message 13", container),
+			fmt.Sprintf("[%s] 2014-00-00T00:00:00.000000000Z log message 14", container),
+			fmt.Sprintf("[%s] 2015-00-00T00:00:00.000000000Z log message 15log message 16", container),
+			fmt.Sprintf("[%s] log message 17", container),
+		},
+		{
+			fmt.Sprintf("[%s] 2001-00-00T00:00:00.000000000Z log message 1", container),
+			fmt.Sprintf("[%s] 2002-00-00T00:00:00.000000000Z log message 2", container),
+			fmt.Sprintf("[%s] 2003-00-00T00:00:00.000000000Z log message 3", container),
+			fmt.Sprintf("[%s] 2004-00-00T00:00:00.000000000Z log message 4", container),
+			fmt.Sprintf("[%s] 2005-00-00T00:00:00.000000000Z log message 5", container),
+			fmt.Sprintf("[%s] 2006-00-00T00:00:00.000000000Z log message 6", container),
+			fmt.Sprintf("[%s] 2007-00-00T00:00:00.000000000Z log message 7", container),
+		},
+	}
+	for testIndex := range testLogs {
+		reader, writer := io.Pipe()
+		go func() {
+			for _, line := range testLogs[testIndex] {
+				_, _ = writer.Write([]byte(line))
+				time.Sleep(10 * time.Millisecond) // simulate delay between log lines
+			}
+			writer.Close()
+		}()
+		logs := map[string]io.ReadCloser{
+			container: reader,
+		}
+		buffers := map[string][]byte{
+			container: make([]byte, 1024),
+		}
+
+		e := echo.New()
+		rec := httptest.NewRecorder()
+		ctx := e.NewContext(nil, rec)
+
+		err := StreamLogsForContainer(ctx, container, logs, buffers)
+
+		if err != nil {
+			t.Fatalf("Unexpected error: %s", err)
+		}
+
+		gottenLogLines := make([]gen.BuildLog, 0)
+		lines := strings.Split(rec.Body.String(), "\n")
+		for _, logStr := range lines[:len(lines)-1] {
+			var log *gen.BuildLog
+			err := json.Unmarshal([]byte(logStr), &log)
+			if err != nil {
+				t.Fatalf("Unexpected error: %s", err)
+			}
+			gottenLogLines = append(gottenLogLines, *log)
+		}
+
+		expectedLogLines := make([]gen.BuildLog, 0)
+		for _, logStr := range expectedTestResults[testIndex] {
+			logLine := fmt.Sprint(logStr)
+			expectedLogLines = append(expectedLogLines, gen.BuildLog{Line: &logLine})
+		}
+
+		if len(gottenLogLines) != len(expectedLogLines) {
+			t.Fatalf("I was expecting %d lines of log, got: %d", len(expectedLogLines), len(gottenLogLines))
+		}
+		for index := range expectedLogLines {
+			if *expectedLogLines[index].Line != *gottenLogLines[index].Line {
+				t.Fatalf("I was expecting:\n%v\nBut got:\n%v", *expectedLogLines[index].Line, *gottenLogLines[index].Line)
+			}
+		}
+	}
+}
+
+func TestStreamAfterPipelineRunStartedDoesNotWaitIfFollowFalse(t *testing.T) {
+	follow := false
+	expectedDelay := 0 * time.Second // no delay
+	waitTimeout := 3 * time.Second
+	buildId := fmt.Sprintf("dummy-tool%sbuild", BuildIdPrefix)
+
+	mockTekton := tektonFake.NewSimpleClientset(
+		&v1beta1.PipelineRunList{
+			Items: []v1beta1.PipelineRun{
+				{
+					ObjectMeta: v1.ObjectMeta{
+						Name: buildId, Namespace: BuildNamespace,
+					},
+					Status: v1beta1.PipelineRunStatus{
+						PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{
+							StartTime: nil, // set "pipelineRun not yet started" error
+						},
+					},
+				},
+			},
+		},
+	)
+	api := BuildsApi{Clients: Clients{Tekton: mockTekton}}
+
+	var ctx echo.Context
+	listoptions := v1.ListOptions{FieldSelector: fmt.Sprintf("metadata.name=%s", buildId)}
+	start := time.Now()
+	err := StreamAfterPipelineRunStarted(ctx, &api.Clients, BuildNamespace, follow, listoptions, waitTimeout)
+	elapsed := time.Since(start).Round(time.Second)
+
+	if err == nil {
+		t.Fatalf("expected error. got: %s", err)
+	}
+	if !strings.Contains(err.Error(), PipelineRunNotStartedErrorStr) {
+		t.Fatalf("expected error to contain '%s'. got: %s", PipelineRunNotStartedErrorStr, err)
+	}
+	// each loop in StreamAfterPipelineRunStarted has a 1s wait time so using seconds to measure elapsed time is fine
+	if elapsed > expectedDelay {
+		t.Fatalf("expected elapsed time to be less than 0s. got: %s", elapsed)
+	}
+}
+
+func TestStreamAfterPipelineRunStartedDoesNotWaitIfNoError(t *testing.T) {
+
+	follow := true
+	expectedDelay := 0 * time.Second // no delay
+	waitTimeout := 3 * time.Second
+	buildId := fmt.Sprintf("dummy-tool%sbuild", BuildIdPrefix)
+	podName := "dummy-pod"
+
+	mockTekton := tektonFake.NewSimpleClientset(
+		&v1beta1.PipelineRunList{
+			Items: []v1beta1.PipelineRun{
+				{
+					ObjectMeta: v1.ObjectMeta{
+						Name: buildId, Namespace: BuildNamespace,
+					},
+					Status: v1beta1.PipelineRunStatus{
+						PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{
+							StartTime: &v1.Time{Time: time.Now()}, // clear "pipelineRun not yet started" error
+							TaskRuns: map[string]*v1beta1.PipelineRunTaskRunStatus{
+								"task-run-one": {
+									Status: &v1beta1.TaskRunStatus{
+										TaskRunStatusFields: v1beta1.TaskRunStatusFields{
+											PodName: podName,
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	)
+	dummyPod := k8sRuntime.Object(&corev1.Pod{
+		ObjectMeta: v1.ObjectMeta{
+			Name:      podName,
+			Namespace: BuildNamespace,
+		},
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{{Name: "dummy-container"}},
+		},
+	})
+	mockK8s := k8sFake.NewSimpleClientset()
+	// clear all handled errors
+	mockK8s.PrependReactor("get", "pods", func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
+		return true, dummyPod, nil
+	})
+	mockK8s.PrependReactor("get", "pods/logs", func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
+		return true, nil, nil
+	})
+
+	api := BuildsApi{Clients: Clients{Tekton: mockTekton, K8s: mockK8s}}
+
+	e := echo.New()
+	rec := httptest.NewRecorder()
+	ctx := e.NewContext(nil, rec)
+	listoptions := v1.ListOptions{FieldSelector: fmt.Sprintf("metadata.name=%s", buildId)}
+	start := time.Now()
+	err := StreamAfterPipelineRunStarted(ctx, &api.Clients, BuildNamespace, follow, listoptions, waitTimeout)
+	elapsed := time.Since(start).Round(time.Second)
+
+	if err != nil {
+		t.Fatalf("expected error to be nil, got: %s", err)
+	}
+	// each loop in StreamAfterPipelineRunStarted has a 1s wait time so using seconds to measure elapsed time is fine
+	if elapsed > expectedDelay {
+		t.Fatalf("expected elapsed time to be less than 0s. got: %s", elapsed)
+	}
+}
+
+func TestStreamAfterPipelineRunStartedReturnsErrorIfNotHandledError(t *testing.T) {
+	follow := true
+	expectedDelay := 0 * time.Second // no delay
+	waitTimeout := 3 * time.Second
+	buildId := fmt.Sprintf("dummy-tool%sbuild", BuildIdPrefix)
+	unhandledError := "unhandled error"
+
+	mockTekton := tektonFake.NewSimpleClientset(
+		&v1beta1.PipelineRunList{
+			Items: []v1beta1.PipelineRun{
+				{
+					ObjectMeta: v1.ObjectMeta{
+						Name: buildId, Namespace: BuildNamespace,
+					},
+					Status: v1beta1.PipelineRunStatus{
+						PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{
+							StartTime: &v1.Time{Time: time.Now()},
+							TaskRuns: map[string]*v1beta1.PipelineRunTaskRunStatus{
+								"task-run-one": {
+									Status: &v1beta1.TaskRunStatus{
+										TaskRunStatusFields: v1beta1.TaskRunStatusFields{
+											PodName: "",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	)
+	mockK8s := k8sFake.NewSimpleClientset()
+	// set unhandled error
+	mockK8s.PrependReactor("get", "pods", func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
+		return true, nil, fmt.Errorf(unhandledError)
+	})
+
+	api := BuildsApi{Clients: Clients{Tekton: mockTekton, K8s: mockK8s}}
+
+	e := echo.New()
+	rec := httptest.NewRecorder()
+	ctx := e.NewContext(nil, rec)
+	listoptions := v1.ListOptions{FieldSelector: fmt.Sprintf("metadata.name=%s", buildId)}
+	start := time.Now()
+	err := StreamAfterPipelineRunStarted(ctx, &api.Clients, BuildNamespace, follow, listoptions, waitTimeout)
+	elapsed := time.Since(start).Round(time.Second)
+
+	if err == nil {
+		t.Fatalf("expected error to be %s. got: %s", unhandledError, err)
+	}
+	// each loop in StreamAfterPipelineRunStarted has a 1s wait time so using seconds to measure elapsed time is fine
+	if elapsed > expectedDelay {
+		t.Fatalf("expected elapsed time to be less than 0s. got: %s", elapsed)
+	}
+}
+
+func TestStreamAfterPipelineRunStartedReturnErrorIfWaitTimeoutExceeded(t *testing.T) {
+	follow := true
+	waitTimeout := 3 * time.Second
+	buildId := fmt.Sprintf("dummy-tool%sbuild", BuildIdPrefix)
+
+	mockTekton := tektonFake.NewSimpleClientset(
+		&v1beta1.PipelineRunList{
+			Items: []v1beta1.PipelineRun{
+				{
+					ObjectMeta: v1.ObjectMeta{
+						Name: buildId, Namespace: BuildNamespace,
+					},
+					Status: v1beta1.PipelineRunStatus{
+						PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{
+							StartTime: nil, // set "pipelineRun not yet started" error
+						},
+					},
+				},
+			},
+		},
+	)
+
+	api := BuildsApi{Clients: Clients{Tekton: mockTekton}}
+	var ctx echo.Context
+	listoptions := v1.ListOptions{FieldSelector: fmt.Sprintf("metadata.name=%s", buildId)}
+	start := time.Now()
+	err := StreamAfterPipelineRunStarted(ctx, &api.Clients, BuildNamespace, follow, listoptions, waitTimeout)
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatalf("expected error to be %s. got: %s", PipelineRunNotStartedErrorStr, err)
+	}
+	if elapsed <= waitTimeout {
+		t.Fatalf("expected elapsed time to be > %s. got: %s", waitTimeout, elapsed)
+	}
+}
+
+func TestStreamAfterPipelineRunStartedWaitsForTimeDelay(t *testing.T) {
+	follow := true
+	waitDelay := 2 * time.Second
+	waitTimeout := 4 * time.Second
+	podName := "dummy-pod"
+	buildId := fmt.Sprintf("dummy-tool%sbuild", BuildIdPrefix)
+
+	pipelineRun := &v1beta1.PipelineRun{
+		ObjectMeta: v1.ObjectMeta{
+			Name:      buildId,
+			Namespace: BuildNamespace,
+		},
+	}
+	dummyPod := k8sRuntime.Object(&corev1.Pod{
+		ObjectMeta: v1.ObjectMeta{
+			Name:      podName,
+			Namespace: BuildNamespace,
+		},
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{{Name: "dummy-container"}},
+		},
+	})
+
+	mockK8s := k8sFake.NewSimpleClientset()
+	mockTekton := tektonFake.NewSimpleClientset()
+	pipelineRun, err := mockTekton.TektonV1beta1().PipelineRuns(BuildNamespace).Create(context.Background(), pipelineRun, v1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("Unexpected error: %s", err)
+	}
+
+	// set all handled errors
+	pipelineRun.Status.PipelineRunStatusFields.StartTime = nil
+	mockK8s.PrependReactor("get", "pods", func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
+		return true, nil, fmt.Errorf("resource name may not be empty")
+	})
+	mockK8s.PrependReactor("get", "pods/logs", func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
+		return true, nil, fmt.Errorf("PodInitializing")
+	})
+
+	go func() { // clear all handled errors after waitDelay
+		time.Sleep(waitDelay)
+
+		pipelineRun.Status.PipelineRunStatusFields.StartTime = &v1.Time{Time: time.Now()}
+		_, _ = mockTekton.TektonV1beta1().PipelineRuns(BuildNamespace).Update(context.Background(), pipelineRun, v1.UpdateOptions{})
+		mockK8s.PrependReactor("get", "pods", func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
+			return true, dummyPod, nil
+		})
+		mockK8s.PrependReactor("get", "pods/logs", func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
+			return true, nil, nil
+		})
+	}()
+
+	e := echo.New()
+	rec := httptest.NewRecorder()
+	ctx := e.NewContext(nil, rec)
+	api := BuildsApi{
+		Clients: Clients{
+			Tekton: mockTekton,
+			K8s:    mockK8s,
+		},
+		Config: Config{
+			BuildIdPrefix:  BuildIdPrefix,
+			BuildNamespace: BuildNamespace,
+		},
+	}
+
+	listoptions := v1.ListOptions{FieldSelector: fmt.Sprintf("metadata.name=%s", buildId)}
+	start := time.Now()
+	err = StreamAfterPipelineRunStarted(ctx, &api.Clients, BuildNamespace, follow, listoptions, waitTimeout)
+	elapsed := time.Since(start)
+
+	if err != nil {
+		t.Fatalf("expected error to be nil. got: %s", err)
+	}
+	// elapsed time should be greater than waitDelay but less than waitTimeout
+	if elapsed < waitDelay || elapsed > waitTimeout {
+		t.Fatalf("expected elapsed time to be between %s and %s. got: %s", waitDelay, waitTimeout, elapsed)
+	}
+}
+
 func TestLogsReturnsErrorIfNotAllowed(t *testing.T) {
 	api := BuildsApi{}
 
 	code, _ := Logs(
+		nil,
 		&api,
 		"dummy-build-id",
 		"dummy-tool-name",
+		true,
 	)
 
 	if code != 401 {
@@ -381,9 +784,11 @@ func TestLogsReturnsNotFoundIfNoBuildsThere(t *testing.T) {
 	}
 
 	code, _ := Logs(
+		nil,
 		&api,
 		fmt.Sprintf("dummy-tool%sbuild", BuildIdPrefix),
 		"dummy-tool",
+		true,
 	)
 
 	if code != 404 {
@@ -409,9 +814,11 @@ func TestLogsReturnsNotFoundIfApiReturnsError(t *testing.T) {
 	}
 
 	code, _ := Logs(
+		nil,
 		&api,
 		fmt.Sprintf("dummy-tool%sbuild", BuildIdPrefix),
 		"dummy-tool",
+		true,
 	)
 
 	if code != 404 {
@@ -440,9 +847,11 @@ func TestLogsReturnsNotFoundIfApiReturnsMoreThanOneRun(t *testing.T) {
 	}
 
 	code, _ := Logs(
+		nil,
 		&api,
 		fmt.Sprintf("dummy-tool%sbuild", BuildIdPrefix),
 		"dummy-tool",
+		true,
 	)
 
 	if code != 404 {
@@ -451,49 +860,43 @@ func TestLogsReturnsNotFoundIfApiReturnsMoreThanOneRun(t *testing.T) {
 
 }
 
-func TestLogsReturnsEmptyLineIfRunHasNotStarted(t *testing.T) {
-	mockTekton := tektonFake.Clientset{}
-	pipelineRunList := v1beta1.PipelineRunList{
-		Items: []v1beta1.PipelineRun{
-			{
-				Status: v1beta1.PipelineRunStatus{
-					PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{
-						StartTime: nil,
-					},
+func TestLogsXAccelBufferHeaderValue(t *testing.T) {
+	var testCases = []bool{true, false}
+	for _, follow := range testCases {
+		t.Run(fmt.Sprintf("follow=%t", follow), func(t *testing.T) {
+			buildName := "dummybuild"
+			params := gen.LogsParams{
+				Follow: &follow,
+			}
+			e := echo.New()
+			request := httptest.NewRequest("GET", fmt.Sprintf("http://127.0.0.1:8080/v1/build/logs/%s?follow=%t", buildName, follow), nil)
+			request.Header.Set("Ssl-Client-Subject-Dn", "O=toolforge,CN=dummyuser")
+			recorder := httptest.NewRecorder()
+			ctx := UserContext{
+				Context: e.NewContext(request, recorder),
+				User:    "dummyuser",
+			}
+			mockTekton := tektonFake.NewSimpleClientset()
+			mockK8s := k8sFake.NewSimpleClientset()
+			api := BuildsApi{
+				Clients: Clients{
+					Tekton: mockTekton,
+					K8s:    mockK8s,
 				},
-			},
-		},
-	}
-	mockTekton.Fake.AddReactor(
-		"list",
-		"pipelineruns",
-		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
-			return true, &pipelineRunList, nil
-		},
-	)
-	api := BuildsApi{
-		Clients: Clients{
-			Tekton: &mockTekton,
-		},
-		Config: Config{
-			BuildIdPrefix:  BuildIdPrefix,
-			BuildNamespace: BuildNamespace,
-		},
-	}
+				Config: Config{
+					BuildIdPrefix:  BuildIdPrefix,
+					BuildNamespace: BuildNamespace,
+				},
+			}
+			_ = api.Logs(ctx, buildName, params)
 
-	code, response := Logs(
-		&api,
-		fmt.Sprintf("dummy-tool%sbuild", BuildIdPrefix),
-		"dummy-tool",
-	)
-
-	if code != 200 {
-		t.Fatalf("I was expecting a 200 response, got: %d", code)
-	}
-
-	gottenLogs := response.(gen.BuildLogs)
-	if len(*gottenLogs.Lines) != 1 || (*gottenLogs.Lines)[0] != "" {
-		t.Fatalf("I was expecting only an empty line, got: %s", *gottenLogs.Lines)
+			if follow && recorder.Header().Get("X-Accel-Buffering") != "no" {
+				t.Fatalf("X-Accel-Buffering header should be set to 'no' when follow is true")
+			}
+			if !follow && recorder.Header().Get("X-Accel-Buffering") != "" {
+				t.Fatalf("X-Accel-Buffering header should not be set when follow is false")
+			}
+		})
 	}
 }
 
@@ -560,6 +963,9 @@ func TestLogsReturnsAllLogsConcatenated(t *testing.T) {
 	mockK8s.AddReactor("get", "pods/logs", func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
 		return true, nil, fmt.Errorf("no reaction implemented for verb:get resource:pods/log")
 	})
+	e := echo.New()
+	rec := httptest.NewRecorder()
+	ctx := e.NewContext(nil, rec)
 	api := BuildsApi{
 		Clients: Clients{
 			Tekton: &mockTekton,
@@ -571,10 +977,12 @@ func TestLogsReturnsAllLogsConcatenated(t *testing.T) {
 		},
 	}
 
-	code, response := Logs(
+	code, _ := Logs(
+		ctx,
 		&api,
 		fmt.Sprintf("dummy-tool%sbuild", BuildIdPrefix),
 		"dummy-tool",
+		false,
 	)
 
 	if code != 200 {
@@ -582,20 +990,31 @@ func TestLogsReturnsAllLogsConcatenated(t *testing.T) {
 	}
 
 	// We get one line per getLogs fake call (hardcoded upstream)
-	expectedLines := make([]string, 0)
+	expectedLines := make([]gen.BuildLog, 0)
 	containers, _ := getContainersFromPod(&api.Clients, podName, BuildNamespace)
 	for _, container := range containers {
-		expectedLines = append(expectedLines, fmt.Sprintf("%s: fake logs", container))
+		logLine := fmt.Sprintf("[%s] fake logs", container)
+		expectedLines = append(expectedLines, gen.BuildLog{Line: &logLine})
 	}
 
-	gottenLogs := response.(gen.BuildLogs)
-	if len(*gottenLogs.Lines) != len(containers) {
-		t.Fatalf("I was expecting one line per container, got: %s", *gottenLogs.Lines)
+	gottenLines := make([]gen.BuildLog, 0)
+	lines := strings.Split(rec.Body.String(), "\n")
+	for _, logStr := range lines[:len(lines)-1] {
+		var log *gen.BuildLog
+		err := json.Unmarshal([]byte(logStr), &log)
+		if err != nil {
+			t.Fatalf("Unexpected error: %s", err)
+		}
+		gottenLines = append(gottenLines, *log)
+	}
+
+	if len(gottenLines) != len(expectedLines) {
+		t.Fatalf("I was expecting %d lines of log, got: %d", len(expectedLines), len(gottenLines))
 	}
 
 	for index, expectedLine := range expectedLines {
-		if expectedLine != (*gottenLogs.Lines)[index] {
-			t.Fatalf("I was expecting:\n%s\nBut got:\n%s", expectedLines, *gottenLogs.Lines)
+		if *expectedLine.Line != *gottenLines[index].Line {
+			t.Fatalf("I was expecting:\n%v\nBut got:\n%v", *expectedLine.Line, *gottenLines[index].Line)
 		}
 	}
 }

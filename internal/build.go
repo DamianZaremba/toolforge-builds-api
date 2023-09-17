@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/labstack/echo/v4"
 	log "github.com/sirupsen/logrus"
 	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	gen "gitlab.wikimedia.org/repos/toolforge/builds-api/gen"
@@ -185,7 +186,7 @@ func getBuildConditionFromPipelineRun(run *v1beta1.PipelineRun) gen.BuildConditi
 func getpipelineRunParam(pipelineRun v1beta1.PipelineRun, name string) string {
 	for _, param := range pipelineRun.Spec.Params {
 		if param.Name == name {
-			return param.Value.StringVal
+			return fmt.Sprint(param.Value.StringVal)
 		}
 	}
 	log.Warnf(
@@ -276,51 +277,90 @@ func cleanupOldPipelineRuns(clients *Clients, namespace string, toolName string,
 	return deleteErrors
 }
 
-func getAllContainerLogs(clients *Clients, containers []string, podName string, namespace string) ([]string, error) {
+func sendLine(ctx echo.Context, line string) error {
+	err := json.NewEncoder(ctx.Response()).Encode(gen.BuildLog{Line: &line})
+	if err != nil {
+		log.Debugf("Error encoding log line: %s", err)
+		return err
+	}
+	ctx.Response().Flush()
+	return nil
+}
 
-	allLogs := make([]string, 0)
-	for _, container := range containers {
-		logs := clients.K8s.CoreV1().Pods(namespace).GetLogs(
-			podName, &v1.PodLogOptions{
-				Timestamps: true,
-				Container:  container,
-			},
-		)
-		rawLogs := []byte{}
-		result := logs.Do(context.TODO())
-		err := result.Error()
-
-		if err == nil {
-			rawLogs, err = result.Raw()
+func StreamLogsForContainer(ctx echo.Context, container string, logs map[string]io.ReadCloser, buffers map[string][]byte) error {
+	partialLogLine := "" // used to handle fractional lines (i.e lines that are not terminated by a newline)
+	for {
+		n, err := logs[container].Read(buffers[container])
+		if n > 0 {
+			logLines := strings.Split(fmt.Sprintf("%s%s", partialLogLine, string(buffers[container][:n])), "\n")
+			partialLogLine = logLines[len(logLines)-1]
+			logLines = logLines[:len(logLines)-1]
+			for _, logLine := range logLines {
+				logLine = fmt.Sprintf("[%s] %s", container, logLine) // prepend container name to log line
+				err := sendLine(ctx, logLine)
+				if err != nil {
+					return err
+				}
+			}
 		}
+		if err != nil {
+			if err == io.EOF {
+				if partialLogLine != "" {
+					err := sendLine(ctx, fmt.Sprintf("[%s] %s", container, partialLogLine))
+					if err != nil {
+						return err
+					}
+				}
+				break
+			}
+			log.Debugf("Error reading logs: %s", err)
+			return err
+		}
+	}
+	return nil
+}
 
+func streamAllContainerLogs(ctx echo.Context, clients *Clients, containers []string, podName string, namespace string, follow bool) error {
+	logs := map[string]io.ReadCloser{}
+	containerLogBuffers := make(map[string][]byte)
+	for _, container := range containers {
+		containerLog, err := clients.K8s.CoreV1().Pods(namespace).GetLogs(
+			podName,
+			&v1.PodLogOptions{
+				Container:  container,
+				Timestamps: true,
+				Follow:     follow,
+			},
+		).Stream(context.Background())
 		if err != nil {
 			// As we changed the containers in the runs, some runs don't have the containers we look for
 			if strings.HasPrefix(fmt.Sprintf("%s", err), fmt.Sprintf("container %s is not valid for pod", container)) {
+				logs[container] = nil
 				continue
 			}
-			return nil, err
+			return err
 		}
-
-		stringLogs := string(rawLogs)
-		logLines := make([]string, strings.Count("\n", stringLogs))
-		for _, logLine := range strings.Split(stringLogs, "\n") {
-			logLines = append(logLines, fmt.Sprintf("%s: %s", container, logLine))
-		}
-
-		allLogs = append(allLogs, strings.Join(logLines, "\n"))
+		defer containerLog.Close()
+		logs[container] = containerLog
+		containerLogBuffers[container] = make([]byte, 1024)
 	}
-	return allLogs, nil
+	for _, container := range containers {
+		if logs[container] == nil {
+			continue
+		}
+		err := StreamLogsForContainer(ctx, container, logs, containerLogBuffers)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-func getPipelineRunLogs(pipelineRun *v1beta1.PipelineRun, clients *Clients, namespace string) (string, error) {
+func streamPipelineRunLogs(ctx echo.Context, clients *Clients, namespace string, pipelineRun *v1beta1.PipelineRun, follow bool) error {
 	// TODO: retrieve also logs from pods that failed to start
-
 	if !pipelineRun.HasStarted() {
-		return "", nil
+		return fmt.Errorf(PipelineRunNotStartedErrorStr)
 	}
-
-	var allLogs []string
 	for _, taskRun := range pipelineRun.Status.TaskRuns {
 		containers, err := getContainersFromPod(
 			clients,
@@ -328,24 +368,57 @@ func getPipelineRunLogs(pipelineRun *v1beta1.PipelineRun, clients *Clients, name
 			namespace,
 		)
 		if err != nil {
-			return "", err
+			return err
 		}
-
-		allLogs, err = getAllContainerLogs(clients, containers, taskRun.Status.PodName, namespace)
+		err = streamAllContainerLogs(ctx, clients, containers, taskRun.Status.PodName, namespace, follow)
 		if err != nil {
-			return "", err
+			return err
 		}
 	}
-	return strings.Join(allLogs, "\n"), nil
+	return nil
 }
 
-func Logs(api *BuildsApi, buildId string, toolName string) (int, interface{}) {
+func StreamAfterPipelineRunStarted(ctx echo.Context, clients *Clients, namespace string, follow bool, listoptions metav1.ListOptions, timeout time.Duration) error {
+	start_time := time.Now()
+	current_time := start_time
+
+	for current_time.Sub(start_time) < timeout {
+		// we need get the pipelinerun in each loop or we will get a stale object
+		pipelineRun, err := getPipelineRuns(clients, namespace, listoptions)
+		if err != nil {
+			message := "unable to find any pipelineruns! New installation?"
+			return fmt.Errorf(message)
+		}
+		err = streamPipelineRunLogs(ctx, clients, namespace, &pipelineRun[0], follow)
+		if err == nil {
+			return nil
+		}
+		if err != nil {
+			if !follow {
+				return err
+			}
+			if !strings.Contains(err.Error(), PipelineRunNotStartedErrorStr) &&
+				!strings.Contains(err.Error(), ResourceNameEmptyErrorStr) &&
+				!strings.Contains(err.Error(), PodInitializingErrorStr) {
+				return err
+			}
+		}
+		time.Sleep(1 * time.Second)
+		current_time = time.Now()
+	}
+	return fmt.Errorf("timed out waiting for pipelinerun to start")
+}
+
+func Logs(ctx echo.Context, api *BuildsApi, buildId string, toolName string, follow bool) (int, interface{}) {
+	waitTimeout := 1 * time.Minute
+
 	if err := ToolIsAllowedForBuild(toolName, buildId, api.Config.BuildIdPrefix); err != nil {
 		message := fmt.Sprintf("%s", err)
 		return http.StatusUnauthorized, gen.Unauthorized{Message: &message}
 	}
 
-	pipelineRuns, err := getPipelineRuns(&api.Clients, api.Config.BuildNamespace, metav1.ListOptions{FieldSelector: fmt.Sprintf("metadata.name=%s", buildId)})
+	listoptions := metav1.ListOptions{FieldSelector: fmt.Sprintf("metadata.name=%s", buildId)}
+	pipelineRuns, err := getPipelineRuns(&api.Clients, api.Config.BuildNamespace, listoptions)
 	if err != nil {
 		message := "Unable to find any pipelineruns! New installation?"
 		return http.StatusNotFound, gen.NotFound{Message: &message}
@@ -361,18 +434,16 @@ func Logs(api *BuildsApi, buildId string, toolName string) (int, interface{}) {
 		return http.StatusNotFound, gen.NotFound{Message: &message}
 	}
 
-	pipelineRun := pipelineRuns[0]
-	logs, err := getPipelineRunLogs(&pipelineRun, &api.Clients, api.Config.BuildNamespace)
+	err = StreamAfterPipelineRunStarted(ctx, &api.Clients, api.Config.BuildNamespace, follow, listoptions, waitTimeout)
 	if err != nil {
 		message := fmt.Sprintf("Error getting the logs for %s: %s", buildId, err)
 		log.Errorf(message)
+		// Note that when streaming, once the first line is sent, you can't really change the http error code,
+		// so this internal server error is only effective if we did not yet send any data.
 		return http.StatusInternalServerError, gen.InternalError{Message: &message}
 	}
 
-	lines := strings.Split(logs, "\n")
-	return http.StatusOK, gen.BuildLogs{
-		Lines: &lines,
-	}
+	return http.StatusOK, nil
 }
 
 func Start(

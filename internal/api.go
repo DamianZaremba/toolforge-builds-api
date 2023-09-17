@@ -56,10 +56,17 @@ func safeDeref[T any](pointer *T) T {
 	return *pointer
 }
 
-func (api BuildsApi) Logs(ctx echo.Context, buildId string) error {
+func (api BuildsApi) Logs(ctx echo.Context, buildId string, params gen.LogsParams) error {
 	toolName := getToolFromContext(ctx)
-
-	code, response := Logs(&api, buildId, toolName)
+	if *params.Follow {
+		// Disable buffering on nginx to be able to stream replies
+		// see https://www.nginx.com/resources/wiki/start/topics/examples/x-accel/#x-accel-buffering
+		ctx.Response().Header().Set("X-Accel-Buffering", "no")
+	}
+	code, response := Logs(ctx, &api, buildId, toolName, *params.Follow)
+	if response == nil {
+		return nil
+	}
 	return ctx.JSON(code, response)
 }
 

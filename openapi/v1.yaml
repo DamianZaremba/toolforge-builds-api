@@ -269,17 +269,24 @@ paths:
           in: path
           description: Id of the build
           required: true
-          style: simple
-          explode: false
           schema:
             type: string
+        - name: follow
+          in: query
+          description: Follow the logs
+          required: false
+          schema:
+            type: boolean
+            default: false
       responses:
         "200":
-          description: returns the logs of a build
+          description: returns newline separated sequence of "#/components/schemas/BuildLog" or
+                       "#/component/schemas/InternalError" if there was an error after the
+                       streaming has started (as the http status code can't be changed)
           content:
-            application/json:
+            text/plain:
               schema:
-                $ref: "#/components/schemas/BuildLogs"
+                $ref: "#/components/schemas/BuildLog"
         "400":
           description: Bad parameters passed
           content:
@@ -304,8 +311,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/InternalError"
-      security:
-        - key: []
   /openapi.json:
     get:
       operationId: openapi
@@ -365,13 +370,11 @@ components:
       properties:
         message:
           type: string
-    BuildLogs:
+    BuildLog:
       type: object
       properties:
-        lines:
-          type: array
-          items:
-            type: string
+        line:
+          type: string
     NewBuild:
       type: object
       properties:

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/labstack/echo/v4"
 	log "github.com/sirupsen/logrus"
 	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	gen "gitlab.wikimedia.org/repos/toolforge/builds-api/gen"
@@ -175,7 +176,7 @@ func getBuildConditionFromPipelineRun(run *v1beta1.PipelineRun) gen.BuildConditi
 func getpipelineRunParam(pipelineRun v1beta1.PipelineRun, name string) string {
 	for _, param := range pipelineRun.Spec.Params {
 		if param.Name == name {
-			return fmt.Sprintf("%s", param.Value.StringVal)
+			return fmt.Sprint(param.Value.StringVal)
 		}
 	}
 	log.Warnf(
@@ -266,51 +267,77 @@ func cleanupOldPipelineRuns(clients *Clients, namespace string, toolName string,
 	return deleteErrors
 }
 
-func getAllContainerLogs(clients *Clients, containers []string, podName string, namespace string) ([]string, error) {
+func streamAllContainerLogs(ctx echo.Context, clients *Clients, containers []string, podName string, namespace string, follow bool) error {
 
-	allLogs := make([]string, 0)
+	logs := map[string]io.ReadCloser{}
+	containerLogBuffers := make(map[string][]byte)
 	for _, container := range containers {
-		logs := clients.K8s.CoreV1().Pods(namespace).GetLogs(
-			podName, &v1.PodLogOptions{
-				Timestamps: true,
+		containerLog, err := clients.K8s.CoreV1().Pods(namespace).GetLogs(
+			podName,
+			&v1.PodLogOptions{
 				Container:  container,
+				Timestamps: true,
+				Follow:     follow,
 			},
-		)
-		rawLogs := []byte{}
-		result := logs.Do(context.TODO())
-		err := result.Error()
-
-		if err == nil {
-			rawLogs, err = result.Raw()
-		}
-
+		).Stream(context.Background())
 		if err != nil {
 			// As we changed the containers in the runs, some runs don't have the containers we look for
 			if strings.HasPrefix(fmt.Sprintf("%s", err), fmt.Sprintf("container %s is not valid for pod", container)) {
+				logs[container] = nil
 				continue
 			}
-			return nil, err
+			return err
 		}
-
-		stringLogs := string(rawLogs)
-		logLines := make([]string, strings.Count("\n", stringLogs))
-		for _, logLine := range strings.Split(stringLogs, "\n") {
-			logLines = append(logLines, fmt.Sprintf("%s: %s", container, logLine))
-		}
-
-		allLogs = append(allLogs, strings.Join(logLines, "\n"))
+		defer containerLog.Close()
+		logs[container] = containerLog
+		containerLogBuffers[container] = make([]byte, 1024)
 	}
-	return allLogs, nil
+	for _, container := range containers {
+		if logs[container] == nil {
+			continue
+		}
+		for {
+			n, err := logs[container].Read(containerLogBuffers[container])
+			if err != nil {
+				if err == io.EOF {
+					if container == containers[len(containers)-1] {
+						return nil
+					}
+					logLine := "\n"
+					err := json.NewEncoder(ctx.Response()).Encode(gen.BuildLog{Line: &logLine})
+					if err != nil {
+						log.Debugf("Error encoding empty log line: %s", err)
+					}
+					break
+				}
+				log.Debugf("Error reading logs: %s", err)
+				return err
+			}
+			logString := string(containerLogBuffers[container][:n])
+			for _, logLine := range strings.Split(logString, "\n") {
+				if logLine == "" {
+					continue
+				}
+				// TODO: differentiate the different containers by color
+				logLine = fmt.Sprintf("[%s] %s", container, logLine) // prepend container name to log line
+				err := json.NewEncoder(ctx.Response()).Encode(gen.BuildLog{Line: &logLine})
+				if err != nil {
+					log.Debugf("Error encoding log line: %s", err)
+				}
+			}
+			ctx.Response().Flush()
+		}
+	}
+	return nil
 }
 
-func getPipelineRunLogs(pipelineRun *v1beta1.PipelineRun, clients *Clients, namespace string) (string, error) {
+func streamPipelineRunLogs(ctx echo.Context, pipelineRun *v1beta1.PipelineRun, clients *Clients, namespace string, follow bool) (string, error) {
 	// TODO: retrieve also logs from pods that failed to start
 
 	if !pipelineRun.HasStarted() {
 		return "", nil
 	}
 
-	var allLogs []string
 	for _, taskRun := range pipelineRun.Status.TaskRuns {
 		containers, err := getContainersFromPod(
 			clients,
@@ -321,15 +348,15 @@ func getPipelineRunLogs(pipelineRun *v1beta1.PipelineRun, clients *Clients, name
 			return "", err
 		}
 
-		allLogs, err = getAllContainerLogs(clients, containers, taskRun.Status.PodName, namespace)
+		err = streamAllContainerLogs(ctx, clients, containers, taskRun.Status.PodName, namespace, follow)
 		if err != nil {
 			return "", err
 		}
 	}
-	return strings.Join(allLogs, "\n"), nil
+	return "\n", nil
 }
 
-func Logs(api *BuildsApi, buildId string, toolName string) (int, interface{}) {
+func Logs(ctx echo.Context, api *BuildsApi, buildId string, toolName string, follow bool) (int, interface{}) {
 	if err := ToolIsAllowedForBuild(toolName, buildId, api.Config.BuildIdPrefix); err != nil {
 		message := fmt.Sprintf("%s", err)
 		return http.StatusUnauthorized, gen.Unauthorized{Message: &message}
@@ -352,17 +379,14 @@ func Logs(api *BuildsApi, buildId string, toolName string) (int, interface{}) {
 	}
 
 	pipelineRun := pipelineRuns[0]
-	logs, err := getPipelineRunLogs(&pipelineRun, &api.Clients, api.Config.BuildNamespace)
+	endLine, err := streamPipelineRunLogs(ctx, &pipelineRun, &api.Clients, api.Config.BuildNamespace, follow)
 	if err != nil {
 		message := fmt.Sprintf("Error getting the logs for %s: %s", buildId, err)
 		log.Errorf(message)
 		return http.StatusInternalServerError, gen.InternalError{Message: &message}
 	}
 
-	lines := strings.Split(logs, "\n")
-	return http.StatusOK, gen.BuildLogs{
-		Lines: &lines,
-	}
+	return http.StatusOK, gen.BuildLog{Line: &endLine}
 }
 
 func Start(

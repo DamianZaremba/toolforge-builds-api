@@ -268,6 +268,11 @@ func cleanupOldPipelineRuns(clients *Clients, namespace string, toolName string,
 }
 
 func streamAllContainerLogs(ctx echo.Context, clients *Clients, containers []string, podName string, namespace string, follow bool) error {
+	if follow {
+		// Disable buffering on nginx to be able to stream replies
+		// see https://www.nginx.com/resources/wiki/start/topics/examples/x-accel/#x-accel-buffering
+		ctx.Response().Header().Set("X-Accel-Buffering", "no")
+	}
 
 	logs := map[string]io.ReadCloser{}
 	containerLogBuffers := make(map[string][]byte)

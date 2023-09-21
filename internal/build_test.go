@@ -1164,3 +1164,172 @@ func TestGetReturnsAPIError(t *testing.T) {
 		t.Fatalf("Expected response '%s' but got '%s'", expected_response, *resp.Message)
 	}
 }
+
+func TestLatestReturnsBuildsOk(t *testing.T) {
+	toolName := "dummy-tool"
+	baseBuildId := fmt.Sprintf("%s%sbuild", toolName, BuildIdPrefix)
+	latestBuildId := fmt.Sprintf("%s-some", baseBuildId)
+	mockTekton := tektonFake.NewSimpleClientset(
+		&v1beta1.PipelineRunList{
+			Items: []v1beta1.PipelineRun{
+				{
+					ObjectMeta: v1.ObjectMeta{Name: fmt.Sprintf("%s-2022", baseBuildId), Namespace: BuildNamespace, Labels: map[string]string{"user": toolName}},
+					Spec: v1beta1.PipelineRunSpec{
+						Params: []v1beta1.Param{
+							{Name: "BUILDER_IMAGE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder-classic:22"}},
+							{Name: "APP_IMAGE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "192.168.188.129/tool-minikube-user/tool-raymond:latest"}},
+							{Name: "SOURCE_URL", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "https://github.com/david-caro/wm-lol"}},
+							{Name: "SOURCE_REFERENCE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "value4"}},
+						},
+					},
+					Status: v1beta1.PipelineRunStatus{
+						Status: knative.Status{Conditions: knative.Conditions{{Type: "Succeeded", Status: "True", Message: "All Tasks Succeeded", Reason: "Succeeded"}}},
+						PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{
+							CompletionTime: &v1.Time{Time: time.Date(2022, 6, 8, 16, 0, 0, 0, time.UTC)},
+							StartTime:      &v1.Time{Time: time.Date(2022, 6, 8, 15, 0, 0, 0, time.UTC)},
+						},
+					},
+				},
+				{
+					ObjectMeta: v1.ObjectMeta{Name: latestBuildId, Namespace: BuildNamespace, Labels: map[string]string{"user": toolName}},
+					Spec: v1beta1.PipelineRunSpec{
+						Params: []v1beta1.Param{
+							{Name: "BUILDER_IMAGE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder-classic:22"}},
+							{Name: "APP_IMAGE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "192.168.188.129/tool-minikube-user/tool-raymond:latest"}},
+							{Name: "SOURCE_URL", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "https://github.com/david-caro/wm-lol"}},
+							{Name: "SOURCE_REFERENCE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "value4"}},
+						},
+					},
+					Status: v1beta1.PipelineRunStatus{
+						Status: knative.Status{Conditions: knative.Conditions{{Type: "Succeeded", Status: "True", Message: "All Tasks Succeeded", Reason: "Succeeded"}}},
+						PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{
+							CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)},
+							StartTime:      &v1.Time{Time: time.Date(2023, 6, 8, 15, 0, 0, 0, time.UTC)},
+						},
+					},
+				},
+				{
+					ObjectMeta: v1.ObjectMeta{Name: fmt.Sprintf("%s-2021", baseBuildId), Namespace: BuildNamespace, Labels: map[string]string{"user": toolName}},
+					Spec: v1beta1.PipelineRunSpec{
+						Params: []v1beta1.Param{
+							{Name: "BUILDER_IMAGE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder-classic:22"}},
+							{Name: "APP_IMAGE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "192.168.188.129/tool-minikube-user/tool-raymond:latest"}},
+							{Name: "SOURCE_URL", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "https://github.com/david-caro/wm-lol"}},
+							{Name: "SOURCE_REFERENCE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "value4"}},
+						},
+					},
+					Status: v1beta1.PipelineRunStatus{
+						Status: knative.Status{Conditions: knative.Conditions{{Type: "Succeeded", Status: "True", Message: "All Tasks Succeeded", Reason: "Succeeded"}}},
+						PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{
+							CompletionTime: &v1.Time{Time: time.Date(2021, 6, 8, 16, 0, 0, 0, time.UTC)},
+							StartTime:      &v1.Time{Time: time.Date(2021, 6, 8, 15, 0, 0, 0, time.UTC)},
+						},
+					},
+				},
+			},
+		},
+	)
+	api := BuildsApi{
+		Clients: Clients{
+			Tekton: mockTekton,
+		},
+		Config: Config{
+			BuildIdPrefix:  BuildIdPrefix,
+			BuildNamespace: BuildNamespace,
+		},
+	}
+
+	recorder := httptest.NewRecorder()
+	code, response, err := Latest(
+		&api,
+		toolName,
+	)
+
+	if err != nil {
+		t.Fatalf("I was expecting no error, but got: %s", err)
+	}
+
+	expected_code := http.StatusOK
+	if code != expected_code {
+		t.Fatalf("I was expecting a '%d' response, got (%d): %v", expected_code, code, recorder.Body.String())
+	}
+
+	build := response.(*gen.Build)
+	if *build.BuildId != latestBuildId {
+		t.Fatalf("Got unexpected build id, expected '%s', got '%s'", latestBuildId, *build.BuildId)
+	}
+}
+
+func TestLatestReturnsAPIError(t *testing.T) {
+	toolName := "dummy-tool"
+
+	mockTekton := tektonFake.Clientset{}
+	mockTekton.AddReactor("list", "pipelineruns", func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
+		return true, nil, fmt.Errorf("Dummy error!")
+	})
+	api := BuildsApi{
+		Clients: Clients{
+			Tekton: &mockTekton,
+		},
+		Config: Config{
+			BuildIdPrefix:  BuildIdPrefix,
+			BuildNamespace: BuildNamespace,
+		},
+	}
+
+	recorder := httptest.NewRecorder()
+	code, response, err := Latest(
+		&api,
+		toolName,
+	)
+
+	if err != nil {
+		t.Fatalf("I was expecting no internal error, but got: %s", err)
+	}
+
+	expected_code := http.StatusInternalServerError
+	if code != expected_code {
+		t.Fatalf("I was expecting a '%d' response, got '%d'. %v", expected_code, code, recorder.Body.String())
+	}
+
+	expected_response := "Unable to get build! This might be a bug. Please contact a Toolforge admin."
+	resp := response.(gen.InternalError)
+	if *resp.Message != expected_response {
+		t.Fatalf("Expected response '%s' but got '%s'", expected_response, *resp.Message)
+	}
+}
+
+func TestLatesttReturnsBuildsNotFound(t *testing.T) {
+	toolName := "dummy-tool"
+	mockTekton := tektonFake.NewSimpleClientset()
+	api := BuildsApi{
+		Clients: Clients{
+			Tekton: mockTekton,
+		},
+		Config: Config{
+			BuildIdPrefix:  BuildIdPrefix,
+			BuildNamespace: BuildNamespace,
+		},
+	}
+
+	recorder := httptest.NewRecorder()
+	code, response, err := Latest(
+		&api,
+		toolName,
+	)
+
+	if err != nil {
+		t.Fatalf("I was expecting no internal error, but got: %s", err)
+	}
+
+	expected_code := http.StatusNotFound
+	if code != expected_code {
+		t.Fatalf("I was expecting a '%d' response, got '%d'. %v", expected_code, code, recorder.Body.String())
+	}
+
+	expected_response := fmt.Sprintf("No builds exist yet.")
+	resp := response.(gen.NotFound)
+	if *resp.Message != expected_response {
+		t.Fatalf("Expected response '%s' but got '%s'", expected_response, *resp.Message)
+	}
+}

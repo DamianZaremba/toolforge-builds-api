@@ -107,3 +107,13 @@ func (api BuildsApi) Get(ctx echo.Context, id string) error {
 	}
 	return ctx.JSON(code, response)
 }
+
+func (api BuildsApi) Latest(ctx echo.Context) error {
+	toolName := getToolFromContext(ctx)
+
+	code, response, err := Latest(&api, toolName)
+	if err != nil {
+		return err
+	}
+	return ctx.JSON(code, response)
+}

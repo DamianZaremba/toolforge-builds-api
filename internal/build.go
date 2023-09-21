@@ -563,3 +563,28 @@ func List(
 	}
 	return http.StatusOK, builds
 }
+
+func Latest(
+	api *BuildsApi,
+	toolName string,
+) (int, interface{}, error) {
+	log.Debugf("Getting latest build: namespace=%s, toolName=%s", api.Config.BuildNamespace, toolName)
+
+	pipelineRuns, err := getPipelineRuns(&api.Clients, api.Config.BuildNamespace, metav1.ListOptions{LabelSelector: fmt.Sprintf("user=%s", toolName)})
+	if err != nil {
+		log.Warnf(
+			"Got error when getting latest pipelineruns on namespace %s: %s", api.Config.BuildNamespace, err,
+		)
+		message := "Unable to get build! This might be a bug. Please contact a Toolforge admin."
+		return http.StatusInternalServerError, gen.InternalError{Message: &message}, nil
+	}
+
+	if len(pipelineRuns) == 0 {
+		message := fmt.Sprintf("No builds exist yet.")
+		return http.StatusNotFound, gen.NotFound{Message: &message}, nil
+	}
+
+	// getPipelineRuns returns a sorted array per creationTimestamp
+	build := getBuild(pipelineRuns[0])
+	return http.StatusOK, build, err
+}

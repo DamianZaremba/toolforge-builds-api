@@ -85,6 +85,42 @@ paths:
                 $ref: "#/components/schemas/InternalError"
       security:
         - key: []
+  /build/latest/:
+    get:
+      operationId: latest
+      responses:
+        "200":
+          description: The latest build
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Build"
+        "400":
+          description: Bad parameters passed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BadRequest"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Unauthorized"
+        "404":
+          description: The latest build was not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotFound"
+        "500":
+          description: An internal error happened
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InternalError"
+      security:
+        - key: []
   /build/{id}:
     get:
       operationId: get

@@ -493,10 +493,10 @@ func Get(
 	api *BuildsApi,
 	id string,
 	toolName string,
-) (int, interface{}, error) {
+) (int, interface{}) {
 	if err := ToolIsAllowedForBuild(toolName, id, api.Config.BuildIdPrefix); err != nil {
 		message := fmt.Sprintf("%s", err)
-		return http.StatusUnauthorized, gen.Unauthorized{Message: &message}, nil
+		return http.StatusUnauthorized, gen.Unauthorized{Message: &message}
 	}
 	log.Debugf("Getting build: buildId=%s, namespace=%s, toolName=%s", id, api.Config.BuildNamespace, toolName)
 
@@ -506,19 +506,19 @@ func Get(
 			"Got error when getting pipelinerun %s on namespace %s: %s", id, api.Config.BuildNamespace, err,
 		)
 		message := "Unable to get build! This might be a bug. Please contact a Toolforge admin."
-		return http.StatusInternalServerError, gen.InternalError{Message: &message}, nil
+		return http.StatusInternalServerError, gen.InternalError{Message: &message}
 	}
 
 	if len(pipelineRuns) == 0 {
 		message := fmt.Sprintf("Build with id %s not found.", id)
-		return http.StatusNotFound, gen.NotFound{Message: &message}, nil
+		return http.StatusNotFound, gen.NotFound{Message: &message}
 	}
 
 	// NOTE: we assume here the first pipelineRun from the search is what we are looking for.
 	// In k8s/tekton two objects cannot share metadata.name in the same namespace anyway
 
 	build := getBuild(pipelineRuns[0])
-	return http.StatusOK, build, err
+	return http.StatusOK, build
 }
 
 func Healthcheck(api *BuildsApi) (int, gen.HealthResponse) {

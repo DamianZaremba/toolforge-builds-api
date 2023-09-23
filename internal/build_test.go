@@ -1029,15 +1029,11 @@ func TestGetReturnsBuildsOk(t *testing.T) {
 	}
 
 	recorder := httptest.NewRecorder()
-	code, response, err := Get(
+	code, response := Get(
 		&api,
 		buildId,
 		toolName,
 	)
-
-	if err != nil {
-		t.Fatalf("I was expecting no error, but got: %s", err)
-	}
 
 	expected_code := http.StatusOK
 	if code != expected_code {
@@ -1065,15 +1061,11 @@ func TestGetReturnsBuildsNotAuth(t *testing.T) {
 	}
 
 	recorder := httptest.NewRecorder()
-	code, response, err := Get(
+	code, response := Get(
 		&api,
 		buildId,
 		toolName,
 	)
-
-	if err != nil {
-		t.Fatalf("I was expecting no internal error, but got: %s", err)
-	}
 
 	expected_code := http.StatusUnauthorized
 	if code != expected_code {
@@ -1102,15 +1094,11 @@ func TestGetReturnsBuildsNotFound(t *testing.T) {
 	}
 
 	recorder := httptest.NewRecorder()
-	code, response, err := Get(
+	code, response := Get(
 		&api,
 		buildId,
 		toolName,
 	)
-
-	if err != nil {
-		t.Fatalf("I was expecting no internal error, but got: %s", err)
-	}
 
 	expected_code := http.StatusNotFound
 	if code != expected_code {
@@ -1143,15 +1131,11 @@ func TestGetReturnsAPIError(t *testing.T) {
 	}
 
 	recorder := httptest.NewRecorder()
-	code, response, err := Get(
+	code, response := Get(
 		&api,
 		buildId,
 		toolName,
 	)
-
-	if err != nil {
-		t.Fatalf("I was expecting no internal error, but got: %s", err)
-	}
 
 	expected_code := http.StatusInternalServerError
 	if code != expected_code {

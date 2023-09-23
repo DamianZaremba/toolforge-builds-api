@@ -101,9 +101,6 @@ func (api BuildsApi) List(ctx echo.Context) error {
 func (api BuildsApi) Get(ctx echo.Context, id string) error {
 	toolName := getToolFromContext(ctx)
 
-	code, response, err := Get(&api, id, toolName)
-	if err != nil {
-		return err
-	}
+	code, response := Get(&api, id, toolName)
 	return ctx.JSON(code, response)
 }

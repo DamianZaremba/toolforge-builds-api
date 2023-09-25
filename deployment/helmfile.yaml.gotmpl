@@ -12,8 +12,8 @@ releases:
 
         config:
           debug: true
-          # You can override this by exporting the env var HARBOR_IP before running ./depoy.sh
-          harborRepository: "http://{{ exec "./helpers/get_harbor_ip.sh" (list) }}"
+          # You can override this by exporting the env var HARBOR_URL before running ./depoy.sh
+          harborRepository: "{{ exec "./helpers/get_harbor_url.sh" (list) }}"
           harborUsername: "robot$tekton"
           harborPassword: "Dummyr0botpass"
           builder: toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder-classic:22

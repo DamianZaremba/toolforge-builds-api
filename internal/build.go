@@ -175,7 +175,7 @@ func getBuildConditionFromPipelineRun(run *v1beta1.PipelineRun) gen.BuildConditi
 func getpipelineRunParam(pipelineRun v1beta1.PipelineRun, name string) string {
 	for _, param := range pipelineRun.Spec.Params {
 		if param.Name == name {
-			return fmt.Sprintf("%s", param.Value.StringVal)
+			return param.Value.StringVal
 		}
 	}
 	log.Warnf(

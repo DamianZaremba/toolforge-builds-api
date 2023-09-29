@@ -219,6 +219,18 @@ paths:
                 $ref: "#/components/schemas/InternalError"
       security:
         - key: []
+  /metrics:
+    get:
+      operationId: metrics
+      responses:
+        "200":
+          description: Returns the metrics of the service
+          content:
+            text/plain:
+              schema:
+                type: string
+      security:
+        - key: []
 components:
   schemas:
     HealthResponse:

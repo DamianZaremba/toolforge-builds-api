@@ -9,6 +9,7 @@ import (
 
 	"github.com/deepmap/oapi-codegen/pkg/middleware"
 	"github.com/getkin/kin-openapi/openapi3filter"
+	echoprom "github.com/labstack/echo-contrib/echoprometheus"
 	"github.com/labstack/echo/v4"
 	echomiddleware "github.com/labstack/echo/v4/middleware"
 	log "github.com/sirupsen/logrus"
@@ -138,7 +139,7 @@ func addMiddleware(router *echo.Echo) error {
 
 	swagger, err := gen.GetSwagger()
 	if err != nil {
-		return fmt.Errorf("Error loading swagger spec\n: %s", err)
+		return fmt.Errorf("error loading swagger spec\n: %s", err)
 	}
 
 	// authentication
@@ -178,5 +179,6 @@ func addMiddleware(router *echo.Echo) error {
 	// Recover from panics and give control to the HTTPError handler
 	// so we reply http
 	router.Use(echomiddleware.Recover())
+	router.Use(echoprom.NewMiddleware("toolforge_builds_api"))
 	return nil
 }

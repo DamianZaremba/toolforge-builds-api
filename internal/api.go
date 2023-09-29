@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
+	prom "github.com/labstack/echo-contrib/echoprometheus"
 	"github.com/labstack/echo/v4"
 	"github.com/tektoncd/pipeline/pkg/client/clientset/versioned"
 	"gitlab.wikimedia.org/repos/toolforge/builds-api/gen"
@@ -103,4 +104,8 @@ func (api BuildsApi) Get(ctx echo.Context, id string) error {
 
 	code, response := Get(&api, id, toolName)
 	return ctx.JSON(code, response)
+}
+
+func (api BuildsApi) Metrics(ctx echo.Context) error {
+	return prom.NewHandler()(ctx)
 }

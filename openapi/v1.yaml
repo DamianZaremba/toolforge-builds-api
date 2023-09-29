@@ -174,6 +174,57 @@ paths:
                 $ref: "#/components/schemas/InternalError"
       security:
         - key: []
+  /build/{id}/cancel:
+    put:
+      operationId: cancel
+      parameters:
+        - name: id
+          in: path
+          description: Id of the build
+          required: true
+          style: simple
+          explode: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The build was canceled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Build"
+        "400":
+          description: Bad parameters passed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BadRequest"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Unauthorized"
+        "404":
+          description: The build was not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotFound"
+        "409":
+          description: The build is not in a cancelable state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Conflict"
+        "500":
+          description: An internal error happened
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InternalError"
+      security:
+        - key: []
   /build/{id}/logs:
     get:
       operationId: logs
@@ -251,6 +302,11 @@ components:
       properties:
         message:
           type: string
+    Conflict:
+      type: object
+      properties:
+        message:
+          type: string
     BuildLogs:
       type: object
       properties:
@@ -288,6 +344,7 @@ components:
         ref:
           type: string
           description: Source code reference to build (ex. a git branch name)
+    # TODO: decide whether to merge NewBuild_parameters and BuildStartParams
     NewBuild_parameters:
       type: object
       properties:

@@ -47,7 +47,7 @@ data:
                 listen 9000;
 
                 location = /metrics {
-                    proxy_pass http://127.0.0.1:{{ .Values.config.port }}/v1;
+                    proxy_pass http://127.0.0.1:{{ .Values.config.port }}/v1/metrics;
                 }
 
                 location = /v1/healthz {

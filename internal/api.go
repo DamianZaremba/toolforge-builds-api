@@ -35,8 +35,9 @@ type Clients struct {
 }
 
 type BuildsApi struct {
-	Clients Clients
-	Config  Config
+	Clients        Clients
+	Config         Config
+	MetricsHandler echo.HandlerFunc
 }
 
 // Extract the tool name from the context, currently is the same user that authenticated to the api
@@ -125,4 +126,8 @@ func (api BuildsApi) Openapi(ctx echo.Context) error {
 		return fmt.Errorf("error loading swagger spec\n: %s", err)
 	}
 	return ctx.JSON(http.StatusOK, swagger)
+}
+
+func (api BuildsApi) Metrics(ctx echo.Context) error {
+	return api.MetricsHandler(ctx)
 }

@@ -9,6 +9,7 @@ import (
 
 	"github.com/deepmap/oapi-codegen/pkg/middleware"
 	"github.com/getkin/kin-openapi/openapi3filter"
+	prom "github.com/labstack/echo-contrib/echoprometheus"
 	"github.com/labstack/echo/v4"
 	echomiddleware "github.com/labstack/echo/v4/middleware"
 	log "github.com/sirupsen/logrus"
@@ -74,6 +75,7 @@ func main() {
 			BuildNamespace:   viper.GetString("build_namespace"),
 			BuildIdPrefix:    viper.GetString("build_id_prefix"),
 		},
+		MetricsHandler: prom.NewHandler(),
 	}
 	log.Infof("Using config: %v", buildsApi.Config)
 
@@ -138,7 +140,7 @@ func addMiddleware(router *echo.Echo) error {
 
 	swagger, err := gen.GetSwagger()
 	if err != nil {
-		return fmt.Errorf("Error loading swagger spec\n: %s", err)
+		return fmt.Errorf("error loading swagger spec\n: %s", err)
 	}
 
 	// authentication
@@ -178,5 +180,7 @@ func addMiddleware(router *echo.Echo) error {
 	// Recover from panics and give control to the HTTPError handler
 	// so we reply http
 	router.Use(echomiddleware.Recover())
+
+	router.Use(prom.NewMiddleware("builds_api"))
 	return nil
 }

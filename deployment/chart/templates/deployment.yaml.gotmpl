@@ -5,7 +5,7 @@ metadata:
   labels:
     name: builds-api
   annotations:
-    secret.reloader.stakater.com/reload: "{{ .Values.api.certSecretName }}-api-gateway-server,{{ .Values.api.passwordSecretName }}"
+    secret.reloader.stakater.com/reload: "{{ .Release.Name }}-api-gateway-server,{{ .Values.api.passwordSecretName }}"
 spec:
   replicas: {{ .Values.replicas }}
   selector:
@@ -81,9 +81,6 @@ spec:
             runAsGroup: 101
       serviceAccountName: builds-api
       volumes:
-        - name: toolforge-builds-api-certs
-          secret:
-            secretName: "{{ .Values.api.certSecretName }}"
         - configMap:
             items:
               - key: nginx.conf

@@ -340,7 +340,7 @@ func streamPipelineRunLogs(ctx echo.Context, pipelineRun *v1beta1.PipelineRun, c
 	// TODO: retrieve also logs from pods that failed to start
 
 	if !pipelineRun.HasStarted() {
-		return "", nil
+		return BuildInitMessage, nil
 	}
 
 	for _, taskRun := range pipelineRun.Status.TaskRuns {
@@ -386,9 +386,13 @@ func Logs(ctx echo.Context, api *BuildsApi, buildId string, toolName string, fol
 	pipelineRun := pipelineRuns[0]
 	endLine, err := streamPipelineRunLogs(ctx, &pipelineRun, &api.Clients, api.Config.BuildNamespace, follow)
 	if err != nil {
+		podInitializing := "PodInitializing"
 		message := fmt.Sprintf("Error getting the logs for %s: %s", buildId, err)
-		log.Errorf(message)
-		return http.StatusInternalServerError, gen.InternalError{Message: &message}
+		if !strings.Contains(err.Error(), podInitializing) {
+			log.Errorf(message)
+			return http.StatusInternalServerError, gen.InternalError{Message: &message}
+		}
+		endLine = BuildInitMessage
 	}
 
 	return http.StatusOK, gen.BuildLog{Line: &endLine}

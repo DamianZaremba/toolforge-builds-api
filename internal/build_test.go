@@ -458,7 +458,7 @@ func TestLogsReturnsNotFoundIfApiReturnsMoreThanOneRun(t *testing.T) {
 
 }
 
-func TestLogsReturnsEmptyLineIfRunHasNotStarted(t *testing.T) {
+func TestLogsReturnsBuildInitMessageIfRunHasNotStarted(t *testing.T) {
 	mockTekton := tektonFake.Clientset{}
 	pipelineRunList := v1beta1.PipelineRunList{
 		Items: []v1beta1.PipelineRun{
@@ -501,8 +501,8 @@ func TestLogsReturnsEmptyLineIfRunHasNotStarted(t *testing.T) {
 	}
 
 	gottenLog := response.(gen.BuildLog)
-	if *gottenLog.Line != "" {
-		t.Fatalf("I was expecting only an empty line, got: %s", *gottenLog.Line)
+	if *gottenLog.Line != BuildInitMessage {
+		t.Fatalf("I was expecting %s, got: %s", BuildInitMessage, *gottenLog.Line)
 	}
 }
 

@@ -11,3 +11,4 @@ var HarborNameRegex = regexp.MustCompile("^[a-z0-9]+(?:[._-][a-z0-9]+)*$")
 var HarborProjectPrefix = "tool-"
 var HarborSpecialCharFiller = "char.sep"
 var HarborSpecialChars = "-_"
+var BuildInitMessage = "Waiting for the build to start..."

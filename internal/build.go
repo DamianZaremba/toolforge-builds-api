@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"sort"
 	"strings"
@@ -87,7 +88,16 @@ func CreateHarborProjectForTool(api *BuildsApi, toolName string) error {
 
 	response, err := api.Clients.Http.Do(request)
 	if err != nil {
-		return err
+		log.Error(err.Error())
+		// handle connection errors and timeouts
+		netErr, ok := err.(net.Error)
+		if ok && netErr.Timeout() {
+			return fmt.Errorf("request to harbor timed out")
+		} else if strings.Contains(err.Error(), "connection refused") {
+			return fmt.Errorf("harbor connection refused")
+		} else {
+			return err
+		}
 	}
 	defer response.Body.Close()
 
@@ -375,8 +385,7 @@ func Start(
 	err := CreateHarborProjectForTool(api, toolName)
 	if err != nil {
 		message := fmt.Sprintf("Failed to create harbor project for tool %s: %s", toolName, err)
-		log.Error(message)
-		return http.StatusInternalServerError, gen.InternalError{Message: &message}
+		return http.StatusServiceUnavailable, gen.InternalError{Message: &message}
 	}
 	cleanup_err := cleanupOldPipelineRuns(&api.Clients, api.Config.BuildNamespace, toolName, api.Config.OkToKeep, api.Config.FailedToKeep)
 	for _, err := range cleanup_err {

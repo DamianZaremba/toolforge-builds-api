@@ -83,33 +83,37 @@ func TestToolNameToHarborProjectNameReturnsCorrectHarborProjectName(t *testing.T
 }
 
 func TestCreateHarborProjectForToolReturnsErrorIfHarborApiReturnsUnexpectedError(t *testing.T) {
-	testServer1 := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-		rw.WriteHeader(http.StatusUnauthorized)
-		rw.Write([]byte(fmt.Sprintf(`{"errors":[{ "code": %d, "message": "dummy error" }]}`, http.StatusUnauthorized)))
-	}))
-	testServer2 := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-		rw.WriteHeader(http.StatusBadGateway)
-	}))
-	defer testServer1.Close()
-	defer testServer2.Close()
 	api := BuildsApi{
 		Clients: Clients{
 			Http: &http.Client{},
 		},
 		Config: Config{
-			HarborRepository: testServer1.URL,
+			HarborRepository: "",
 			HarborUsername:   "dummy-harbor-username",
 			HarborPassword:   "dummy-harbor-password",
 		},
 	}
-	err := CreateHarborProjectForTool(&api, "dummy-tool-name")
-	if err == nil {
-		t.Fatalf("I was expecting an error, got: %s", err)
+	testCases := map[string]*httptest.Server{
+		"Unauthorized": httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+			rw.WriteHeader(http.StatusUnauthorized)
+			_, _ = rw.Write([]byte(fmt.Sprintf(`{"errors":[{ "code": %d, "message": "dummy error" }]}`, http.StatusUnauthorized)))
+		})),
+		"BadGateway": httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+			rw.WriteHeader(http.StatusBadGateway)
+		})),
+		"Timeout": httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+			time.Sleep(2 * time.Second)
+		})),
 	}
-	api.Config.HarborRepository = testServer2.URL
-	err = CreateHarborProjectForTool(&api, "dummy-tool-name")
-	if err == nil {
-		t.Fatalf("I was expecting an error, got: %s", err)
+	for testName, testServer := range testCases {
+		t.Run(testName, func(t *testing.T) {
+			defer testServer.Close()
+			api.Config.HarborRepository = testServer.URL
+			err := CreateHarborProjectForTool(&api, "dummy-tool-name")
+			if err == nil {
+				t.Fatalf("I was expecting an error, got: %s", err)
+			}
+		})
 	}
 }
 
@@ -662,8 +666,8 @@ func TestStartReturnsInternalServerErrorIfCreateHarborProjectForToolReturnsError
 		"dummy-tool",
 	)
 
-	if code != 500 {
-		t.Fatalf("I was expecting a 500 response, got: %d", code)
+	if code != 503 {
+		t.Fatalf("I was expecting a 503 response, got: %d", code)
 	}
 }
 

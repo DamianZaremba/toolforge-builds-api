@@ -123,7 +123,7 @@ func getApiClients(outOfK8sRun bool, kubeconfig string) (*internal.Clients, erro
 		return nil, err
 	}
 	// create the http client
-	http := &http.Client{Timeout: 60 * time.Second}
+	http := &http.Client{Timeout: 8 * time.Second}
 
 	return &internal.Clients{
 		Tekton: tektonClientset,

@@ -304,8 +304,17 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/InternalError"
-      security:
-        - key: []
+  /openapi.json:
+    get:
+      operationId: openapi
+      parameters: []
+      responses:
+        "200":
+          description: returns the openapi definition
+          content:
+            application/json:
+              schema:
+                type: object
 components:
   schemas:
     HealthResponse:

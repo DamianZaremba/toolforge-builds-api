@@ -118,3 +118,11 @@ func (api BuildsApi) Latest(ctx echo.Context) error {
 	code, response := Latest(&api, toolName)
 	return ctx.JSON(code, response)
 }
+
+func (api BuildsApi) Openapi(ctx echo.Context) error {
+	swagger, err := gen.GetSwagger()
+	if err != nil {
+		return fmt.Errorf("error loading swagger spec\n: %s", err)
+	}
+	return ctx.JSON(http.StatusOK, swagger)
+}

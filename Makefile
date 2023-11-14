@@ -119,8 +119,9 @@ endif
 rollout: check_requirements ## Rollout updates to the deployment
 	bash -c "if kubectl get namespace $(PROJECT_SLUG)-api >/dev/null 2>&1; then kubectl rollout restart -n $(PROJECT_SLUG)-api deployment $(PROJECT_SLUG)-api; else :; fi"
 
-build-and-deploy-local: image rollout ## Build and deploy locally
+build-and-deploy-local: image ## Build and deploy locally
 	./deploy.sh local
+	$(MAKE) rollout
 
 unit-tests: ## Run unit tests
 	@echo "Running unit tests..."

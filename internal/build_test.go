@@ -634,6 +634,7 @@ func TestStartReturnsInternalServerErrorOnException(t *testing.T) {
 		&api,
 		"dummy-source-url",
 		"dummy-ref",
+		"dummy-image-name",
 		"dummy-tool",
 	)
 
@@ -663,6 +664,7 @@ func TestStartReturnsInternalServerErrorIfCreateHarborProjectForToolReturnsError
 		&api,
 		"dummy-source-url",
 		"dummy-ref",
+		"dummy-image-name",
 		"dummy-tool",
 	)
 
@@ -679,6 +681,7 @@ func TestStartReturnsNewBuildName(t *testing.T) {
 	mockTekton := tektonFake.Clientset{}
 	expectedName := "new-pipelinerun"
 	expectedRef := "dummy-ref"
+	expectedImageName := "dummy-image-name"
 	expectedSourceURL := "dummy-source-url"
 	fakePipelineRun := v1beta1.PipelineRun{
 		ObjectMeta: v1.ObjectMeta{Name: expectedName},
@@ -711,6 +714,7 @@ func TestStartReturnsNewBuildName(t *testing.T) {
 		&api,
 		expectedSourceURL,
 		expectedRef,
+		expectedImageName,
 		"dummy-tool",
 	)
 

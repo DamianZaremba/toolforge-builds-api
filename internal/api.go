@@ -75,6 +75,7 @@ func (api BuildsApi) Start(ctx echo.Context) error {
 		&api,
 		safeDeref[string](newBuildParameters.SourceUrl),
 		safeDeref[string](newBuildParameters.Ref),
+		safeDeref[string](newBuildParameters.ImageName),
 		toolName,
 	)
 	return ctx.JSON(code, response)

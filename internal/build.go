@@ -379,6 +379,7 @@ func Start(
 	api *BuildsApi,
 	sourceURL string,
 	ref string,
+	imageName string,
 	toolName string,
 ) (int, interface{}) {
 	// TODO: Check quotas
@@ -391,7 +392,11 @@ func Start(
 	for _, err := range cleanup_err {
 		log.Warnf("Got error when cleaning up old pipeline runs: %s", err)
 	}
-	log.Debugf("Starting a new build: ref=%s, toolName=%s, harborRepository=%s, builder=%s", ref, toolName, api.Config.HarborRepository, api.Config.Builder)
+	imageNameToUse := imageName
+	if imageNameToUse == "" {
+		imageNameToUse = fmt.Sprintf("tool-%s", toolName)
+	}
+	log.Debugf("Starting a new build: ref=%s, imageName=%s, toolName=%s, harborRepository=%s, builder=%s", ref, imageName, toolName, api.Config.HarborRepository, api.Config.Builder)
 	newRun := v1beta1.PipelineRun{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: fmt.Sprintf("%s%s", toolName, api.Config.BuildIdPrefix),
@@ -414,7 +419,7 @@ func Start(
 				{
 					Name: "APP_IMAGE",
 					Value: v1beta1.ParamValue{
-						StringVal: fmt.Sprintf("%s/tool-%s/tool-%s:latest", strings.Split(api.Config.HarborRepository, "//")[1], toolName, toolName),
+						StringVal: fmt.Sprintf("%s/tool-%s/%s:latest", strings.Split(api.Config.HarborRepository, "//")[1], toolName, imageNameToUse),
 						Type:      v1beta1.ParamTypeString,
 					},
 				},

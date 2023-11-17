@@ -402,6 +402,9 @@ components:
         ref:
           type: string
           description: Source code reference to build (ex. a git branch name)
+        image_name:
+          type: string
+          description: The name of the image to be built
     # TODO: decide whether to merge NewBuild_parameters and BuildStartParams
     NewBuild_parameters:
       type: object

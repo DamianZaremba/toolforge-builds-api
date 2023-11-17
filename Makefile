@@ -51,9 +51,15 @@ else
 	KEEP_ID=
 endif
 
-.PHONY: run image gen-api build-api rollout build-and-deploy-local check_requirements
+.PHONY: help run image gen-api build-api rollout build-and-deploy-local check_requirements unit-tests static-tests test
 
-check_requirements:
+help:
+	@echo "Make targets:"
+	@echo "============="
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
+		awk 'BEGIN {FS = ":.*?## "}; {printf "%-20s\t%s\n", $$1, $$2}'
+
+check_requirements: ## Check if required tools are installed
 ifdef PODMAN
 	@echo "Using podman ($(PODMAN)) to build the images"
 else
@@ -79,39 +85,49 @@ ifndef OAPI
 	exit 1
 endif
 
-gen-api: check_requirements
+gen-api: check_requirements ## Generate API code from OpenAPI specification
 	$(OAPI) -config openapi/gen_config/api_config.yaml openapi/v1.yaml
 	$(OAPI) -config openapi/gen_config/models_config.yaml openapi/v1.yaml
 	go mod tidy
 
-build-api:
+build-api: ## Build the API
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -buildvcs=false -a -installsuffix cgo -ldflags="-w -s" -o $(PROJECT_SLUG)-api ./cmd/main.go
 
-image: check_requirements
+image: check_requirements ## Build the Docker image
 ifdef MINIKUBE
 ifdef PODMAN
-# minikube + podman
+	# minikube + podman
 	$(BUILD_IMAGE) >/tmp/image.tar
 	minikube image load /tmp/image.tar
 	rm -f /tmp/image.tar
 else
-# minikube + docker
+	# minikube + docker
 	bash -c "source <(minikube docker-env) && $(BUILD_IMAGE)"
 endif
 else
 ifdef PODMAN
-# kind + podman
+	# kind + podman
 	$(BUILD_IMAGE) | podman load
 else
-# kind + docker
+	# kind + docker
 	$(BUILD_IMAGE)
 endif
-# 	kind with both podman and docker
+	# kind with both podman and docker
 	kind load docker-image $(IMAGE_NAME) --name toolforge
 endif
 
-rollout: check_requirements
+rollout: check_requirements ## Rollout updates to the deployment
 	bash -c "if kubectl get namespace $(PROJECT_SLUG)-api >/dev/null 2>&1; then kubectl rollout restart -n $(PROJECT_SLUG)-api deployment $(PROJECT_SLUG)-api; else :; fi"
 
-build-and-deploy-local: image rollout
+build-and-deploy-local: image rollout ## Build and deploy locally
 	./deploy.sh local
+
+unit-tests: ## Run unit tests
+	@echo "Running unit tests..."
+	@go test ./...
+
+static-tests: ## Run static tests
+	@echo "Running static tests..."
+	@pre-commit run -a
+
+test: static-tests unit-tests ## Run unit and static tests

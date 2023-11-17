@@ -47,13 +47,13 @@ Then you might have to tweak `cmd/main.go` to add any new configuration, or
 ## Static tests
 
 ```
-> pre-commit run -a
+> make static-tests
 ```
 
 ## Unit tests
 
 ```
-> go test ./...
+> make unit-tests
 ```
 
 ## Deploy locally

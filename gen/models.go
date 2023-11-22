@@ -103,9 +103,9 @@ type NewBuild struct {
 
 // NewBuildParameters defines model for NewBuild_parameters.
 type NewBuildParameters struct {
+	ImageName *string `json:"image_name,omitempty"`
 	Ref       *string `json:"ref,omitempty"`
 	SourceUrl *string `json:"source_url,omitempty"`
-	ImageName *string `json:"image_name,omitempty"`
 }
 
 // NotFound defines model for NotFound.

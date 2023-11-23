@@ -311,6 +311,31 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/InternalError"
+      security:
+        - key: []
+  /quota:
+    get:
+      operationId: quota
+      responses:
+        "200":
+          description: Returns the quota information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Quota"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Unauthorized"
+        "500":
+          description: An internal error happened
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InternalError"
+      security: []
   /openapi.json:
     get:
       operationId: openapi
@@ -456,6 +481,31 @@ components:
         - BUILD_CANCELLED
         - BUILD_TIMEOUT
         - BUILD_UNKNOWN
+    Quota:
+      type: object
+      properties:
+        categories:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              items:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                    limit:
+                      type: string
+                    used:
+                      type: string
+                    available:
+                      type: string
+                    capacity:
+                      type: string
 
   securitySchemes:
     key:

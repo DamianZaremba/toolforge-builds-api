@@ -20,6 +20,32 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// Structs
+type HarborQuota struct {
+	Quota struct {
+		Hard map[string]int64 `json:"hard"`
+		Used map[string]int64 `json:"used"`
+	} `json:"quota"`
+}
+
+type HarborQuotaResponse struct {
+	Categories []Category `json:"categories"`
+}
+
+type Category struct {
+	Name  string `json:"name"`
+	Items []Item `json:"items"`
+}
+
+type Item struct {
+	Name      string `json:"name"`
+	Limit     string `json:"limit"`
+	Used      string `json:"used"`
+	Available string `json:"available,omitempty"`
+	Capacity  string `json:"capacity,omitempty"`
+}
+
+// Helper functions
 func getContainersFromPod(client *Clients, podName string, namespace string) ([]string, error) {
 	pod, err := client.K8s.CoreV1().Pods(namespace).Get(
 		context.TODO(),
@@ -91,6 +117,7 @@ func CreateHarborProjectForTool(api *BuildsApi, toolName string) error {
 	if err != nil {
 		log.Error(err.Error())
 		// handle connection errors and timeouts
+		// TODO: Use handleConnectionErrors() for this
 		netErr, ok := err.(net.Error)
 		if ok && netErr.Timeout() {
 			return fmt.Errorf("request to harbor timed out")
@@ -446,6 +473,109 @@ func Logs(ctx echo.Context, api *BuildsApi, buildId string, toolName string, fol
 	return http.StatusOK, nil
 }
 
+func handleConnectionErrors(err error) error {
+	netErr, ok := err.(net.Error)
+	if ok && netErr.Timeout() {
+		return fmt.Errorf("request to harbor timed out")
+	} else if strings.Contains(err.Error(), "connection refused") {
+		return fmt.Errorf("harbor connection refused")
+	}
+	return err
+}
+
+func formatBytes(bytes int64) string {
+	units := []string{"Ti", "Gi", "Mi", "Ki", "B"}
+	values := []int64{1 << 40, 1 << 30, 1 << 20, 1 << 10, 1}
+
+	for i, unit := range units {
+		if bytes >= values[i] {
+			return fmt.Sprintf("%.2f%s", float64(bytes)/float64(values[i]), unit)
+		}
+	}
+
+	return fmt.Sprintf("%dB", bytes)
+}
+
+func GetHarborQuota(api *BuildsApi, toolName string) (HarborQuotaResponse, error) {
+	harborProjectName, err := ToolNameToHarborProjectName(toolName)
+	if err != nil {
+		return HarborQuotaResponse{}, err
+	}
+
+	url := fmt.Sprintf("%s/api/v2.0/projects/%s/summary", api.Config.HarborRepository, harborProjectName)
+
+	request, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return HarborQuotaResponse{}, err
+	}
+	userAgent := "WMCS toolforge-builds-api Go-http-client"
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("User-Agent", userAgent)
+	username := api.Config.HarborUsername
+	password := api.Config.HarborPassword
+	request.SetBasicAuth(username, password)
+
+	response, err := api.Clients.Http.Do(request)
+	if err != nil {
+		return HarborQuotaResponse{}, handleConnectionErrors(err)
+	}
+
+	defer response.Body.Close()
+
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	log.Debugf("Raw response body: %s", string(body))
+	log.Debugf("Response status code: %d", response.StatusCode)
+	log.Debugf("Response headers: %v", response.Header)
+
+	if response.StatusCode != http.StatusOK {
+		return HarborQuotaResponse{}, fmt.Errorf("failed to get harbor quota, status code: %d", response.StatusCode)
+	}
+
+	harborResponse := HarborQuota{}
+	err = json.Unmarshal(body, &harborResponse)
+	if err != nil {
+		log.Printf("Error unmarshalling response: %v", err)
+		return HarborQuotaResponse{}, err
+	}
+
+	storageHard := harborResponse.Quota.Hard["storage"]
+	storageUsed := harborResponse.Quota.Used["storage"]
+
+	var storageHardStr, storageAvailableStr, storageCapacityStr string
+	if storageHard == -1 {
+		storageHardStr = "Unlimited"
+		storageAvailableStr = "Unlimited"
+		storageCapacityStr = "0%"
+	} else {
+		storageAvailable := storageHard - storageUsed
+		storageCapacity := (float64(storageUsed) / float64(storageHard)) * 100
+
+		storageHardStr = formatBytes(storageHard)
+		storageAvailableStr = formatBytes(storageAvailable)
+		storageCapacityStr = fmt.Sprintf("%.0f%%", storageCapacity)
+	}
+
+	storageUsedStr := formatBytes(storageUsed)
+
+	res := HarborQuotaResponse{
+		Categories: []Category{
+			{
+				Name: "Registry",
+				Items: []Item{
+					{Name: "Storage", Limit: storageHardStr, Used: storageUsedStr, Available: storageAvailableStr, Capacity: storageCapacityStr},
+				},
+			},
+		},
+	}
+
+	return res, nil
+}
+
+// Handler functions
 func Start(
 	api *BuildsApi,
 	sourceURL string,
@@ -708,6 +838,16 @@ func Cancel(
 	}
 
 	return http.StatusOK, gen.BuildId{Id: &buildId}
+}
+
+func Quota(api *BuildsApi, toolName string) (int, interface{}) {
+	quota, err := GetHarborQuota(api, toolName)
+	if err != nil {
+		log.Error(err)
+		return http.StatusInternalServerError, nil
+	}
+
+	return http.StatusOK, quota
 }
 
 func Healthcheck(api *BuildsApi) (int, gen.HealthResponse) {

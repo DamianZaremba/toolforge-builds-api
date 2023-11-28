@@ -12,10 +12,10 @@ releases:
 
         config:
           debug: true
-          # You can override this by exporting the env var HARBOR_IP before running ./depoy.sh
+          # You can override this by exporting the env var HARBOR_IP before running ./deploy.sh
           harborRepository: "http://{{ exec "./helpers/get_harbor_ip.sh" (list) }}"
-          harborUsername: "robot$tekton"
-          harborPassword: "Dummyr0botpass"
+          harborUsername: "admin"
+          harborPassword: "Harbor12345"
           builder: toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder-classic:22
         certificates:
           internalClusterDomain: cluster.local

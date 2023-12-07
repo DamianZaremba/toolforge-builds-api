@@ -1956,7 +1956,7 @@ func TestLatesttReturnsBuildsNotFound(t *testing.T) {
 		t.Fatalf("I was expecting a '%d' response, got '%d'. %v", expected_code, code, recorder.Body.String())
 	}
 
-	expected_response := fmt.Sprintf("No builds exist yet.")
+	expected_response := "No builds exist yet."
 	resp := response.(gen.NotFound)
 	if *resp.Message != expected_response {
 		t.Fatalf("Expected response '%s' but got '%s'", expected_response, *resp.Message)

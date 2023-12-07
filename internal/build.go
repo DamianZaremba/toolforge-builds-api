@@ -771,7 +771,7 @@ func Latest(
 	}
 
 	if len(pipelineRuns) == 0 {
-		message := fmt.Sprintf("No builds exist yet.")
+		message := "No builds exist yet."
 		return http.StatusNotFound, gen.NotFound{Message: &message}
 	}
 

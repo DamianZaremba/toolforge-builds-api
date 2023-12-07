@@ -844,7 +844,8 @@ func Quota(api *BuildsApi, toolName string) (int, interface{}) {
 	quota, err := GetHarborQuota(api, toolName)
 	if err != nil {
 		log.Error(err)
-		return http.StatusInternalServerError, nil
+		message := fmt.Sprintf("Error getting quota from Harbor: %s", err)
+		return http.StatusInternalServerError, gen.InternalError{Message: &message}
 	}
 
 	return http.StatusOK, quota

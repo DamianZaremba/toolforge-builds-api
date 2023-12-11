@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -575,6 +576,23 @@ func GetHarborQuota(api *BuildsApi, toolName string) (HarborQuotaResponse, error
 	return res, nil
 }
 
+
+func ValidateEnvvars(envvars map[string]string) error {
+	varnameRegex := "^[A-z_][A-z_0-9]{2,}$"
+	varnameRegexCompiled, err := regexp.Compile(varnameRegex)
+	if err != nil {
+		return err
+	}
+
+	for varname := range envvars {
+		match := varnameRegexCompiled.MatchString(varname)
+		if !match {
+			return fmt.Errorf("not valid environment variable name, must match '%s', got '%s'", varnameRegex, varname)
+		}
+	}
+	return nil
+}
+
 // Handler functions
 func Start(
 	api *BuildsApi,
@@ -582,9 +600,16 @@ func Start(
 	ref string,
 	imageName string,
 	toolName string,
+	envvars map[string]string,
 ) (int, interface{}) {
+	err := ValidateEnvvars(envvars)
+	if err != nil {
+		message := fmt.Sprintf("Not valid environment variables passed: %s", err)
+		return http.StatusBadRequest, gen.BadRequest{Message: &message}
+	}
+
 	// TODO: Check quotas
-	err := CreateHarborProjectForTool(api, toolName)
+	err = CreateHarborProjectForTool(api, toolName)
 	if err != nil {
 		message := fmt.Sprintf("Failed to create harbor project for tool %s: %s", toolName, err)
 		return http.StatusServiceUnavailable, gen.InternalError{Message: &message}
@@ -596,6 +621,10 @@ func Start(
 	imageNameToUse := imageName
 	if imageNameToUse == "" {
 		imageNameToUse = fmt.Sprintf("tool-%s", toolName)
+	}
+	var envvarsArray []string
+	for varname, value := range envvars {
+		envvarsArray = append(envvarsArray, fmt.Sprintf("%s=%s", varname, value))
 	}
 	log.Debugf("Starting a new build: ref=%s, imageName=%s, toolName=%s, harborRepository=%s, builder=%s", ref, imageName, toolName, api.Config.HarborRepository, api.Config.Builder)
 	newRun := v1beta1.PipelineRun{
@@ -632,6 +661,10 @@ func Start(
 					Name:  "SOURCE_REFERENCE",
 					Value: v1beta1.ParamValue{StringVal: ref, Type: v1beta1.ParamTypeString},
 				},
+				{
+					Name:  "ENV_VARS",
+					Value: v1beta1.ParamValue{ArrayVal: envvarsArray, Type: v1beta1.ParamTypeArray},
+				},
 			},
 			Workspaces: []v1beta1.WorkspaceBinding{
 				{
@@ -664,6 +697,7 @@ func Start(
 	buildParams := gen.NewBuildParameters{
 		Ref:       &ref,
 		SourceUrl: &sourceURL,
+		Envvars: &envvars,
 	}
 	return http.StatusOK, gen.NewBuild{
 		Name:       &pipelineRun.Name,

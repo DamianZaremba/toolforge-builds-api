@@ -1055,6 +1055,7 @@ func TestStartReturnsInternalServerErrorOnException(t *testing.T) {
 		"dummy-ref",
 		"dummy-image-name",
 		"dummy-tool",
+		nil,
 	)
 
 	if code != 500 {
@@ -1085,10 +1086,62 @@ func TestStartReturnsInternalServerErrorIfCreateHarborProjectForToolReturnsError
 		"dummy-ref",
 		"dummy-image-name",
 		"dummy-tool",
+		nil,
 	)
 
 	if code != 503 {
 		t.Fatalf("I was expecting a 503 response, got: %d", code)
+	}
+}
+
+func TestStartReturnsBadRequestErrorIfBadNamedEnvvarsPassed(t *testing.T) {
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer testServer.Close()
+	mockTekton := tektonFake.Clientset{}
+	expectedName := "new-pipelinerun"
+	fakePipelineRun := v1beta1.PipelineRun{
+		ObjectMeta: v1.ObjectMeta{Name: expectedName},
+	}
+	mockTekton.Fake.AddReactor(
+		"create",
+		"pipelineruns",
+		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
+			return true, &fakePipelineRun, nil
+		},
+	)
+	api := BuildsApi{
+		Clients: Clients{
+			Tekton: &mockTekton,
+			Http:   &http.Client{},
+		},
+		Config: Config{
+			HarborRepository: testServer.URL,
+			HarborUsername:   "dummy-harbor-username",
+			HarborPassword:   "dummy-harbor-password",
+			Builder:          "dummy-builder",
+			OkToKeep:         1,
+			FailedToKeep:     2,
+			BuildIdPrefix:    BuildIdPrefix,
+			BuildNamespace:   BuildNamespace,
+		},
+	}
+	envvars := map[string]string{
+		"12_bad_name": "silly value",
+	}
+
+	code, _ := Start(
+		&api,
+		"dummy-source-url",
+		"dummy-ref",
+		"dummy-image-name",
+		"dummy-tool",
+		envvars,
+	)
+
+	if code != 400 {
+		t.Fatalf("I was expecting a 400 response, got: %d", code)
 	}
 }
 
@@ -1102,6 +1155,10 @@ func TestStartReturnsNewBuildName(t *testing.T) {
 	expectedRef := "dummy-ref"
 	expectedImageName := "dummy-image-name"
 	expectedSourceURL := "dummy-source-url"
+	expectedEnvvars := map[string]string{
+		"GOOD_NAME1": "silly value 1",
+		"GOOD_NAME2": "silly value 2",
+	}
 	fakePipelineRun := v1beta1.PipelineRun{
 		ObjectMeta: v1.ObjectMeta{Name: expectedName},
 	}
@@ -1135,6 +1192,7 @@ func TestStartReturnsNewBuildName(t *testing.T) {
 		expectedRef,
 		expectedImageName,
 		"dummy-tool",
+		expectedEnvvars,
 	)
 
 	if code != 200 {
@@ -1152,6 +1210,14 @@ func TestStartReturnsNewBuildName(t *testing.T) {
 
 	if *gottenNewBuild.Parameters.SourceUrl != expectedSourceURL {
 		t.Fatalf("Got an unexpected source url for the new build, got '%s', expected '%s'", *gottenNewBuild.Parameters.SourceUrl, expectedSourceURL)
+	}
+
+	for varName, value := range expectedEnvvars {
+		if gottenNewBuild.Parameters.Envvars == nil {
+			t.Fatalf("Got an unexpected envvars for the new build, got nil, expected '%v'", expectedEnvvars)
+		} else if (*gottenNewBuild.Parameters.Envvars)[varName] != value {
+			t.Fatalf("Got an unexpected envvars for the new build, got '%v', expected '%v'", *gottenNewBuild.Parameters.Envvars, expectedEnvvars)
+		}
 	}
 }
 

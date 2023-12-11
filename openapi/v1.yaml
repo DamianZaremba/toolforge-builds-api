@@ -280,9 +280,10 @@ paths:
             default: false
       responses:
         "200":
-          description: returns newline separated sequence of "#/components/schemas/BuildLog" or
-                       "#/component/schemas/InternalError" if there was an error after the
-                       streaming has started (as the http status code can't be changed)
+          description:
+            returns newline separated sequence of "#/components/schemas/BuildLog" or
+            "#/component/schemas/InternalError" if there was an error after the
+            streaming has started (as the http status code can't be changed)
           content:
             text/plain:
               schema:
@@ -430,6 +431,11 @@ components:
         ref:
           type: string
           description: Source code reference to build (ex. a git branch name)
+        envvars:
+          type: object
+          additionalProperties:
+            type: string
+          description: Environment variables and values to be set at build time
         image_name:
           type: string
           description: The name of the image to be built
@@ -443,6 +449,11 @@ components:
           type: string
         image_name:
           type: string
+        envvars:
+          type: object
+          additionalProperties:
+            type: string
+          description: Environment variables and values to be set at build time
     Build:
       allOf:
         - $ref: "#/components/schemas/BuildCondition"

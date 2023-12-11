@@ -16,7 +16,7 @@ releases:
           harborRepository: "http://{{ exec "./helpers/get_harbor_ip.sh" (list) }}"
           harborUsername: "admin"
           harborPassword: "Harbor12345"
-          builder: toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder-classic:22
+          builder: toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder:22
         certificates:
           internalClusterDomain: cluster.local
 

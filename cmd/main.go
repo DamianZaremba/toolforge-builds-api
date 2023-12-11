@@ -30,7 +30,7 @@ func main() {
 	viper.SetDefault("debug", false)
 	viper.SetDefault("port", 8000)
 	// note that the builder is the full ref for the image
-	viper.SetDefault("builder", "tools-harbor.wmcloud.org/toolforge/heroku-builder-classic:22")
+	viper.SetDefault("builder", "tools-harbor.wmcloud.org/toolforge/heroku-builder:22")
 	viper.SetDefault("ok_builds_to_keep", 1)
 	viper.SetDefault("failed_builds_to_keep", 2)
 	viper.SetDefault("build_namespace", internal.BuildNamespace)

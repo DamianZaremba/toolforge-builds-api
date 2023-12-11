@@ -1311,7 +1311,7 @@ func TestListReturnsBuilds(t *testing.T) {
 					ObjectMeta: v1.ObjectMeta{Name: expectedBuildId, Namespace: BuildNamespace, Labels: map[string]string{"user": toolName}},
 					Spec: v1beta1.PipelineRunSpec{
 						Params: []v1beta1.Param{
-							{Name: "BUILDER_IMAGE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder-classic:22"}},
+							{Name: "BUILDER_IMAGE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder:22"}},
 							{Name: "APP_IMAGE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "192.168.188.129/tool-minikube-user/tool-raymond:latest"}},
 							{Name: "SOURCE_URL", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "https://github.com/david-caro/wm-lol"}},
 							{Name: "SOURCE_REFERENCE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "value4"}},
@@ -1367,7 +1367,7 @@ func TestGetPipelineRunParam(t *testing.T) {
 	data := [4]param{
 		{
 			name:  "BUILDER_IMAGE",
-			value: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder-classic:22",
+			value: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder:22",
 		},
 		{
 			name:  "APP_IMAGE",
@@ -1428,7 +1428,7 @@ func TestGetReturnsBuildsOk(t *testing.T) {
 					ObjectMeta: v1.ObjectMeta{Name: buildId, Namespace: BuildNamespace, Labels: map[string]string{"user": toolName}},
 					Spec: v1beta1.PipelineRunSpec{
 						Params: []v1beta1.Param{
-							{Name: "BUILDER_IMAGE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder-classic:22"}},
+							{Name: "BUILDER_IMAGE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder:22"}},
 							{Name: "APP_IMAGE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "192.168.188.129/tool-minikube-user/tool-raymond:latest"}},
 							{Name: "SOURCE_URL", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "https://github.com/david-caro/wm-lol"}},
 							{Name: "SOURCE_REFERENCE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "value4"}},
@@ -1768,7 +1768,7 @@ func TestCancelReturnsCancelledBuild(t *testing.T) {
 					ObjectMeta: v1.ObjectMeta{Name: buildId, Namespace: BuildNamespace, Labels: map[string]string{"user": toolName}},
 					Spec: v1beta1.PipelineRunSpec{
 						Params: []v1beta1.Param{
-							{Name: "BUILDER_IMAGE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder-classic:22"}},
+							{Name: "BUILDER_IMAGE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder:22"}},
 							{Name: "APP_IMAGE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "192.168.188.129/tool-minikube-user/tool-raymond:latest"}},
 							{Name: "SOURCE_URL", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "https://github.com/david-caro/wm-lol"}},
 							{Name: "SOURCE_REFERENCE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "value4"}},
@@ -1817,7 +1817,7 @@ func TestLatestReturnsBuildsOk(t *testing.T) {
 					ObjectMeta: v1.ObjectMeta{Name: fmt.Sprintf("%s-2022", baseBuildId), Namespace: BuildNamespace, Labels: map[string]string{"user": toolName}},
 					Spec: v1beta1.PipelineRunSpec{
 						Params: []v1beta1.Param{
-							{Name: "BUILDER_IMAGE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder-classic:22"}},
+							{Name: "BUILDER_IMAGE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder:22"}},
 							{Name: "APP_IMAGE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "192.168.188.129/tool-minikube-user/tool-raymond:latest"}},
 							{Name: "SOURCE_URL", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "https://github.com/david-caro/wm-lol"}},
 							{Name: "SOURCE_REFERENCE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "value4"}},
@@ -1835,7 +1835,7 @@ func TestLatestReturnsBuildsOk(t *testing.T) {
 					ObjectMeta: v1.ObjectMeta{Name: latestBuildId, Namespace: BuildNamespace, Labels: map[string]string{"user": toolName}},
 					Spec: v1beta1.PipelineRunSpec{
 						Params: []v1beta1.Param{
-							{Name: "BUILDER_IMAGE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder-classic:22"}},
+							{Name: "BUILDER_IMAGE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder:22"}},
 							{Name: "APP_IMAGE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "192.168.188.129/tool-minikube-user/tool-raymond:latest"}},
 							{Name: "SOURCE_URL", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "https://github.com/david-caro/wm-lol"}},
 							{Name: "SOURCE_REFERENCE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "value4"}},
@@ -1853,7 +1853,7 @@ func TestLatestReturnsBuildsOk(t *testing.T) {
 					ObjectMeta: v1.ObjectMeta{Name: fmt.Sprintf("%s-2021", baseBuildId), Namespace: BuildNamespace, Labels: map[string]string{"user": toolName}},
 					Spec: v1beta1.PipelineRunSpec{
 						Params: []v1beta1.Param{
-							{Name: "BUILDER_IMAGE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder-classic:22"}},
+							{Name: "BUILDER_IMAGE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder:22"}},
 							{Name: "APP_IMAGE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "192.168.188.129/tool-minikube-user/tool-raymond:latest"}},
 							{Name: "SOURCE_URL", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "https://github.com/david-caro/wm-lol"}},
 							{Name: "SOURCE_REFERENCE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "value4"}},

@@ -1470,7 +1470,7 @@ func TestGetPipelineRunParam(t *testing.T) {
 
 	// valid params
 	for _, element := range data {
-		result := getpipelineRunParam(pipelinerun, element.name)
+		result := getpipelineRunStringParam(pipelinerun, element.name)
 		if result != element.value {
 			t.Fatalf("Unexpected getpipelineRunParam() result for param '%s'. Expected '%s', but got '%s'.", element.name, element.value, result)
 		}
@@ -1478,7 +1478,7 @@ func TestGetPipelineRunParam(t *testing.T) {
 
 	// invalid param
 	expected := "unknown"
-	result := getpipelineRunParam(pipelinerun, "non-existant")
+	result := getpipelineRunStringParam(pipelinerun, "non-existant")
 	if result != expected {
 		t.Fatalf("Unexpected getpipelineRunParam() result for non-existant param. Expected '%s', but got '%s'.", expected, result)
 	}

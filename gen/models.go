@@ -57,8 +57,10 @@ type BuildLog struct {
 
 // BuildParameters defines model for BuildParameters.
 type BuildParameters struct {
-	Ref       *string `json:"ref,omitempty"`
-	SourceUrl *string `json:"source_url,omitempty"`
+	// Envvars Environment variables and values to be set at build time
+	Envvars   *map[string]string `json:"envvars,omitempty"`
+	Ref       *string            `json:"ref,omitempty"`
+	SourceUrl *string            `json:"source_url,omitempty"`
 }
 
 // BuildStartParams defines model for BuildStartParams.

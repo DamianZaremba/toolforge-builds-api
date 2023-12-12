@@ -476,6 +476,11 @@ components:
           type: string
         ref:
           type: string
+        envvars:
+          type: object
+          additionalProperties:
+            type: string
+          description: Environment variables and values to be set at build time
     BuildCondition:
       type: object
       properties:

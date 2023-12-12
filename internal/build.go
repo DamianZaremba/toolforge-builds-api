@@ -211,7 +211,7 @@ func getBuildConditionFromPipelineRun(run *v1beta1.PipelineRun) gen.BuildConditi
 	return *buildCondition
 }
 
-func getpipelineRunParam(pipelineRun v1beta1.PipelineRun, name string) string {
+func getpipelineRunStringParam(pipelineRun v1beta1.PipelineRun, name string) string {
 	for _, param := range pipelineRun.Spec.Params {
 		if param.Name == name {
 			return fmt.Sprint(param.Value.StringVal)
@@ -221,6 +221,18 @@ func getpipelineRunParam(pipelineRun v1beta1.PipelineRun, name string) string {
 		"pipelineRunParam %s not found in pipelineRun %s in namespace %s", name, pipelineRun.Name, pipelineRun.Namespace,
 	)
 	return "unknown"
+}
+
+func getpipelineRunArrayParam(pipelineRun v1beta1.PipelineRun, name string) []string {
+	for _, param := range pipelineRun.Spec.Params {
+		if param.Name == name {
+			return param.Value.ArrayVal
+		}
+	}
+	log.Warnf(
+		"pipelineRunParam %s not found in pipelineRun %s in namespace %s", name, pipelineRun.Name, pipelineRun.Namespace,
+	)
+	return nil
 }
 
 func getBuild(run v1beta1.PipelineRun) *gen.Build {
@@ -234,9 +246,19 @@ func getBuild(run v1beta1.PipelineRun) *gen.Build {
 		endTime = run.Status.CompletionTime.Format(time.RFC3339)
 	}
 
-	sourceurl := getpipelineRunParam(run, "SOURCE_URL")
-	ref := getpipelineRunParam(run, "SOURCE_REFERENCE")
-	destinationimage := getpipelineRunParam(run, "APP_IMAGE")
+	sourceurl := getpipelineRunStringParam(run, "SOURCE_URL")
+	ref := getpipelineRunStringParam(run, "SOURCE_REFERENCE")
+	destinationimage := getpipelineRunStringParam(run, "APP_IMAGE")
+	envvarsStr := getpipelineRunArrayParam(run, "ENV_VARS")
+	envvars := make(map[string]string)
+	for _, envvarStr := range envvarsStr {
+		parts := strings.SplitN(envvarStr, "=", 2)
+		if len(parts) != 2 {
+			log.Debugf("Got weird envvar string, ignoring (got %d parts): %s -> %v", len(parts), envvarStr, parts)
+		} else {
+			envvars[parts[0]] = parts[1]
+		}
+	}
 
 	return &gen.Build{
 		BuildId:   &run.Name,
@@ -247,6 +269,7 @@ func getBuild(run v1beta1.PipelineRun) *gen.Build {
 		Parameters: &gen.BuildParameters{
 			SourceUrl: &sourceurl,
 			Ref:       &ref,
+			Envvars: &envvars,
 		},
 		DestinationImage: &destinationimage,
 	}

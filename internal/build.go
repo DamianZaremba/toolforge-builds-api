@@ -92,6 +92,66 @@ func ToolNameToHarborProjectName(toolName string) (string, error) {
 	return formattedName, nil
 }
 
+func doHarborRequest(api *BuildsApi, method string, url string) (http.Response, interface{}, error) {
+	var jsonBody interface{}
+	full_url := fmt.Sprintf("%s/api/v2.0%s", api.Config.HarborRepository, url)
+
+	request, err := http.NewRequest(method, full_url, nil)
+	if err != nil {
+		return http.Response{}, jsonBody, err
+	}
+	userAgent := "WMCS toolforge-builds-api Go-http-client"
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("User-Agent", userAgent)
+	username := api.Config.HarborUsername
+	password := api.Config.HarborPassword
+	request.SetBasicAuth(username, password)
+
+	response, err := api.Clients.Http.Do(request)
+	if err != nil {
+		log.Error(err.Error())
+		err = handleConnectionErrors(err)
+		return http.Response{}, jsonBody, err
+	}
+	defer response.Body.Close()
+
+	rawBody, _ := io.ReadAll(response.Body)
+	log.Debugf("Raw response body: %s", string(rawBody))
+	log.Debugf("Response status code: %d", response.StatusCode)
+	log.Debugf("Response headers: %v", response.Header)
+
+	// some requests return nothing
+	if string(rawBody) == "" {
+		if response.StatusCode >= 400 {
+			return *response, jsonBody, fmt.Errorf("got error code %d", response.StatusCode)
+		}
+		return *response, jsonBody, nil
+	}
+
+	err = json.NewDecoder(bytes.NewBuffer(rawBody)).Decode(&jsonBody)
+	if err != nil {
+		return *response, jsonBody, fmt.Errorf("%s - body: %s", err, string(rawBody))
+	}
+
+	// sometimes harbor replies with error structures, this tries to check if that's the case
+	// note that we have to unwrap the types one layer at a time, carrying the interface{}
+	switch val := jsonBody.(type) {
+	case map[string]interface{}:
+		errors, gotErrors := val["errors"]
+		if gotErrors {
+			message := ""
+			for _, err := range errors.([]interface{}) {
+				message += fmt.Sprintf("%v: %v\n", err.(map[string]interface{})["code"], err.(map[string]interface{})["message"])
+			}
+			if message != "" {
+				return *response, jsonBody, fmt.Errorf("got errors: %s", message)
+			}
+		}
+	}
+
+	return *response, jsonBody, nil
+}
+
 func CreateHarborProjectForTool(api *BuildsApi, toolName string) error {
 	harborProjectName, err := ToolNameToHarborProjectName(toolName)
 	if err != nil {
@@ -520,6 +580,47 @@ func formatBytes(bytes int64) string {
 	return fmt.Sprintf("%dB", bytes)
 }
 
+func cleanHarbor(api *BuildsApi, toolName string) (gen.CleanResponse, error) {
+	harborProjectName, err := ToolNameToHarborProjectName(toolName)
+	if err != nil {
+		return gen.CleanResponse{}, fmt.Errorf("error trying to map tool %s to harbor project: %s", toolName, err)
+	}
+
+	response, jsonBody, err := doHarborRequest(api, "GET", fmt.Sprintf("/projects/%s/repositories", harborProjectName))
+	if err != nil {
+		if response.StatusCode == 404 {
+			return gen.CleanResponse{}, fmt.Errorf("the project %s does not exist, have you started a build yet?", harborProjectName)
+		}
+		return gen.CleanResponse{}, fmt.Errorf("error trying to get the repositories for project %s: %s", harborProjectName, err)
+	}
+
+	message := ""
+	repositories := jsonBody.([]interface{})
+	for _, repository := range repositories {
+		// for some reason harbor returns the name bing <project>/<repository>, but then requires you to use only the last part for any queries
+		log.Infof("Got repos: %v", repository)
+		repoName := strings.SplitN(repository.(map[string]interface{})["name"].(string), "/", 2)[1]
+		response, jsonBody, err := doHarborRequest(api, "GET", fmt.Sprintf("/projects/%s/repositories/%s/artifacts", harborProjectName, repoName))
+		if err != nil {
+			return gen.CleanResponse{}, fmt.Errorf("error trying to get the artifacts for project %s: %s\n%d", harborProjectName, err, response.StatusCode)
+		}
+
+		artifacts := jsonBody.([]interface{})
+		for _, artifact := range artifacts {
+			_, _, err = doHarborRequest(api, "DELETE", fmt.Sprintf("/projects/%s/repositories/%s/artifacts/%s", harborProjectName, repoName, artifact.(map[string]interface{})["digest"]))
+			if err != nil {
+				return gen.CleanResponse{}, fmt.Errorf("error trying to delete artifact %s from project %s: %s", artifact.(map[string]interface{})["digest"], harborProjectName, err)
+			}
+		}
+		message += fmt.Sprintf("Deleted %d artifacts from harbor repository %s/%s", len(artifacts), harborProjectName, repoName)
+	}
+	if message == "" {
+		message = "Nothing to clean up"
+	}
+
+	return gen.CleanResponse{Message: &message}, nil
+}
+
 func GetHarborQuota(api *BuildsApi, toolName string) (HarborQuotaResponse, error) {
 	harborProjectName, err := ToolNameToHarborProjectName(toolName)
 	if err != nil {
@@ -906,6 +1007,17 @@ func Quota(api *BuildsApi, toolName string) (int, interface{}) {
 	}
 
 	return http.StatusOK, quota
+}
+
+func Clean(api *BuildsApi, toolName string) (int, interface{}) {
+	response, err := cleanHarbor(api, toolName)
+	if err != nil {
+		log.Error(err)
+		message := fmt.Sprintf("Error cleaning up: %s", err)
+		return http.StatusInternalServerError, gen.InternalError{Message: &message}
+	}
+
+	return http.StatusOK, response
 }
 
 func Healthcheck(api *BuildsApi) (int, gen.HealthResponse) {

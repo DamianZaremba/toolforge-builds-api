@@ -1998,7 +1998,7 @@ func TestLatestReturnsAPIError(t *testing.T) {
 	}
 }
 
-func TestLatesttReturnsBuildsNotFound(t *testing.T) {
+func TestLatestReturnsBuildsNotFound(t *testing.T) {
 	toolName := "dummy-tool"
 	mockTekton := tektonFake.NewSimpleClientset()
 	api := BuildsApi{
@@ -2026,5 +2026,117 @@ func TestLatesttReturnsBuildsNotFound(t *testing.T) {
 	resp := response.(gen.NotFound)
 	if *resp.Message != expected_response {
 		t.Fatalf("Expected response '%s' but got '%s'", expected_response, *resp.Message)
+	}
+}
+
+func TestCleanReturnsErrorIfHarborApiReturnsUnexpectedError(t *testing.T) {
+	api := BuildsApi{
+		Clients: Clients{
+			Http: &http.Client{},
+		},
+		Config: Config{
+			HarborRepository: "",
+			HarborUsername:   "dummy-harbor-username",
+			HarborPassword:   "dummy-harbor-password",
+		},
+	}
+	testCases := map[string]*httptest.Server{
+		"Unauthorized": httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+			rw.WriteHeader(http.StatusUnauthorized)
+			_, _ = rw.Write([]byte(fmt.Sprintf(`{"errors":[{ "code": %d, "message": "dummy error" }]}`, http.StatusUnauthorized)))
+		})),
+		"BadGateway": httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+			rw.WriteHeader(http.StatusBadGateway)
+		})),
+	}
+	for testName, testServer := range testCases {
+		t.Run(testName, func(t *testing.T) {
+			defer testServer.Close()
+			api.Config.HarborRepository = testServer.URL
+			responseCode, response := Clean(&api, "dummy-tool-name")
+			if responseCode <= 400 {
+				t.Fatalf("I was expecting an error, got return code %d, and response: %v", responseCode, response)
+			}
+		})
+	}
+}
+
+func TestCleanHappyPath(t *testing.T) {
+	api := BuildsApi{
+		Clients: Clients{
+			Http: &http.Client{},
+		},
+		Config: Config{
+			HarborRepository: "",
+			HarborUsername:   "dummy-harbor-username",
+			HarborPassword:   "dummy-harbor-password",
+		},
+	}
+	numDeletesTC1 := 0
+	numDeletesTC2 := 0
+	testCases := map[string]*httptest.Server{
+		"No artifacts": httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+			if req.Method == "GET" && req.RequestURI == "/api/v2.0/projects/tool-dummy-tool-name-no-artifacts/repositories" {
+				headers := rw.Header()
+				headers["Content-Type"] = []string{"application/json"}
+				rw.WriteHeader(http.StatusOK)
+				_, _ = rw.Write([]byte(`[{"name": "tool-dummy-tool-name-no-artifacts/repo1"}]`))
+			} else if req.Method == "GET" && req.RequestURI == "/api/v2.0/projects/tool-dummy-tool-name-no-artifacts/repositories/repo1/artifacts" {
+				headers := rw.Header()
+				headers["Content-Type"] = []string{"application/json"}
+				rw.WriteHeader(http.StatusOK)
+				_, _ = rw.Write([]byte("[]"))
+			} else {
+				rw.WriteHeader(http.StatusBadRequest)
+				_, _ = rw.Write([]byte(fmt.Sprintf("Should not have been called, got method %s, URI %s", req.Method, req.RequestURI)))
+			}
+		})),
+		"One artifact": httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+			if req.Method == "GET" && req.RequestURI == "/api/v2.0/projects/tool-dummy-tool-name-one-artifact/repositories" {
+				headers := rw.Header()
+				headers["Content-Type"] = []string{"application/json"}
+				rw.WriteHeader(http.StatusOK)
+				_, _ = rw.Write([]byte(`[{"name": "tool-dummy-tool-name-one-artifact/repo1"}]`))
+			} else if req.Method == "GET" && req.RequestURI == "/api/v2.0/projects/tool-dummy-tool-name-one-artifact/repositories/repo1/artifacts" {
+				rw.WriteHeader(http.StatusOK)
+				_, _ = rw.Write([]byte(`[{"digest": "artifact1digest"}]`))
+			} else if req.Method == "DELETE" && req.RequestURI == "/api/v2.0/projects/tool-dummy-tool-name-one-artifact/repositories/repo1/artifacts/artifact1digest"  && numDeletesTC1 == 0 {
+				rw.WriteHeader(http.StatusOK)
+				numDeletesTC1 += 1
+			} else {
+				rw.WriteHeader(http.StatusBadRequest)
+				_, _ = rw.Write([]byte(fmt.Sprintf("Should not have been called, got method %s, URI %s (numDeletesTC1=%d)", req.Method, req.RequestURI, numDeletesTC1)))
+			}
+		})),
+		"Many artifacts": httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+			if req.Method == "GET" && req.RequestURI == "/api/v2.0/projects/tool-dummy-tool-name-many-artifacts/repositories" {
+				headers := rw.Header()
+				headers["Content-Type"] = []string{"application/json"}
+				rw.WriteHeader(http.StatusOK)
+				_, _ = rw.Write([]byte(`[{"name": "tool-dummy-tool-name-many-artifacts/repo1"}, {"name": "tool-dummy-tool-name-many-artifacts/repo2"}]`))
+			} else if req.Method == "GET" && req.RequestURI == "/api/v2.0/projects/tool-dummy-tool-name-many-artifacts/repositories/repo1/artifacts" {
+				rw.WriteHeader(http.StatusOK)
+				_, _ = rw.Write([]byte(`[{"digest": "artifact1digest"}, {"digest": "artifact2digest"}, {"digest": "artifact3digest"}]`))
+			} else if req.Method == "GET" && req.RequestURI == "/api/v2.0/projects/tool-dummy-tool-name-many-artifacts/repositories/repo2/artifacts" {
+				rw.WriteHeader(http.StatusOK)
+				_, _ = rw.Write([]byte(`[{"digest": "artifact4digest"}, {"digest": "artifact5digest"}, {"digest": "artifact6digest"}]`))
+			} else if req.Method == "DELETE" && strings.HasPrefix(req.RequestURI, "/api/v2.0/projects/tool-dummy-tool-name-many-artifacts/repositories/repo")  && numDeletesTC2 <= 6 {
+				rw.WriteHeader(http.StatusOK)
+				numDeletesTC2 += 1
+			} else {
+				rw.WriteHeader(http.StatusBadRequest)
+				_, _ = rw.Write([]byte(fmt.Sprintf("Should not have been called, got method %s, URI %s (numDeletesTC2=%d)", req.Method, req.RequestURI, numDeletesTC2)))
+			}
+		})),
+	}
+	for testName, testServer := range testCases {
+		t.Run(testName, func(t *testing.T) {
+			defer testServer.Close()
+			api.Config.HarborRepository = testServer.URL
+			responseCode, response := Clean(&api, fmt.Sprintf("dummy-tool-name-%s", strings.ReplaceAll(strings.ToLower(testName), " ", "-")))
+			if responseCode != 200 {
+				t.Fatalf("I was expecting no errors, got return code %d, and response: %v", responseCode, *response.(gen.InternalError).Message)
+			}
+		})
 	}
 }

@@ -261,6 +261,31 @@ paths:
                 $ref: "#/components/schemas/InternalError"
       security:
         - key: []
+  /clean:
+    post:
+      operationId: clean
+      parameters: []
+      responses:
+        "200":
+          description: Returns a summary of what was cleaned up.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CleanResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Unauthorized"
+        "500":
+          description: An internal error happened
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InternalError"
+      security:
+        - key: []
   /build/{id}/logs:
     get:
       operationId: logs
@@ -522,6 +547,11 @@ components:
                       type: string
                     capacity:
                       type: string
+    CleanResponse:
+      type: object
+      properties:
+        message:
+          type: string
 
   securitySchemes:
     key:

@@ -136,6 +136,13 @@ func (api BuildsApi) Quota(ctx echo.Context) error {
 	return ctx.JSON(code, response)
 }
 
+func (api BuildsApi) Clean(ctx echo.Context) error {
+	toolName := getToolFromContext(ctx)
+
+	code, response := Clean(&api, toolName)
+	return ctx.JSON(code, response)
+}
+
 func (api BuildsApi) Openapi(ctx echo.Context) error {
 	swagger, err := gen.GetSwagger()
 	if err != nil {

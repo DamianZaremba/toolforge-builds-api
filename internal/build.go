@@ -612,7 +612,7 @@ func cleanHarbor(api *BuildsApi, toolName string) (gen.CleanResponse, error) {
 				return gen.CleanResponse{}, fmt.Errorf("error trying to delete artifact %s from project %s: %s", artifact.(map[string]interface{})["digest"], harborProjectName, err)
 			}
 		}
-		message += fmt.Sprintf("Deleted %d artifacts from harbor repository %s/%s", len(artifacts), harborProjectName, repoName)
+		message += fmt.Sprintf("Deleted %d artifacts from harbor repository %s/%s\n", len(artifacts), harborProjectName, repoName)
 	}
 	if message == "" {
 		message = "Nothing to clean up"

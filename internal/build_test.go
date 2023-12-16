@@ -1565,7 +1565,7 @@ func TestGetReturnsBuildsNotAuth(t *testing.T) {
 		t.Fatalf("I was expecting a '%d' response, got '%d'. %v", expected_code, code, recorder.Body.String())
 	}
 
-	expected_response := fmt.Sprintf("user %s not allowed to act on build %s", toolName, buildId)
+	expected_response := fmt.Sprintf("Build '%s' does not exist or belong to tool '%s'. Double check the name and try again.", buildId, toolName)
 	resp := response.(gen.Unauthorized)
 	if *resp.Message != expected_response {
 		t.Fatalf("Expected response '%s' but got '%s'", expected_response, *resp.Message)

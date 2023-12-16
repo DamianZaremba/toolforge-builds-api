@@ -58,5 +58,5 @@ func ToolIsAllowedForBuild(user string, buildId string, buildIdPrefix string) er
 		return nil
 	}
 
-	return fmt.Errorf("user %s not allowed to act on build %s", user, buildId)
+	return fmt.Errorf("Build '%s' does not exist or belong to tool '%s'. Double check the name and try again.", buildId, user)
 }

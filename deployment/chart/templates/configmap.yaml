@@ -39,8 +39,13 @@ data:
                 ssl_ciphers            HIGH:!aNULL:!MD5;
 
                 location / {
-                    proxy_pass_header "X-Accel-Buffering";
                     proxy_pass http://127.0.0.1:{{ .Values.config.port }};
+                }
+
+                location ~ /v1/build/.*/logs {
+                    proxy_pass_header "X-Accel-Buffering";
+                    proxy_read_timeout 10m;
+                    proxy_pass http://127.0.0.1:{{ .Values.config.port }}$request_uri;
                 }
             }
 

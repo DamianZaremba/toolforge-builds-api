@@ -329,7 +329,7 @@ func getBuild(run v1beta1.PipelineRun) *gen.Build {
 		Parameters: &gen.BuildParameters{
 			SourceUrl: &sourceurl,
 			Ref:       &ref,
-			Envvars: &envvars,
+			Envvars:   &envvars,
 		},
 		DestinationImage: &destinationimage,
 	}
@@ -521,7 +521,7 @@ func StreamAfterPipelineRunStarted(ctx echo.Context, clients *Clients, namespace
 }
 
 func Logs(ctx echo.Context, api *BuildsApi, buildId string, toolName string, follow bool) (int, interface{}) {
-	waitTimeout := 1 * time.Minute
+	waitTimeout := 10 * time.Minute
 
 	if err := ToolIsAllowedForBuild(toolName, buildId, api.Config.BuildIdPrefix); err != nil {
 		message := fmt.Sprintf("%s", err)
@@ -700,7 +700,6 @@ func GetHarborQuota(api *BuildsApi, toolName string) (HarborQuotaResponse, error
 	return res, nil
 }
 
-
 func ValidateEnvvars(envvars map[string]string) error {
 	varnameRegex := "^[A-z_][A-z_0-9]{2,}$"
 	varnameRegexCompiled, err := regexp.Compile(varnameRegex)
@@ -821,7 +820,7 @@ func Start(
 	buildParams := gen.NewBuildParameters{
 		Ref:       &ref,
 		SourceUrl: &sourceURL,
-		Envvars: &envvars,
+		Envvars:   &envvars,
 	}
 	return http.StatusOK, gen.NewBuild{
 		Name:       &pipelineRun.Name,

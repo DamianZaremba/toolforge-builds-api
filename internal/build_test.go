@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/goharbor/go-client/pkg/harbor"
 	"github.com/labstack/echo/v4"
 	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	tektonFake "github.com/tektoncd/pipeline/pkg/client/clientset/versioned/fake"
@@ -88,31 +89,43 @@ func TestToolNameToHarborProjectNameReturnsCorrectHarborProjectName(t *testing.T
 
 func TestCreateHarborProjectForToolReturnsErrorIfHarborApiReturnsUnexpectedError(t *testing.T) {
 	api := BuildsApi{
-		Clients: Clients{
-			Http: &http.Client{},
-		},
-		Config: Config{
-			HarborRepository: "",
-			HarborUsername:   "dummy-harbor-username",
-			HarborPassword:   "dummy-harbor-password",
-		},
+		Clients: Clients{},
+		Config:  Config{},
 	}
-	testCases := map[string]*httptest.Server{
-		"Unauthorized": httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-			rw.WriteHeader(http.StatusUnauthorized)
-			_, _ = rw.Write([]byte(fmt.Sprintf(`{"errors":[{ "code": %d, "message": "dummy error" }]}`, http.StatusUnauthorized)))
-		})),
-		"BadGateway": httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-			rw.WriteHeader(http.StatusBadGateway)
-		})),
-		"Timeout": httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-			time.Sleep(2 * time.Second)
-		})),
+	testCases := map[string]func() *httptest.Server{
+		"Unauthorized": func() *httptest.Server {
+			mux := http.NewServeMux()
+			mux.HandleFunc("/", func(rw http.ResponseWriter, req *http.Request) {
+				rw.Header().Set("Content-Type", "application/json")
+				rw.WriteHeader(http.StatusUnauthorized)
+				_, _ = rw.Write([]byte(fmt.Sprintf(`{"errors":[{ "code": "%d", "message": "dummy error" }]}`, http.StatusUnauthorized)))
+			})
+			return httptest.NewServer(mux)
+		},
+		"BadGateway": func() *httptest.Server {
+			mux := http.NewServeMux()
+			mux.HandleFunc("/", func(rw http.ResponseWriter, req *http.Request) {
+				rw.WriteHeader(http.StatusBadGateway)
+			})
+			return httptest.NewServer(mux)
+		},
+		"GatewayTimeout": func() *httptest.Server {
+			mux := http.NewServeMux()
+			mux.HandleFunc("/", func(rw http.ResponseWriter, req *http.Request) {
+				rw.WriteHeader(http.StatusGatewayTimeout)
+			})
+			return httptest.NewServer(mux)
+		},
 	}
 	for testName, testServer := range testCases {
 		t.Run(testName, func(t *testing.T) {
+			testServer := testServer()
 			defer testServer.Close()
-			api.Config.HarborRepository = testServer.URL
+			testConfig := &harbor.ClientSetConfig{
+				URL: testServer.URL,
+			}
+			testHarborClientSet, _ := harbor.NewClientSet(testConfig)
+			api.Clients.Harbor = testHarborClientSet
 			err := CreateHarborProjectForTool(&api, "dummy-tool-name")
 			if err == nil {
 				t.Fatalf("I was expecting an error, got: %s", err)
@@ -122,34 +135,44 @@ func TestCreateHarborProjectForToolReturnsErrorIfHarborApiReturnsUnexpectedError
 }
 
 func TestCreateHarborProjectForToolReturnsNilIfProjectWasCreatedOrAlreadyExists(t *testing.T) {
-	testServer1 := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-		rw.WriteHeader(http.StatusCreated)
-	}))
-	testServer2 := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-		rw.WriteHeader(http.StatusConflict)
-		rw.Write([]byte(fmt.Sprintf(`{"errors":[{ "code": %d, "message": "dummy error" }]}`, http.StatusConflict)))
-
-	}))
-	defer testServer1.Close()
-	defer testServer2.Close()
 	api := BuildsApi{
-		Clients: Clients{
-			Http: &http.Client{},
+		Clients: Clients{},
+		Config:  Config{},
+	}
+
+	testCases := map[string]func() *httptest.Server{
+		"StatusCreated": func() *httptest.Server {
+			mux := http.NewServeMux()
+			mux.HandleFunc("/", func(rw http.ResponseWriter, req *http.Request) {
+				rw.WriteHeader(http.StatusCreated)
+			})
+			return httptest.NewServer(mux)
 		},
-		Config: Config{
-			HarborRepository: testServer1.URL,
-			HarborUsername:   "dummy-harbor-username",
-			HarborPassword:   "dummy-harbor-password",
+		"StatusConflict": func() *httptest.Server {
+			mux := http.NewServeMux()
+			mux.HandleFunc("/", func(rw http.ResponseWriter, req *http.Request) {
+				rw.Header().Set("Content-Type", "application/json")
+				rw.WriteHeader(http.StatusConflict)
+				_, _ = rw.Write([]byte(fmt.Sprintf(`{"errors":[{ "code": "%d", "message": "dummy error" }]}`, http.StatusConflict)))
+			})
+			return httptest.NewServer(mux)
 		},
 	}
-	err := CreateHarborProjectForTool(&api, "dummy-tool-name")
-	if err != nil {
-		t.Fatalf("I was not expecting an error, got: %s", err)
-	}
-	api.Config.HarborRepository = testServer2.URL
-	err = CreateHarborProjectForTool(&api, "dummy-tool-name")
-	if err != nil {
-		t.Fatalf("I was not expecting an error, got: %s", err)
+
+	for testName, testServer := range testCases {
+		t.Run(testName, func(t *testing.T) {
+			testServer := testServer()
+			defer testServer.Close()
+			testConfig := &harbor.ClientSetConfig{
+				URL: testServer.URL,
+			}
+			testHarborClientSet, _ := harbor.NewClientSet(testConfig)
+			api.Clients.Harbor = testHarborClientSet
+			err := CreateHarborProjectForTool(&api, "dummy-tool-name")
+			if err != nil {
+				t.Fatalf("I was not expecting an error, got: %s", err)
+			}
+		})
 	}
 }
 
@@ -1024,6 +1047,11 @@ func TestStartReturnsInternalServerErrorOnException(t *testing.T) {
 		w.WriteHeader(http.StatusCreated)
 	}))
 	defer testServer.Close()
+	testConfig := &harbor.ClientSetConfig{
+		URL: testServer.URL,
+	}
+	testHarborClientSet, _ := harbor.NewClientSet(testConfig)
+
 	mockTekton := tektonFake.Clientset{}
 	mockTekton.Fake.AddReactor(
 		"create",
@@ -1035,12 +1063,10 @@ func TestStartReturnsInternalServerErrorOnException(t *testing.T) {
 	api := BuildsApi{
 		Clients: Clients{
 			Tekton: &mockTekton,
-			Http:   &http.Client{},
+			Harbor: testHarborClientSet,
 		},
 		Config: Config{
 			HarborRepository: testServer.URL,
-			HarborUsername:   "dummy-harbor-username",
-			HarborPassword:   "dummy-harbor-password",
 			Builder:          "dummy-builder",
 			OkToKeep:         1,
 			FailedToKeep:     2,
@@ -1066,17 +1092,20 @@ func TestStartReturnsInternalServerErrorOnException(t *testing.T) {
 func TestStartReturnsInternalServerErrorIfCreateHarborProjectForToolReturnsError(t *testing.T) {
 	testServer := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
 		rw.WriteHeader(http.StatusUnauthorized)
-		rw.Write([]byte(fmt.Sprintf(`{"errors":[{ "code": %d, "message": "dummy error" }]}`, http.StatusUnauthorized)))
+		_, _ = rw.Write([]byte(fmt.Sprintf(`{"errors":[{ "code": %d, "message": "dummy error" }]}`, http.StatusUnauthorized)))
 	}))
 	defer testServer.Close()
+	testConfig := &harbor.ClientSetConfig{
+		URL: testServer.URL,
+	}
+	testHarborClientSet, _ := harbor.NewClientSet(testConfig)
+
 	api := BuildsApi{
 		Clients: Clients{
-			Http: &http.Client{},
+			Harbor: testHarborClientSet,
 		},
 		Config: Config{
 			HarborRepository: testServer.URL,
-			HarborUsername:   "dummy-harbor-username",
-			HarborPassword:   "dummy-harbor-password",
 		},
 	}
 
@@ -1099,6 +1128,11 @@ func TestStartReturnsBadRequestErrorIfBadNamedEnvvarsPassed(t *testing.T) {
 		w.WriteHeader(http.StatusCreated)
 	}))
 	defer testServer.Close()
+	testConfig := &harbor.ClientSetConfig{
+		URL: testServer.URL,
+	}
+	testHarborClientSet, _ := harbor.NewClientSet(testConfig)
+
 	mockTekton := tektonFake.Clientset{}
 	expectedName := "new-pipelinerun"
 	fakePipelineRun := v1beta1.PipelineRun{
@@ -1114,12 +1148,10 @@ func TestStartReturnsBadRequestErrorIfBadNamedEnvvarsPassed(t *testing.T) {
 	api := BuildsApi{
 		Clients: Clients{
 			Tekton: &mockTekton,
-			Http:   &http.Client{},
+			Harbor: testHarborClientSet,
 		},
 		Config: Config{
 			HarborRepository: testServer.URL,
-			HarborUsername:   "dummy-harbor-username",
-			HarborPassword:   "dummy-harbor-password",
 			Builder:          "dummy-builder",
 			OkToKeep:         1,
 			FailedToKeep:     2,
@@ -1150,6 +1182,11 @@ func TestStartReturnsNewBuildName(t *testing.T) {
 		w.WriteHeader(http.StatusCreated)
 	}))
 	defer testServer.Close()
+	testConfig := &harbor.ClientSetConfig{
+		URL: testServer.URL,
+	}
+	testHarborClientSet, _ := harbor.NewClientSet(testConfig)
+
 	mockTekton := tektonFake.Clientset{}
 	expectedName := "new-pipelinerun"
 	expectedRef := "dummy-ref"
@@ -1172,12 +1209,10 @@ func TestStartReturnsNewBuildName(t *testing.T) {
 	api := BuildsApi{
 		Clients: Clients{
 			Tekton: &mockTekton,
-			Http:   &http.Client{},
+			Harbor: testHarborClientSet,
 		},
 		Config: Config{
 			HarborRepository: testServer.URL,
-			HarborUsername:   "dummy-harbor-username",
-			HarborPassword:   "dummy-harbor-password",
 			Builder:          "dummy-builder",
 			OkToKeep:         1,
 			FailedToKeep:     2,
@@ -2031,28 +2066,36 @@ func TestLatestReturnsBuildsNotFound(t *testing.T) {
 
 func TestCleanReturnsErrorIfHarborApiReturnsUnexpectedError(t *testing.T) {
 	api := BuildsApi{
-		Clients: Clients{
-			Http: &http.Client{},
-		},
-		Config: Config{
-			HarborRepository: "",
-			HarborUsername:   "dummy-harbor-username",
-			HarborPassword:   "dummy-harbor-password",
-		},
+		Clients: Clients{},
+		Config:  Config{},
 	}
-	testCases := map[string]*httptest.Server{
-		"Unauthorized": httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-			rw.WriteHeader(http.StatusUnauthorized)
-			_, _ = rw.Write([]byte(fmt.Sprintf(`{"errors":[{ "code": %d, "message": "dummy error" }]}`, http.StatusUnauthorized)))
-		})),
-		"BadGateway": httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-			rw.WriteHeader(http.StatusBadGateway)
-		})),
+	testCases := map[string]func() *httptest.Server{
+		"Unauthorized": func() *httptest.Server {
+			mux := http.NewServeMux()
+			mux.HandleFunc("/", func(rw http.ResponseWriter, req *http.Request) {
+				rw.Header().Set("Content-Type", "application/json")
+				rw.WriteHeader(http.StatusUnauthorized)
+				_, _ = rw.Write([]byte(fmt.Sprintf(`{"errors":[{ "code": "%d", "message": "dummy error" }]}`, http.StatusUnauthorized)))
+			})
+			return httptest.NewServer(mux)
+		},
+		"BadGateway": func() *httptest.Server {
+			mux := http.NewServeMux()
+			mux.HandleFunc("/", func(rw http.ResponseWriter, req *http.Request) {
+				rw.WriteHeader(http.StatusBadGateway)
+			})
+			return httptest.NewServer(mux)
+		},
 	}
 	for testName, testServer := range testCases {
 		t.Run(testName, func(t *testing.T) {
+			testServer := testServer()
 			defer testServer.Close()
-			api.Config.HarborRepository = testServer.URL
+			testConfig := &harbor.ClientSetConfig{
+				URL: testServer.URL,
+			}
+			testHarborClientSet, _ := harbor.NewClientSet(testConfig)
+			api.Clients.Harbor = testHarborClientSet
 			responseCode, response := Clean(&api, "dummy-tool-name")
 			if responseCode <= 400 {
 				t.Fatalf("I was expecting an error, got return code %d, and response: %v", responseCode, response)
@@ -2063,76 +2106,85 @@ func TestCleanReturnsErrorIfHarborApiReturnsUnexpectedError(t *testing.T) {
 
 func TestCleanHappyPath(t *testing.T) {
 	api := BuildsApi{
-		Clients: Clients{
-			Http: &http.Client{},
-		},
-		Config: Config{
-			HarborRepository: "",
-			HarborUsername:   "dummy-harbor-username",
-			HarborPassword:   "dummy-harbor-password",
-		},
+		Clients: Clients{},
+		Config:  Config{},
 	}
 	numDeletesTC1 := 0
 	numDeletesTC2 := 0
-	testCases := map[string]*httptest.Server{
-		"No artifacts": httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-			if req.Method == "GET" && req.RequestURI == "/api/v2.0/projects/tool-dummy-tool-name-no-artifacts/repositories" {
-				headers := rw.Header()
-				headers["Content-Type"] = []string{"application/json"}
-				rw.WriteHeader(http.StatusOK)
-				_, _ = rw.Write([]byte(`[{"name": "tool-dummy-tool-name-no-artifacts/repo1"}]`))
-			} else if req.Method == "GET" && req.RequestURI == "/api/v2.0/projects/tool-dummy-tool-name-no-artifacts/repositories/repo1/artifacts" {
-				headers := rw.Header()
-				headers["Content-Type"] = []string{"application/json"}
-				rw.WriteHeader(http.StatusOK)
-				_, _ = rw.Write([]byte("[]"))
-			} else {
-				rw.WriteHeader(http.StatusBadRequest)
-				_, _ = rw.Write([]byte(fmt.Sprintf("Should not have been called, got method %s, URI %s", req.Method, req.RequestURI)))
-			}
-		})),
-		"One artifact": httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-			if req.Method == "GET" && req.RequestURI == "/api/v2.0/projects/tool-dummy-tool-name-one-artifact/repositories" {
-				headers := rw.Header()
-				headers["Content-Type"] = []string{"application/json"}
-				rw.WriteHeader(http.StatusOK)
-				_, _ = rw.Write([]byte(`[{"name": "tool-dummy-tool-name-one-artifact/repo1"}]`))
-			} else if req.Method == "GET" && req.RequestURI == "/api/v2.0/projects/tool-dummy-tool-name-one-artifact/repositories/repo1/artifacts" {
-				rw.WriteHeader(http.StatusOK)
-				_, _ = rw.Write([]byte(`[{"digest": "artifact1digest"}]`))
-			} else if req.Method == "DELETE" && req.RequestURI == "/api/v2.0/projects/tool-dummy-tool-name-one-artifact/repositories/repo1/artifacts/artifact1digest"  && numDeletesTC1 == 0 {
-				rw.WriteHeader(http.StatusOK)
-				numDeletesTC1 += 1
-			} else {
-				rw.WriteHeader(http.StatusBadRequest)
-				_, _ = rw.Write([]byte(fmt.Sprintf("Should not have been called, got method %s, URI %s (numDeletesTC1=%d)", req.Method, req.RequestURI, numDeletesTC1)))
-			}
-		})),
-		"Many artifacts": httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-			if req.Method == "GET" && req.RequestURI == "/api/v2.0/projects/tool-dummy-tool-name-many-artifacts/repositories" {
-				headers := rw.Header()
-				headers["Content-Type"] = []string{"application/json"}
-				rw.WriteHeader(http.StatusOK)
-				_, _ = rw.Write([]byte(`[{"name": "tool-dummy-tool-name-many-artifacts/repo1"}, {"name": "tool-dummy-tool-name-many-artifacts/repo2"}]`))
-			} else if req.Method == "GET" && req.RequestURI == "/api/v2.0/projects/tool-dummy-tool-name-many-artifacts/repositories/repo1/artifacts" {
-				rw.WriteHeader(http.StatusOK)
-				_, _ = rw.Write([]byte(`[{"digest": "artifact1digest"}, {"digest": "artifact2digest"}, {"digest": "artifact3digest"}]`))
-			} else if req.Method == "GET" && req.RequestURI == "/api/v2.0/projects/tool-dummy-tool-name-many-artifacts/repositories/repo2/artifacts" {
-				rw.WriteHeader(http.StatusOK)
-				_, _ = rw.Write([]byte(`[{"digest": "artifact4digest"}, {"digest": "artifact5digest"}, {"digest": "artifact6digest"}]`))
-			} else if req.Method == "DELETE" && strings.HasPrefix(req.RequestURI, "/api/v2.0/projects/tool-dummy-tool-name-many-artifacts/repositories/repo")  && numDeletesTC2 <= 6 {
-				rw.WriteHeader(http.StatusOK)
-				numDeletesTC2 += 1
-			} else {
-				rw.WriteHeader(http.StatusBadRequest)
-				_, _ = rw.Write([]byte(fmt.Sprintf("Should not have been called, got method %s, URI %s (numDeletesTC2=%d)", req.Method, req.RequestURI, numDeletesTC2)))
-			}
-		})),
+
+	testCases := map[string]func() *httptest.Server{
+		"No artifacts": func() *httptest.Server {
+			mux := http.NewServeMux()
+			mux.HandleFunc("/", func(rw http.ResponseWriter, req *http.Request) {
+				if req.Method == http.MethodGet && strings.HasPrefix(req.RequestURI, "/api/v2.0/projects/tool-dummy-tool-name-no-artifacts/repositories") {
+					rw.Header().Set("Content-Type", "application/json")
+					rw.WriteHeader(http.StatusOK)
+					_, _ = rw.Write([]byte(`[{"name": "tool-dummy-tool-name-no-artifacts/repo1"}]`))
+				} else if req.Method == http.MethodGet && strings.HasPrefix(req.RequestURI, "/api/v2.0/projects/tool-dummy-tool-name-no-artifacts/repositories/repo1/artifacts") {
+					rw.Header().Set("Content-Type", "application/json")
+					rw.WriteHeader(http.StatusOK)
+					_, _ = rw.Write([]byte("[]"))
+				} else {
+					rw.WriteHeader(http.StatusBadRequest)
+					_, _ = rw.Write([]byte(fmt.Sprintf("Should not have been called, got method %s, URI %s", req.Method, req.RequestURI)))
+				}
+			})
+			return httptest.NewServer(mux)
+		},
+		"One artifact": func() *httptest.Server {
+			mux := http.NewServeMux()
+			mux.HandleFunc("/", func(rw http.ResponseWriter, req *http.Request) {
+				if req.Method == http.MethodGet && strings.HasPrefix(req.RequestURI, "/api/v2.0/projects/tool-dummy-tool-name-one-artifact/repositories") {
+					rw.Header().Set("Content-Type", "application/json")
+					rw.WriteHeader(http.StatusOK)
+					_, _ = rw.Write([]byte(`[{"name": "tool-dummy-tool-name-one-artifact/repo1"}]`))
+				} else if req.Method == http.MethodGet && strings.HasPrefix(req.RequestURI, "/api/v2.0/projects/tool-dummy-tool-name-one-artifact/repositories/repo1/artifacts") {
+					rw.WriteHeader(http.StatusOK)
+					_, _ = rw.Write([]byte(`[{"digest": "artifact1digest"}]`))
+				} else if req.Method == http.MethodDelete && strings.HasPrefix(req.RequestURI, "/api/v2.0/projects/tool-dummy-tool-name-one-artifact/repositories/repo1/artifacts/artifact1digest") && numDeletesTC1 == 0 {
+					rw.WriteHeader(http.StatusOK)
+					numDeletesTC1 += 1
+				} else {
+					rw.WriteHeader(http.StatusBadRequest)
+					_, _ = rw.Write([]byte(fmt.Sprintf("Should not have been called, got method %s, URI %s (numDeletesTC1=%d)", req.Method, req.RequestURI, numDeletesTC1)))
+				}
+			})
+			return httptest.NewServer(mux)
+		},
+		"Many artifacts": func() *httptest.Server {
+			mux := http.NewServeMux()
+			mux.HandleFunc("/", func(rw http.ResponseWriter, req *http.Request) {
+				if req.Method == http.MethodGet && strings.HasPrefix(req.RequestURI, "/api/v2.0/projects/tool-dummy-tool-name-many-artifacts/repositories") {
+					rw.Header().Set("Content-Type", "application/json")
+					rw.WriteHeader(http.StatusOK)
+					_, _ = rw.Write([]byte(`[{"name": "tool-dummy-tool-name-many-artifacts/repo1"}, {"name": "tool-dummy-tool-name-many-artifacts/repo2"}]`))
+				} else if req.Method == http.MethodGet && strings.HasPrefix(req.RequestURI, "/api/v2.0/projects/tool-dummy-tool-name-many-artifacts/repositories/repo1/artifacts") {
+					rw.WriteHeader(http.StatusOK)
+					_, _ = rw.Write([]byte(`[{"digest": "artifact1digest"}, {"digest": "artifact2digest"}, {"digest": "artifact3digest"}]`))
+				} else if req.Method == http.MethodGet && strings.HasPrefix(req.RequestURI, "/api/v2.0/projects/tool-dummy-tool-name-many-artifacts/repositories/repo2/artifacts") {
+					rw.WriteHeader(http.StatusOK)
+					_, _ = rw.Write([]byte(`[{"digest": "artifact4digest"}, {"digest": "artifact5digest"}, {"digest": "artifact6digest"}]`))
+				} else if req.Method == http.MethodDelete && strings.HasPrefix(req.RequestURI, "/api/v2.0/projects/tool-dummy-tool-name-many-artifacts/repositories/repo") && numDeletesTC2 <= 6 {
+					rw.WriteHeader(http.StatusOK)
+					numDeletesTC2 += 1
+				} else {
+					rw.WriteHeader(http.StatusBadRequest)
+					_, _ = rw.Write([]byte(fmt.Sprintf("Should not have been called, got method %s, URI %s (numDeletesTC2=%d)", req.Method, req.RequestURI, numDeletesTC2)))
+				}
+			})
+			return httptest.NewServer(mux)
+		},
 	}
+
 	for testName, testServer := range testCases {
 		t.Run(testName, func(t *testing.T) {
+			testServer := testServer()
 			defer testServer.Close()
-			api.Config.HarborRepository = testServer.URL
+			testConfig := &harbor.ClientSetConfig{
+				URL: testServer.URL,
+			}
+			testHarborClientSet, _ := harbor.NewClientSet(testConfig)
+			api.Clients.Harbor = testHarborClientSet
 			responseCode, response := Clean(&api, fmt.Sprintf("dummy-tool-name-%s", strings.ReplaceAll(strings.ToLower(testName), " ", "-")))
 			if responseCode != 200 {
 				t.Fatalf("I was expecting no errors, got return code %d, and response: %v", responseCode, *response.(gen.InternalError).Message)

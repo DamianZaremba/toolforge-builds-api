@@ -9,6 +9,7 @@ import (
 
 	"github.com/deepmap/oapi-codegen/pkg/middleware"
 	"github.com/getkin/kin-openapi/openapi3filter"
+	"github.com/goharbor/go-client/pkg/harbor"
 	prom "github.com/labstack/echo-contrib/echoprometheus"
 	"github.com/labstack/echo/v4"
 	echomiddleware "github.com/labstack/echo/v4/middleware"
@@ -59,22 +60,25 @@ func main() {
 
 	kubeconfig := viper.GetString("kubeconfig")
 	outOfK8sRun := viper.GetBool("out_of_k8s_run")
-	clients, err := getApiClients(outOfK8sRun, kubeconfig)
+
+	internalConfig := &internal.Config{
+		HarborRepository: harborRepository,
+		HarborUsername:   harborUsername,
+		HarborPassword:   harborPassword,
+		Builder:          viper.GetString("builder"),
+		OkToKeep:         viper.GetInt("ok_builds_to_keep"),
+		FailedToKeep:     viper.GetInt("failed_builds_to_keep"),
+		BuildNamespace:   viper.GetString("build_namespace"),
+		BuildIdPrefix:    viper.GetString("build_id_prefix"),
+	}
+
+	clients, err := getApiClients(outOfK8sRun, kubeconfig, internalConfig)
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
 	buildsApi := internal.BuildsApi{
-		Clients: *clients,
-		Config: internal.Config{
-			HarborRepository: viper.GetString("harbor_repository"),
-			HarborUsername:   viper.GetString("harbor_username"),
-			HarborPassword:   viper.GetString("harbor_password"),
-			Builder:          viper.GetString("builder"),
-			OkToKeep:         viper.GetInt("ok_builds_to_keep"),
-			FailedToKeep:     viper.GetInt("failed_builds_to_keep"),
-			BuildNamespace:   viper.GetString("build_namespace"),
-			BuildIdPrefix:    viper.GetString("build_id_prefix"),
-		},
+		Clients:        *clients,
+		Config:         *internalConfig,
 		MetricsHandler: prom.NewHandler(),
 	}
 	log.Infof("Using config: %v", buildsApi.Config)
@@ -98,7 +102,7 @@ func main() {
 
 }
 
-func getApiClients(outOfK8sRun bool, kubeconfig string) (*internal.Clients, error) {
+func getApiClients(outOfK8sRun bool, kubeconfig string, internalConfig *internal.Config) (*internal.Clients, error) {
 	var k8sConfig *rest.Config
 	var err error
 	if outOfK8sRun {
@@ -127,10 +131,23 @@ func getApiClients(outOfK8sRun bool, kubeconfig string) (*internal.Clients, erro
 	// create the http client
 	http := &http.Client{Timeout: 8 * time.Second}
 
+	harborClientSetConfig := &harbor.ClientSetConfig{
+		URL:      internalConfig.HarborRepository,
+		Password: internalConfig.HarborPassword,
+		Username: internalConfig.HarborUsername,
+		Insecure: false,
+	}
+
+	harborClientset, err := harbor.NewClientSet(harborClientSetConfig)
+	if err != nil {
+		return nil, err
+	}
+
 	return &internal.Clients{
 		Tekton: tektonClientset,
 		K8s:    clientset,
 		Http:   http,
+		Harbor: harborClientset,
 	}, nil
 }
 

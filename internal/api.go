@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/goharbor/go-client/pkg/harbor"
+	harborModels "github.com/goharbor/go-client/pkg/sdk/v2.0/models"
 	"github.com/labstack/echo/v4"
 	"github.com/tektoncd/pipeline/pkg/client/clientset/versioned"
 	"gitlab.wikimedia.org/repos/toolforge/builds-api/gen"
@@ -32,12 +34,17 @@ type Clients struct {
 	Tekton versioned.Interface
 	K8s    kubernetes.Interface
 	Http   *http.Client
+	Harbor *harbor.ClientSet
 }
 
 type BuildsApi struct {
 	Clients        Clients
 	Config         Config
 	MetricsHandler echo.HandlerFunc
+}
+
+type HarborError interface {
+	GetPayload() *harborModels.Errors
 }
 
 // Extract the tool name from the context, currently is the same user that authenticated to the api

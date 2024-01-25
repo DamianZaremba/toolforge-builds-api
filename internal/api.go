@@ -5,40 +5,8 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
-	"github.com/tektoncd/pipeline/pkg/client/clientset/versioned"
 	"gitlab.wikimedia.org/repos/toolforge/builds-api/gen"
-	"k8s.io/client-go/kubernetes"
 )
-
-type UserContextKey string
-
-type UserContext struct {
-	echo.Context
-	User string
-}
-
-type Config struct {
-	HarborRepository string
-	HarborUsername   string
-	HarborPassword   string
-	Builder          string
-	OkToKeep         int
-	FailedToKeep     int
-	BuildNamespace   string
-	BuildIdPrefix    string
-}
-
-type Clients struct {
-	Tekton versioned.Interface
-	K8s    kubernetes.Interface
-	Http   *http.Client
-}
-
-type BuildsApi struct {
-	Clients        Clients
-	Config         Config
-	MetricsHandler echo.HandlerFunc
-}
 
 // Extract the tool name from the context, currently is the same user that authenticated to the api
 func getToolFromContext(ctx echo.Context) string {

@@ -8,7 +8,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -21,33 +20,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// Structs
-type HarborQuota struct {
-	Quota struct {
-		Hard map[string]int64 `json:"hard"`
-		Used map[string]int64 `json:"used"`
-	} `json:"quota"`
-}
-
-type HarborQuotaResponse struct {
-	Categories []Category `json:"categories"`
-}
-
-type Category struct {
-	Name  string `json:"name"`
-	Items []Item `json:"items"`
-}
-
-type Item struct {
-	Name      string `json:"name"`
-	Limit     string `json:"limit"`
-	Used      string `json:"used"`
-	Available string `json:"available,omitempty"`
-	Capacity  string `json:"capacity,omitempty"`
-}
-
 // Helper functions
-func getContainersFromPod(client *Clients, podName string, namespace string) ([]string, error) {
+func GetContainersFromPod(client *Clients, podName string, namespace string) ([]string, error) {
 	pod, err := client.K8s.CoreV1().Pods(namespace).Get(
 		context.TODO(),
 		podName,
@@ -92,7 +66,7 @@ func ToolNameToHarborProjectName(toolName string) (string, error) {
 	return formattedName, nil
 }
 
-func doHarborRequest(api *BuildsApi, method string, url string) (http.Response, interface{}, error) {
+func DoHarborRequest(api *BuildsApi, method string, url string) (http.Response, interface{}, error) {
 	var jsonBody interface{}
 	full_url := fmt.Sprintf("%s/api/v2.0%s", api.Config.HarborRepository, url)
 
@@ -110,7 +84,7 @@ func doHarborRequest(api *BuildsApi, method string, url string) (http.Response, 
 	response, err := api.Clients.Http.Do(request)
 	if err != nil {
 		log.Error(err.Error())
-		err = handleConnectionErrors(err)
+		err = HandleConnectionErrors(err)
 		return http.Response{}, jsonBody, err
 	}
 	defer response.Body.Close()
@@ -178,7 +152,7 @@ func CreateHarborProjectForTool(api *BuildsApi, toolName string) error {
 	if err != nil {
 		log.Error(err.Error())
 		// handle connection errors and timeouts
-		// TODO: Use handleConnectionErrors() for this
+		// TODO: Use HandleConnectionErrors() for this
 		netErr, ok := err.(net.Error)
 		if ok && netErr.Timeout() {
 			return fmt.Errorf("request to harbor timed out")
@@ -213,15 +187,15 @@ func CreateHarborProjectForTool(api *BuildsApi, toolName string) error {
 	return fmt.Errorf("failed to create harbor project: %s", message)
 }
 
-func getPipelineRuns(clients *Clients, namespace string, listoptions metav1.ListOptions) ([]v1beta1.PipelineRun, error) {
+func GetPipelineRuns(clients *Clients, namespace string, listOptions metav1.ListOptions) ([]v1beta1.PipelineRun, error) {
 
 	pipelineRuns, err := clients.Tekton.TektonV1beta1().PipelineRuns(namespace).List(
 		context.TODO(),
-		listoptions,
+		listOptions,
 	)
 	if err != nil {
 		log.Warnf(
-			"Got error when listing pipelineruns on namespace %s (%v), maybe new cluster with no runs yet?: %s", namespace, listoptions, err,
+			"Got error when listing pipelineruns on namespace %s (%v), maybe new cluster with no runs yet?: %s", namespace, listOptions, err,
 		)
 		return nil, err
 	}
@@ -231,7 +205,7 @@ func getPipelineRuns(clients *Clients, namespace string, listoptions metav1.List
 	return pipelineRuns.Items, nil
 }
 
-func getBuildConditionFromPipelineRun(run *v1beta1.PipelineRun) gen.BuildCondition {
+func GetBuildConditionFromPipelineRun(run *v1beta1.PipelineRun) gen.BuildCondition {
 	status := gen.BUILDUNKNOWN
 	message := fmt.Sprintf("build status is unknown. Check the logs with `toolforge build logs %s`", run.Name)
 	buildCondition := &gen.BuildCondition{
@@ -271,7 +245,7 @@ func getBuildConditionFromPipelineRun(run *v1beta1.PipelineRun) gen.BuildConditi
 	return *buildCondition
 }
 
-func getpipelineRunStringParam(pipelineRun v1beta1.PipelineRun, name string) string {
+func GetPipelineRunStringParam(pipelineRun v1beta1.PipelineRun, name string) string {
 	for _, param := range pipelineRun.Spec.Params {
 		if param.Name == name {
 			return fmt.Sprint(param.Value.StringVal)
@@ -283,7 +257,7 @@ func getpipelineRunStringParam(pipelineRun v1beta1.PipelineRun, name string) str
 	return "unknown"
 }
 
-func getpipelineRunArrayParam(pipelineRun v1beta1.PipelineRun, name string) []string {
+func GetPipelineRunArrayParam(pipelineRun v1beta1.PipelineRun, name string) []string {
 	for _, param := range pipelineRun.Spec.Params {
 		if param.Name == name {
 			return param.Value.ArrayVal
@@ -295,10 +269,10 @@ func getpipelineRunArrayParam(pipelineRun v1beta1.PipelineRun, name string) []st
 	return nil
 }
 
-func getBuild(run v1beta1.PipelineRun) *gen.Build {
+func GetBuild(run v1beta1.PipelineRun) *gen.Build {
 	var startTime string
 	var endTime string
-	buildCondition := getBuildConditionFromPipelineRun(&run)
+	buildCondition := GetBuildConditionFromPipelineRun(&run)
 	if run.Status.StartTime != nil {
 		startTime = run.Status.StartTime.Format(time.RFC3339)
 	}
@@ -306,10 +280,10 @@ func getBuild(run v1beta1.PipelineRun) *gen.Build {
 		endTime = run.Status.CompletionTime.Format(time.RFC3339)
 	}
 
-	sourceurl := getpipelineRunStringParam(run, "SOURCE_URL")
-	ref := getpipelineRunStringParam(run, "SOURCE_REFERENCE")
-	destinationimage := getpipelineRunStringParam(run, "APP_IMAGE")
-	envvarsStr := getpipelineRunArrayParam(run, "ENV_VARS")
+	sourceurl := GetPipelineRunStringParam(run, "SOURCE_URL")
+	ref := GetPipelineRunStringParam(run, "SOURCE_REFERENCE")
+	destinationimage := GetPipelineRunStringParam(run, "APP_IMAGE")
+	envvarsStr := GetPipelineRunArrayParam(run, "ENV_VARS")
 	envvars := make(map[string]string)
 	for _, envvarStr := range envvarsStr {
 		parts := strings.SplitN(envvarStr, "=", 2)
@@ -335,25 +309,25 @@ func getBuild(run v1beta1.PipelineRun) *gen.Build {
 	}
 }
 
-func filterPipelineRunsByStatus(pipelineRuns []v1beta1.PipelineRun, filter gen.BuildStatus) []v1beta1.PipelineRun {
+func FilterPipelineRunsByStatus(pipelineRuns []v1beta1.PipelineRun, filter gen.BuildStatus) []v1beta1.PipelineRun {
 	var filteredPipelineRuns []v1beta1.PipelineRun
 	for _, pipelineRun := range pipelineRuns {
-		if *getBuildConditionFromPipelineRun(&pipelineRun).Status == filter {
+		if *GetBuildConditionFromPipelineRun(&pipelineRun).Status == filter {
 			filteredPipelineRuns = append(filteredPipelineRuns, pipelineRun)
 		}
 	}
 	return filteredPipelineRuns
 }
 
-func cleanupOldPipelineRuns(clients *Clients, namespace string, toolName string, okToKeep int, failedToKeep int) []error {
-	pipelineRuns, err := getPipelineRuns(clients, namespace, metav1.ListOptions{LabelSelector: fmt.Sprintf("user=%s", toolName)})
+func CleanupOldPipelineRuns(clients *Clients, namespace string, toolName string, okToKeep int, failedToKeep int) []error {
+	pipelineRuns, err := GetPipelineRuns(clients, namespace, metav1.ListOptions{LabelSelector: fmt.Sprintf("user=%s", toolName)})
 	if err != nil {
 		return []error{err}
 	}
 	log.Debugf("Found %d pipelineruns. Cleaning up old runs...", len(pipelineRuns))
-	runningPipelineRuns := filterPipelineRunsByStatus(pipelineRuns, gen.BUILDRUNNING)
-	successfulPipelineRuns := filterPipelineRunsByStatus(pipelineRuns, gen.BUILDSUCCESS)
-	failedPipelineRuns := filterPipelineRunsByStatus(pipelineRuns, gen.BUILDFAILURE)
+	runningPipelineRuns := FilterPipelineRunsByStatus(pipelineRuns, gen.BUILDRUNNING)
+	successfulPipelineRuns := FilterPipelineRunsByStatus(pipelineRuns, gen.BUILDSUCCESS)
+	failedPipelineRuns := FilterPipelineRunsByStatus(pipelineRuns, gen.BUILDFAILURE)
 	pipelineRunsToKeep := map[string]v1beta1.PipelineRun{}
 	for _, pipelineRun := range runningPipelineRuns {
 		pipelineRunsToKeep[pipelineRun.Name] = pipelineRun
@@ -388,7 +362,7 @@ func cleanupOldPipelineRuns(clients *Clients, namespace string, toolName string,
 	return deleteErrors
 }
 
-func sendLine(ctx echo.Context, line string) error {
+func SendLine(ctx echo.Context, line string) error {
 	err := json.NewEncoder(ctx.Response()).Encode(gen.BuildLog{Line: &line})
 	if err != nil {
 		log.Debugf("Error encoding log line: %s", err)
@@ -408,7 +382,7 @@ func StreamLogsForContainer(ctx echo.Context, container string, logs map[string]
 			logLines = logLines[:len(logLines)-1]
 			for _, logLine := range logLines {
 				logLine = fmt.Sprintf("[%s] %s", container, logLine) // prepend container name to log line
-				err := sendLine(ctx, logLine)
+				err := SendLine(ctx, logLine)
 				if err != nil {
 					return err
 				}
@@ -417,7 +391,7 @@ func StreamLogsForContainer(ctx echo.Context, container string, logs map[string]
 		if err != nil {
 			if err == io.EOF {
 				if partialLogLine != "" {
-					err := sendLine(ctx, fmt.Sprintf("[%s] %s", container, partialLogLine))
+					err := SendLine(ctx, fmt.Sprintf("[%s] %s", container, partialLogLine))
 					if err != nil {
 						return err
 					}
@@ -431,7 +405,7 @@ func StreamLogsForContainer(ctx echo.Context, container string, logs map[string]
 	return nil
 }
 
-func streamAllContainerLogs(ctx echo.Context, clients *Clients, containers []string, podName string, namespace string, follow bool) error {
+func StreamAllContainerLogs(ctx echo.Context, clients *Clients, containers []string, podName string, namespace string, follow bool) error {
 	logs := map[string]io.ReadCloser{}
 	containerLogBuffers := make(map[string][]byte)
 	for _, container := range containers {
@@ -467,13 +441,13 @@ func streamAllContainerLogs(ctx echo.Context, clients *Clients, containers []str
 	return nil
 }
 
-func streamPipelineRunLogs(ctx echo.Context, clients *Clients, namespace string, pipelineRun *v1beta1.PipelineRun, follow bool) error {
+func StreamPipelineRunLogs(ctx echo.Context, clients *Clients, namespace string, pipelineRun *v1beta1.PipelineRun, follow bool) error {
 	// TODO: retrieve also logs from pods that failed to start
 	if !pipelineRun.HasStarted() {
 		return fmt.Errorf(PipelineRunNotStartedErrorStr)
 	}
 	for _, taskRun := range pipelineRun.Status.TaskRuns {
-		containers, err := getContainersFromPod(
+		containers, err := GetContainersFromPod(
 			clients,
 			taskRun.Status.PodName,
 			namespace,
@@ -481,7 +455,7 @@ func streamPipelineRunLogs(ctx echo.Context, clients *Clients, namespace string,
 		if err != nil {
 			return err
 		}
-		err = streamAllContainerLogs(ctx, clients, containers, taskRun.Status.PodName, namespace, follow)
+		err = StreamAllContainerLogs(ctx, clients, containers, taskRun.Status.PodName, namespace, follow)
 		if err != nil {
 			return err
 		}
@@ -489,18 +463,18 @@ func streamPipelineRunLogs(ctx echo.Context, clients *Clients, namespace string,
 	return nil
 }
 
-func StreamAfterPipelineRunStarted(ctx echo.Context, clients *Clients, namespace string, follow bool, listoptions metav1.ListOptions, timeout time.Duration) error {
-	start_time := time.Now()
-	current_time := start_time
+func StreamAfterPipelineRunStarted(ctx echo.Context, clients *Clients, namespace string, follow bool, listOptions metav1.ListOptions, timeout time.Duration) error {
+	startTime := time.Now()
+	currentTime := startTime
 
-	for current_time.Sub(start_time) < timeout {
+	for currentTime.Sub(startTime) < timeout {
 		// we need get the pipelinerun in each loop or we will get a stale object
-		pipelineRun, err := getPipelineRuns(clients, namespace, listoptions)
+		pipelineRun, err := GetPipelineRuns(clients, namespace, listOptions)
 		if err != nil {
 			message := "unable to find any pipelineruns! New installation?"
 			return fmt.Errorf(message)
 		}
-		err = streamPipelineRunLogs(ctx, clients, namespace, &pipelineRun[0], follow)
+		err = StreamPipelineRunLogs(ctx, clients, namespace, &pipelineRun[0], follow)
 		if err == nil {
 			return nil
 		}
@@ -515,49 +489,12 @@ func StreamAfterPipelineRunStarted(ctx echo.Context, clients *Clients, namespace
 			}
 		}
 		time.Sleep(1 * time.Second)
-		current_time = time.Now()
+		currentTime = time.Now()
 	}
 	return fmt.Errorf("timed out waiting for pipelinerun to start")
 }
 
-func Logs(ctx echo.Context, api *BuildsApi, buildId string, toolName string, follow bool) (int, interface{}) {
-	waitTimeout := 10 * time.Minute
-
-	if err := ToolIsAllowedForBuild(toolName, buildId, api.Config.BuildIdPrefix); err != nil {
-		message := fmt.Sprintf("%s", err)
-		return http.StatusUnauthorized, gen.Unauthorized{Message: &message}
-	}
-
-	listoptions := metav1.ListOptions{FieldSelector: fmt.Sprintf("metadata.name=%s", buildId)}
-	pipelineRuns, err := getPipelineRuns(&api.Clients, api.Config.BuildNamespace, listoptions)
-	if err != nil {
-		message := "Unable to find any pipelineruns! New installation?"
-		return http.StatusNotFound, gen.NotFound{Message: &message}
-	}
-
-	if len(pipelineRuns) == 0 {
-		message := fmt.Sprintf("Unable to find build with id '%s'", buildId)
-		return http.StatusNotFound, gen.NotFound{Message: &message}
-
-	} else if len(pipelineRuns) > 1 {
-		message := fmt.Sprintf("Got %d builds matching name %s, only 1 was expected.", len(pipelineRuns), buildId)
-		log.Warning(message)
-		return http.StatusNotFound, gen.NotFound{Message: &message}
-	}
-
-	err = StreamAfterPipelineRunStarted(ctx, &api.Clients, api.Config.BuildNamespace, follow, listoptions, waitTimeout)
-	if err != nil {
-		message := fmt.Sprintf("Error getting the logs for %s: %s", buildId, err)
-		log.Errorf(message)
-		// Note that when streaming, once the first line is sent, you can't really change the http error code,
-		// so this internal server error is only effective if we did not yet send any data.
-		return http.StatusInternalServerError, gen.InternalError{Message: &message}
-	}
-
-	return http.StatusOK, nil
-}
-
-func handleConnectionErrors(err error) error {
+func HandleConnectionErrors(err error) error {
 	netErr, ok := err.(net.Error)
 	if ok && netErr.Timeout() {
 		return fmt.Errorf("request to harbor timed out")
@@ -567,7 +504,7 @@ func handleConnectionErrors(err error) error {
 	return err
 }
 
-func formatBytes(bytes int64) string {
+func FormatBytes(bytes int64) string {
 	units := []string{"Ti", "Gi", "Mi", "Ki", "B"}
 	values := []int64{1 << 40, 1 << 30, 1 << 20, 1 << 10, 1}
 
@@ -580,13 +517,13 @@ func formatBytes(bytes int64) string {
 	return fmt.Sprintf("%dB", bytes)
 }
 
-func cleanHarbor(api *BuildsApi, toolName string) (gen.CleanResponse, error) {
+func CleanHarbor(api *BuildsApi, toolName string) (gen.CleanResponse, error) {
 	harborProjectName, err := ToolNameToHarborProjectName(toolName)
 	if err != nil {
 		return gen.CleanResponse{}, fmt.Errorf("error trying to map tool %s to harbor project: %s", toolName, err)
 	}
 
-	response, jsonBody, err := doHarborRequest(api, "GET", fmt.Sprintf("/projects/%s/repositories", harborProjectName))
+	response, jsonBody, err := DoHarborRequest(api, "GET", fmt.Sprintf("/projects/%s/repositories", harborProjectName))
 	if err != nil {
 		if response.StatusCode == 404 {
 			return gen.CleanResponse{}, fmt.Errorf("the project %s does not exist, have you started a build yet?", harborProjectName)
@@ -600,14 +537,14 @@ func cleanHarbor(api *BuildsApi, toolName string) (gen.CleanResponse, error) {
 		// for some reason harbor returns the name bing <project>/<repository>, but then requires you to use only the last part for any queries
 		log.Infof("Got repos: %v", repository)
 		repoName := strings.SplitN(repository.(map[string]interface{})["name"].(string), "/", 2)[1]
-		response, jsonBody, err := doHarborRequest(api, "GET", fmt.Sprintf("/projects/%s/repositories/%s/artifacts", harborProjectName, repoName))
+		response, jsonBody, err := DoHarborRequest(api, "GET", fmt.Sprintf("/projects/%s/repositories/%s/artifacts", harborProjectName, repoName))
 		if err != nil {
 			return gen.CleanResponse{}, fmt.Errorf("error trying to get the artifacts for project %s: %s\n%d", harborProjectName, err, response.StatusCode)
 		}
 
 		artifacts := jsonBody.([]interface{})
 		for _, artifact := range artifacts {
-			_, _, err = doHarborRequest(api, "DELETE", fmt.Sprintf("/projects/%s/repositories/%s/artifacts/%s", harborProjectName, repoName, artifact.(map[string]interface{})["digest"]))
+			_, _, err = DoHarborRequest(api, "DELETE", fmt.Sprintf("/projects/%s/repositories/%s/artifacts/%s", harborProjectName, repoName, artifact.(map[string]interface{})["digest"]))
 			if err != nil {
 				return gen.CleanResponse{}, fmt.Errorf("error trying to delete artifact %s from project %s: %s", artifact.(map[string]interface{})["digest"], harborProjectName, err)
 			}
@@ -642,7 +579,7 @@ func GetHarborQuota(api *BuildsApi, toolName string) (HarborQuotaResponse, error
 
 	response, err := api.Clients.Http.Do(request)
 	if err != nil {
-		return HarborQuotaResponse{}, handleConnectionErrors(err)
+		return HarborQuotaResponse{}, HandleConnectionErrors(err)
 	}
 
 	defer response.Body.Close()
@@ -679,12 +616,12 @@ func GetHarborQuota(api *BuildsApi, toolName string) (HarborQuotaResponse, error
 		storageAvailable := storageHard - storageUsed
 		storageCapacity := (float64(storageUsed) / float64(storageHard)) * 100
 
-		storageHardStr = formatBytes(storageHard)
-		storageAvailableStr = formatBytes(storageAvailable)
+		storageHardStr = FormatBytes(storageHard)
+		storageAvailableStr = FormatBytes(storageAvailable)
 		storageCapacityStr = fmt.Sprintf("%.0f%%", storageCapacity)
 	}
 
-	storageUsedStr := formatBytes(storageUsed)
+	storageUsedStr := FormatBytes(storageUsed)
 
 	res := HarborQuotaResponse{
 		Categories: []Category{
@@ -701,16 +638,10 @@ func GetHarborQuota(api *BuildsApi, toolName string) (HarborQuotaResponse, error
 }
 
 func ValidateEnvvars(envvars map[string]string) error {
-	varnameRegex := "^[A-z_][A-z_0-9]{2,}$"
-	varnameRegexCompiled, err := regexp.Compile(varnameRegex)
-	if err != nil {
-		return err
-	}
-
 	for varname := range envvars {
-		match := varnameRegexCompiled.MatchString(varname)
+		match := EnvvarsNameRegex.MatchString(varname)
 		if !match {
-			return fmt.Errorf("not valid environment variable name, must match '%s', got '%s'", varnameRegex, varname)
+			return fmt.Errorf("must match '^[A-z_][A-z_0-9]{2,}$', got '%s'", varname)
 		}
 	}
 	return nil
@@ -727,7 +658,7 @@ func Start(
 ) (int, interface{}) {
 	err := ValidateEnvvars(envvars)
 	if err != nil {
-		message := fmt.Sprintf("Not valid environment variables passed: %s", err)
+		message := fmt.Sprintf("Not valid environment variable name: %s", err)
 		return http.StatusBadRequest, gen.BadRequest{Message: &message}
 	}
 
@@ -737,13 +668,12 @@ func Start(
 		message := fmt.Sprintf("Failed to create harbor project for tool %s: %s", toolName, err)
 		return http.StatusServiceUnavailable, gen.InternalError{Message: &message}
 	}
-	cleanup_err := cleanupOldPipelineRuns(&api.Clients, api.Config.BuildNamespace, toolName, api.Config.OkToKeep, api.Config.FailedToKeep)
-	for _, err := range cleanup_err {
+	cleanupErr := CleanupOldPipelineRuns(&api.Clients, api.Config.BuildNamespace, toolName, api.Config.OkToKeep, api.Config.FailedToKeep)
+	for _, err := range cleanupErr {
 		log.Warnf("Got error when cleaning up old pipeline runs: %s", err)
 	}
-	imageNameToUse := imageName
-	if imageNameToUse == "" {
-		imageNameToUse = fmt.Sprintf("tool-%s", toolName)
+	if imageName == "" {
+		imageName = fmt.Sprintf("tool-%s", toolName)
 	}
 	var envvarsArray []string
 	for varname, value := range envvars {
@@ -772,7 +702,7 @@ func Start(
 				{
 					Name: "APP_IMAGE",
 					Value: v1beta1.ParamValue{
-						StringVal: fmt.Sprintf("%s/tool-%s/%s:latest", strings.Split(api.Config.HarborRepository, "//")[1], toolName, imageNameToUse),
+						StringVal: fmt.Sprintf("%s/tool-%s/%s:latest", strings.Split(api.Config.HarborRepository, "//")[1], toolName, imageName),
 						Type:      v1beta1.ParamTypeString,
 					},
 				},
@@ -828,6 +758,43 @@ func Start(
 	}
 }
 
+func Logs(ctx echo.Context, api *BuildsApi, buildId string, toolName string, follow bool) (int, interface{}) {
+	waitTimeout := 10 * time.Minute
+
+	if err := ToolIsAllowedForBuild(toolName, buildId, api.Config.BuildIdPrefix); err != nil {
+		message := fmt.Sprintf("%s", err)
+		return http.StatusUnauthorized, gen.Unauthorized{Message: &message}
+	}
+
+	listOptions := metav1.ListOptions{FieldSelector: fmt.Sprintf("metadata.name=%s", buildId)}
+	pipelineRuns, err := GetPipelineRuns(&api.Clients, api.Config.BuildNamespace, listOptions)
+	if err != nil {
+		message := "Unable to find any pipelineruns! New installation?"
+		return http.StatusNotFound, gen.NotFound{Message: &message}
+	}
+
+	if len(pipelineRuns) == 0 {
+		message := fmt.Sprintf("Unable to find build with id '%s'", buildId)
+		return http.StatusNotFound, gen.NotFound{Message: &message}
+
+	} else if len(pipelineRuns) > 1 {
+		message := fmt.Sprintf("Got %d builds matching name %s, only 1 was expected.", len(pipelineRuns), buildId)
+		log.Warning(message)
+		return http.StatusNotFound, gen.NotFound{Message: &message}
+	}
+
+	err = StreamAfterPipelineRunStarted(ctx, &api.Clients, api.Config.BuildNamespace, follow, listOptions, waitTimeout)
+	if err != nil {
+		message := fmt.Sprintf("Error getting the logs for %s: %s", buildId, err)
+		log.Errorf(message)
+		// Note that when streaming, once the first line is sent, you can't really change the http error code,
+		// so this internal server error is only effective if we did not yet send any data.
+		return http.StatusInternalServerError, gen.InternalError{Message: &message}
+	}
+
+	return http.StatusOK, nil
+}
+
 func Delete(
 	api *BuildsApi,
 	buildId string,
@@ -863,33 +830,33 @@ func Delete(
 
 func Get(
 	api *BuildsApi,
-	id string,
+	buildId string,
 	toolName string,
 ) (int, interface{}) {
-	if err := ToolIsAllowedForBuild(toolName, id, api.Config.BuildIdPrefix); err != nil {
+	if err := ToolIsAllowedForBuild(toolName, buildId, api.Config.BuildIdPrefix); err != nil {
 		message := fmt.Sprintf("%s", err)
 		return http.StatusUnauthorized, gen.Unauthorized{Message: &message}
 	}
-	log.Debugf("Getting build: buildId=%s, namespace=%s, toolName=%s", id, api.Config.BuildNamespace, toolName)
+	log.Debugf("Getting build: buildId=%s, namespace=%s, toolName=%s", buildId, api.Config.BuildNamespace, toolName)
 
-	pipelineRuns, err := getPipelineRuns(&api.Clients, api.Config.BuildNamespace, metav1.ListOptions{FieldSelector: fmt.Sprintf("metadata.name=%s", id)})
+	pipelineRuns, err := GetPipelineRuns(&api.Clients, api.Config.BuildNamespace, metav1.ListOptions{FieldSelector: fmt.Sprintf("metadata.name=%s", buildId)})
 	if err != nil {
 		log.Warnf(
-			"Got error when getting pipelinerun %s on namespace %s: %s", id, api.Config.BuildNamespace, err,
+			"Got error when getting pipelinerun %s on namespace %s: %s", buildId, api.Config.BuildNamespace, err,
 		)
 		message := "Unable to get build! This might be a bug. Please contact a Toolforge admin."
 		return http.StatusInternalServerError, gen.InternalError{Message: &message}
 	}
 
 	if len(pipelineRuns) == 0 {
-		message := fmt.Sprintf("Build with id %s not found.", id)
+		message := fmt.Sprintf("Build with id %s not found.", buildId)
 		return http.StatusNotFound, gen.NotFound{Message: &message}
 	}
 
 	// NOTE: we assume here the first pipelineRun from the search is what we are looking for.
 	// In k8s/tekton two objects cannot share metadata.name in the same namespace anyway
 
-	build := getBuild(pipelineRuns[0])
+	build := GetBuild(pipelineRuns[0])
 	return http.StatusOK, build
 }
 
@@ -898,7 +865,7 @@ func List(
 	toolName string,
 ) (int, interface{}) {
 	log.Debugf("Listing builds: toolName=%s, namespace=%s", toolName, api.Config.BuildNamespace)
-	pipelineRuns, err := getPipelineRuns(&api.Clients, api.Config.BuildNamespace, metav1.ListOptions{LabelSelector: fmt.Sprintf("user=%s", toolName)})
+	pipelineRuns, err := GetPipelineRuns(&api.Clients, api.Config.BuildNamespace, metav1.ListOptions{LabelSelector: fmt.Sprintf("user=%s", toolName)})
 	if err != nil {
 		message := fmt.Sprintf("Got error when listing %s's pipelineruns on namespace %s: %s", toolName, api.Config.BuildNamespace, err)
 		return http.StatusInternalServerError, gen.InternalError{Message: &message}
@@ -907,7 +874,7 @@ func List(
 
 	builds := make([]gen.Build, len(pipelineRuns))
 	for i, run := range pipelineRuns {
-		builds[i] = *getBuild(run)
+		builds[i] = *GetBuild(run)
 	}
 	return http.StatusOK, builds
 }
@@ -918,7 +885,7 @@ func Latest(
 ) (int, interface{}) {
 	log.Debugf("Getting latest build: namespace=%s, toolName=%s", api.Config.BuildNamespace, toolName)
 
-	pipelineRuns, err := getPipelineRuns(&api.Clients, api.Config.BuildNamespace, metav1.ListOptions{LabelSelector: fmt.Sprintf("user=%s", toolName)})
+	pipelineRuns, err := GetPipelineRuns(&api.Clients, api.Config.BuildNamespace, metav1.ListOptions{LabelSelector: fmt.Sprintf("user=%s", toolName)})
 	if err != nil {
 		log.Warnf(
 			"Got error when getting latest pipelineruns on namespace %s: %s", api.Config.BuildNamespace, err,
@@ -932,8 +899,8 @@ func Latest(
 		return http.StatusNotFound, gen.NotFound{Message: &message}
 	}
 
-	// getPipelineRuns returns a sorted array per creationTimestamp
-	build := getBuild(pipelineRuns[0])
+	// GetPipelineRuns returns a sorted array per creationTimestamp
+	build := GetBuild(pipelineRuns[0])
 	return http.StatusOK, build
 }
 
@@ -965,7 +932,7 @@ func Cancel(
 		return http.StatusInternalServerError, gen.InternalError{Message: &message}
 	}
 
-	buildCondition := getBuildConditionFromPipelineRun(pipelineRun)
+	buildCondition := GetBuildConditionFromPipelineRun(pipelineRun)
 
 	switch *buildCondition.Status {
 	case gen.BUILDSUCCESS, gen.BUILDFAILURE, gen.BUILDTIMEOUT:
@@ -1009,7 +976,7 @@ func Quota(api *BuildsApi, toolName string) (int, interface{}) {
 }
 
 func Clean(api *BuildsApi, toolName string) (int, interface{}) {
-	response, err := cleanHarbor(api, toolName)
+	response, err := CleanHarbor(api, toolName)
 	if err != nil {
 		log.Error(err)
 		message := fmt.Sprintf("Error cleaning up: %s", err)

@@ -162,7 +162,7 @@ func TestGetPipelineRunsReturnsErrorIfApiReturnsError(t *testing.T) {
 		Tekton: &mockTekton,
 	}
 
-	_, err := getPipelineRuns(&clients, "dummy-namespace", v1.ListOptions{})
+	_, err := GetPipelineRuns(&clients, "dummy-namespace", v1.ListOptions{})
 
 	if err == nil {
 		t.Fatalf("I was expecting an error, got: %s", err)
@@ -195,7 +195,7 @@ func TestGetPipelineRunsReturnsSortedArrayOfPipelineRuns(t *testing.T) {
 		Tekton: mockTekton,
 	}
 
-	pipelineRuns, err := getPipelineRuns(&clients, "dummy-namespace", v1.ListOptions{})
+	pipelineRuns, err := GetPipelineRuns(&clients, "dummy-namespace", v1.ListOptions{})
 
 	if err != nil {
 		t.Fatalf("I was not expecting an error, got: %s", err)
@@ -326,7 +326,7 @@ func TestCleanupOldPipelineRuns(t *testing.T) {
 		"pipelinerun-running3":   true,
 	}
 
-	cleanupOldPipelineRuns(&api.Clients, "dummy-namespace", "test-user", api.Config.OkToKeep, api.Config.FailedToKeep)
+	CleanupOldPipelineRuns(&api.Clients, "dummy-namespace", "test-user", api.Config.OkToKeep, api.Config.FailedToKeep)
 
 	pipelineRuns, err := api.Clients.Tekton.TektonV1beta1().PipelineRuns("dummy-namespace").List(
 		context.TODO(),
@@ -991,7 +991,7 @@ func TestLogsReturnsAllLogsConcatenated(t *testing.T) {
 
 	// We get one line per getLogs fake call (hardcoded upstream)
 	expectedLines := make([]gen.BuildLog, 0)
-	containers, _ := getContainersFromPod(&api.Clients, podName, BuildNamespace)
+	containers, _ := GetContainersFromPod(&api.Clients, podName, BuildNamespace)
 	for _, container := range containers {
 		logLine := fmt.Sprintf("[%s] fake logs", container)
 		expectedLines = append(expectedLines, gen.BuildLog{Line: &logLine})
@@ -1470,7 +1470,7 @@ func TestGetPipelineRunParam(t *testing.T) {
 
 	// valid params
 	for _, element := range data {
-		result := getpipelineRunStringParam(pipelinerun, element.name)
+		result := GetPipelineRunStringParam(pipelinerun, element.name)
 		if result != element.value {
 			t.Fatalf("Unexpected getpipelineRunParam() result for param '%s'. Expected '%s', but got '%s'.", element.name, element.value, result)
 		}
@@ -1478,7 +1478,7 @@ func TestGetPipelineRunParam(t *testing.T) {
 
 	// invalid param
 	expected := "unknown"
-	result := getpipelineRunStringParam(pipelinerun, "non-existant")
+	result := GetPipelineRunStringParam(pipelinerun, "non-existant")
 	if result != expected {
 		t.Fatalf("Unexpected getpipelineRunParam() result for non-existant param. Expected '%s', but got '%s'.", expected, result)
 	}
@@ -2100,7 +2100,7 @@ func TestCleanHappyPath(t *testing.T) {
 			} else if req.Method == "GET" && req.RequestURI == "/api/v2.0/projects/tool-dummy-tool-name-one-artifact/repositories/repo1/artifacts" {
 				rw.WriteHeader(http.StatusOK)
 				_, _ = rw.Write([]byte(`[{"digest": "artifact1digest"}]`))
-			} else if req.Method == "DELETE" && req.RequestURI == "/api/v2.0/projects/tool-dummy-tool-name-one-artifact/repositories/repo1/artifacts/artifact1digest"  && numDeletesTC1 == 0 {
+			} else if req.Method == "DELETE" && req.RequestURI == "/api/v2.0/projects/tool-dummy-tool-name-one-artifact/repositories/repo1/artifacts/artifact1digest" && numDeletesTC1 == 0 {
 				rw.WriteHeader(http.StatusOK)
 				numDeletesTC1 += 1
 			} else {
@@ -2120,7 +2120,7 @@ func TestCleanHappyPath(t *testing.T) {
 			} else if req.Method == "GET" && req.RequestURI == "/api/v2.0/projects/tool-dummy-tool-name-many-artifacts/repositories/repo2/artifacts" {
 				rw.WriteHeader(http.StatusOK)
 				_, _ = rw.Write([]byte(`[{"digest": "artifact4digest"}, {"digest": "artifact5digest"}, {"digest": "artifact6digest"}]`))
-			} else if req.Method == "DELETE" && strings.HasPrefix(req.RequestURI, "/api/v2.0/projects/tool-dummy-tool-name-many-artifacts/repositories/repo")  && numDeletesTC2 <= 6 {
+			} else if req.Method == "DELETE" && strings.HasPrefix(req.RequestURI, "/api/v2.0/projects/tool-dummy-tool-name-many-artifacts/repositories/repo") && numDeletesTC2 <= 6 {
 				rw.WriteHeader(http.StatusOK)
 				numDeletesTC2 += 1
 			} else {

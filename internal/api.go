@@ -72,19 +72,19 @@ func (api BuildsApi) Logs(ctx echo.Context, buildId string, params gen.LogsParam
 
 func (api BuildsApi) Start(ctx echo.Context) error {
 	toolName := getToolFromContext(ctx)
-	var newBuildParameters gen.NewBuildParameters
-	err := (&echo.DefaultBinder{}).BindBody(ctx, &newBuildParameters)
+	var startBuildParameters gen.BuildStartParams
+	err := (&echo.DefaultBinder{}).BindBody(ctx, &startBuildParameters)
 	if err != nil {
 		return ctx.JSON(http.StatusBadRequest, fmt.Sprintf("Bad parameters passed: %s", err))
 	}
 
 	code, response := Start(
 		&api,
-		safeDeref[string](newBuildParameters.SourceUrl),
-		safeDeref[string](newBuildParameters.Ref),
-		safeDeref[string](newBuildParameters.ImageName),
+		safeDeref[string](&startBuildParameters.SourceUrl),
+		safeDeref[string](startBuildParameters.Ref),
+		safeDeref[string](startBuildParameters.ImageName),
 		toolName,
-		safeDeref[map[string]string](newBuildParameters.Envvars),
+		safeDeref[map[string]string](startBuildParameters.Envvars),
 	)
 	return ctx.JSON(code, response)
 }

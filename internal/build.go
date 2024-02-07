@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,13 +25,6 @@ import (
 )
 
 // Structs
-type HarborQuota struct {
-	Quota struct {
-		Hard map[string]int64 `json:"hard"`
-		Used map[string]int64 `json:"used"`
-	} `json:"quota"`
-}
-
 type HarborQuotaResponse struct {
 	Categories []Category `json:"categories"`
 }
@@ -690,7 +684,6 @@ func Start(
 		return http.StatusBadRequest, gen.BadRequest{Message: &message}
 	}
 
-	// TODO: Check quotas
 	err = CreateHarborProjectForTool(api, toolName)
 	if err != nil {
 		message := fmt.Sprintf("Failed to create harbor project for tool %s: %s", toolName, err)
@@ -776,6 +769,27 @@ func Start(
 		return http.StatusInternalServerError, gen.InternalError{Message: &message}
 	}
 
+	var responseMessages gen.ResponseMessages
+	quota, err := GetHarborQuota(api, toolName)
+	if err != nil {
+		log.Errorf("Got error while trying to get harbor quota for tool %s: %s", toolName, err)
+	} else {
+		quotaCapacityStr := quota.Categories[0].Items[0].Capacity
+		quotaCapacity, err := strconv.ParseFloat(strings.TrimSuffix(quotaCapacityStr, "%"), 64)
+		if err != nil {
+			log.Errorf("Got error while trying to parse harbor quota capacity for tool %s: %s", toolName, err)
+		} else if quotaCapacity > 90 {
+			// if the capacity is over 90%, we should warn the user
+			message := fmt.Sprintf(
+				"Warning: Tool %s has used up %s of it's alloted quota."+
+					"To avoid the possibility of your build failing, run \"toolforge build clean\" to free up quota.",
+				toolName,
+				quotaCapacityStr,
+			)
+			responseMessages = gen.ResponseMessages{Warning: &[]string{message}}
+		}
+	}
+
 	buildParams := gen.BuildParameters{
 		SourceUrl: sourceURL,
 		Ref:       &ref,
@@ -787,7 +801,7 @@ func Start(
 	}
 	return http.StatusOK, gen.StartResponse{
 		NewBuild: &newBuild,
-		Messages: &gen.ResponseMessages{},
+		Messages: &responseMessages,
 	}
 }
 

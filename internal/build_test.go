@@ -1234,8 +1234,7 @@ func TestStartReturnsNewBuildName(t *testing.T) {
 		t.Fatalf("I was expecting a 200 response, got: %d", code)
 	}
 
-	gottenStartResponse := response.(gen.StartResponse)
-	gottenNewBuild := gottenStartResponse.NewBuild
+	gottenNewBuild := response.(gen.StartResponse).NewBuild
 	if *gottenNewBuild.Name != expectedName {
 		t.Fatalf("Got an unexpected name for the new build, got '%s', expected '%s'", *gottenNewBuild.Name, expectedName)
 	}
@@ -1254,6 +1253,79 @@ func TestStartReturnsNewBuildName(t *testing.T) {
 		} else if (*gottenNewBuild.Parameters.Envvars)[varName] != value {
 			t.Fatalf("Got an unexpected envvars for the new build, got '%v', expected '%v'", *gottenNewBuild.Parameters.Envvars, expectedEnvvars)
 		}
+	}
+}
+
+func TestStartReturnsWarningMessageIfQuotaIsAbove90(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(rw http.ResponseWriter, req *http.Request) {
+		if req.Method == http.MethodPost {
+			// for CreateHarborProjectForTool
+			rw.WriteHeader(http.StatusCreated)
+		} else if req.Method == http.MethodGet || req.Method == http.MethodHead {
+			// for GetHarborQuota
+			rw.Header().Set("Content-Type", "application/json")
+			rw.WriteHeader(http.StatusOK)
+			_, _ = rw.Write([]byte(`{"quota": {"hard": {"storage": 100}, "used": {"storage": 95}}}`))
+		} else {
+			rw.WriteHeader(http.StatusBadRequest)
+			_, _ = rw.Write([]byte(fmt.Sprintf("Should not have been called, got method %s, URI %s", req.Method, req.RequestURI)))
+		}
+	})
+	testServer := httptest.NewServer(mux)
+	defer testServer.Close()
+	testConfig := &harbor.ClientSetConfig{
+		URL: testServer.URL,
+	}
+	testHarborClientSet, _ := harbor.NewClientSet(testConfig)
+
+	mockTekton := tektonFake.Clientset{}
+	expectedName := "new-pipelinerun"
+	expectedRef := "dummy-ref"
+	expectedImageName := "dummy-image-name"
+	expectedSourceURL := "dummy-source-url"
+	expectedEnvvars := map[string]string{}
+	fakePipelineRun := v1beta1.PipelineRun{
+		ObjectMeta: v1.ObjectMeta{Name: expectedName},
+	}
+	mockTekton.Fake.AddReactor(
+		"create",
+		"pipelineruns",
+		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
+			return true, &fakePipelineRun, nil
+		},
+	)
+	api := BuildsApi{
+		Clients: Clients{
+			Tekton: &mockTekton,
+			Harbor: testHarborClientSet,
+		},
+		Config: Config{
+			HarborRepository: testServer.URL,
+			Builder:          "dummy-builder",
+			OkToKeep:         1,
+			FailedToKeep:     2,
+			BuildIdPrefix:    BuildIdPrefix,
+			BuildNamespace:   BuildNamespace,
+		},
+	}
+
+	code, response := Start(
+		&api,
+		expectedSourceURL,
+		expectedRef,
+		expectedImageName,
+		"dummy-tool",
+		expectedEnvvars,
+	)
+
+	if code != 200 {
+		t.Fatalf("I was expecting a 200 response, got: %d", code)
+	}
+
+	gottenResponseMessage := response.(gen.StartResponse).Messages
+	if len(*gottenResponseMessage.Warning) == 0 {
+		t.Fatalf("I was expecting a warning message, got none")
 	}
 }
 
@@ -2140,6 +2212,7 @@ func TestCleanHappyPath(t *testing.T) {
 					rw.WriteHeader(http.StatusOK)
 					_, _ = rw.Write([]byte(`[{"name": "tool-dummy-tool-name-one-artifact/repo1"}]`))
 				} else if req.Method == http.MethodGet && strings.HasPrefix(req.RequestURI, "/api/v2.0/projects/tool-dummy-tool-name-one-artifact/repositories/repo1/artifacts") {
+					rw.Header().Set("Content-Type", "application/json")
 					rw.WriteHeader(http.StatusOK)
 					_, _ = rw.Write([]byte(`[{"digest": "artifact1digest"}]`))
 				} else if req.Method == http.MethodDelete && strings.HasPrefix(req.RequestURI, "/api/v2.0/projects/tool-dummy-tool-name-one-artifact/repositories/repo1/artifacts/artifact1digest") && numDeletesTC1 == 0 {
@@ -2160,9 +2233,11 @@ func TestCleanHappyPath(t *testing.T) {
 					rw.WriteHeader(http.StatusOK)
 					_, _ = rw.Write([]byte(`[{"name": "tool-dummy-tool-name-many-artifacts/repo1"}, {"name": "tool-dummy-tool-name-many-artifacts/repo2"}]`))
 				} else if req.Method == http.MethodGet && strings.HasPrefix(req.RequestURI, "/api/v2.0/projects/tool-dummy-tool-name-many-artifacts/repositories/repo1/artifacts") {
+					rw.Header().Set("Content-Type", "application/json")
 					rw.WriteHeader(http.StatusOK)
 					_, _ = rw.Write([]byte(`[{"digest": "artifact1digest"}, {"digest": "artifact2digest"}, {"digest": "artifact3digest"}]`))
 				} else if req.Method == http.MethodGet && strings.HasPrefix(req.RequestURI, "/api/v2.0/projects/tool-dummy-tool-name-many-artifacts/repositories/repo2/artifacts") {
+					rw.Header().Set("Content-Type", "application/json")
 					rw.WriteHeader(http.StatusOK)
 					_, _ = rw.Write([]byte(`[{"digest": "artifact4digest"}, {"digest": "artifact5digest"}, {"digest": "artifact6digest"}]`))
 				} else if req.Method == http.MethodDelete && strings.HasPrefix(req.RequestURI, "/api/v2.0/projects/tool-dummy-tool-name-many-artifacts/repositories/repo") && numDeletesTC2 <= 6 {

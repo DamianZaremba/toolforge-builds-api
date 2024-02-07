@@ -30,7 +30,7 @@ paths:
         content:
           "application/json":
             schema:
-              $ref: "#/components/schemas/BuildStartParams"
+              $ref: "#/components/schemas/BuildParameters"
         required: true
       responses:
         "200":
@@ -432,18 +432,34 @@ components:
         name:
           type: string
         parameters:
-          $ref: "#/components/schemas/NewBuild_parameters"
+          $ref: "#/components/schemas/BuildParameters"
     BuildId:
       type: object
       properties:
         id:
           type: string
+    # TODO: remove this as it doesn't seem to be used
     principal:
       type: object
       properties:
         user:
           type: string
-    BuildStartParams:
+    Build:
+      allOf:
+        - $ref: "#/components/schemas/BuildCondition"
+        - type: object
+          properties:
+            build_id:
+              type: string
+            start_time:
+              type: string
+            end_time:
+              type: string
+            parameters:
+              $ref: "#/components/schemas/BuildParameters"
+            destination_image:
+              type: string
+    BuildParameters:
       required:
         - source_url
       type: object
@@ -464,48 +480,6 @@ components:
         image_name:
           type: string
           description: The name of the image to be built
-    # TODO: decide whether to merge NewBuild_parameters and BuildStartParams
-    NewBuild_parameters:
-      type: object
-      properties:
-        source_url:
-          type: string
-        ref:
-          type: string
-        image_name:
-          type: string
-        envvars:
-          type: object
-          additionalProperties:
-            type: string
-          description: Environment variables and values to be set at build time
-    Build:
-      allOf:
-        - $ref: "#/components/schemas/BuildCondition"
-        - type: object
-          properties:
-            build_id:
-              type: string
-            start_time:
-              type: string
-            end_time:
-              type: string
-            parameters:
-              $ref: "#/components/schemas/BuildParameters"
-            destination_image:
-              type: string
-    BuildParameters:
-      type: object
-      properties:
-        source_url:
-          type: string
-        ref:
-          type: string
-        envvars:
-          type: object
-          additionalProperties:
-            type: string
-          description: Environment variables and values to be set at build time
     BuildCondition:
       type: object
       properties:

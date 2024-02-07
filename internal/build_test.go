@@ -1243,8 +1243,8 @@ func TestStartReturnsNewBuildName(t *testing.T) {
 		t.Fatalf("Got an unexpected ref for the new build, got '%s', expected '%s'", *gottenNewBuild.Parameters.Ref, expectedRef)
 	}
 
-	if *gottenNewBuild.Parameters.SourceUrl != expectedSourceURL {
-		t.Fatalf("Got an unexpected source url for the new build, got '%s', expected '%s'", *gottenNewBuild.Parameters.SourceUrl, expectedSourceURL)
+	if gottenNewBuild.Parameters.SourceUrl != expectedSourceURL {
+		t.Fatalf("Got an unexpected source url for the new build, got '%s', expected '%s'", gottenNewBuild.Parameters.SourceUrl, expectedSourceURL)
 	}
 
 	for varName, value := range expectedEnvvars {

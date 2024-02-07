@@ -256,7 +256,7 @@ func getBuild(run v1beta1.PipelineRun) *gen.Build {
 		Status:    buildCondition.Status,
 		Message:   buildCondition.Message,
 		Parameters: &gen.BuildParameters{
-			SourceUrl: &sourceurl,
+			SourceUrl: sourceurl,
 			Ref:       &ref,
 			Envvars:   &envvars,
 		},
@@ -776,9 +776,9 @@ func Start(
 		return http.StatusInternalServerError, gen.InternalError{Message: &message}
 	}
 
-	buildParams := gen.NewBuildParameters{
+	buildParams := gen.BuildParameters{
+		SourceUrl: sourceURL,
 		Ref:       &ref,
-		SourceUrl: &sourceURL,
 		Envvars:   &envvars,
 	}
 	return http.StatusOK, gen.NewBuild{

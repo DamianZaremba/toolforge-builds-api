@@ -38,7 +38,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/NewBuild"
+                $ref: "#/components/schemas/StartResponse"
         "400":
           description: Bad parameters passed
           content:
@@ -396,6 +396,7 @@ components:
             - ERROR
         message:
           type: string
+    # TODO: combine all reponses that have single "message" property into one "Reponse"
     NotFound:
       type: object
       properties:
@@ -426,6 +427,28 @@ components:
       properties:
         line:
           type: string
+    StartResponse:
+      type: object
+      properties:
+        messages:
+          $ref: "#/components/schemas/ResponseMessages"
+        new_build:
+          $ref: "#/components/schemas/NewBuild"
+    ResponseMessages:
+      type: object
+      properties:
+        info:
+          type: array
+          items:
+            type: string
+        warning:
+          type: array
+          items:
+            type: string
+        error:
+          type: array
+          items:
+            type: string
     NewBuild:
       type: object
       properties:

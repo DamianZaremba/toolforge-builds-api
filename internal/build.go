@@ -781,9 +781,13 @@ func Start(
 		Ref:       &ref,
 		Envvars:   &envvars,
 	}
-	return http.StatusOK, gen.NewBuild{
+	newBuild := gen.NewBuild{
 		Name:       &pipelineRun.Name,
 		Parameters: &buildParams,
+	}
+	return http.StatusOK, gen.StartResponse{
+		NewBuild: &newBuild,
+		Messages: &gen.ResponseMessages{},
 	}
 }
 

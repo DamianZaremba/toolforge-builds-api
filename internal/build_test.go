@@ -1234,7 +1234,8 @@ func TestStartReturnsNewBuildName(t *testing.T) {
 		t.Fatalf("I was expecting a 200 response, got: %d", code)
 	}
 
-	gottenNewBuild := response.(gen.NewBuild)
+	gottenStartResponse := response.(gen.StartResponse)
+	gottenNewBuild := gottenStartResponse.NewBuild
 	if *gottenNewBuild.Name != expectedName {
 		t.Fatalf("Got an unexpected name for the new build, got '%s', expected '%s'", *gottenNewBuild.Name, expectedName)
 	}

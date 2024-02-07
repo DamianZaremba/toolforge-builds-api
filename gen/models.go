@@ -122,6 +122,19 @@ type Quota struct {
 	} `json:"categories,omitempty"`
 }
 
+// ResponseMessages defines model for ResponseMessages.
+type ResponseMessages struct {
+	Error   *[]string `json:"error,omitempty"`
+	Info    *[]string `json:"info,omitempty"`
+	Warning *[]string `json:"warning,omitempty"`
+}
+
+// StartResponse defines model for StartResponse.
+type StartResponse struct {
+	Messages *ResponseMessages `json:"messages,omitempty"`
+	NewBuild *NewBuild         `json:"new_build,omitempty"`
+}
+
 // Unauthorized defines model for Unauthorized.
 type Unauthorized struct {
 	Message *string `json:"message,omitempty"`

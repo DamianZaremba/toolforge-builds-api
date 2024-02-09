@@ -584,10 +584,34 @@ func cleanHarbor(api *BuildsApi, toolName string) (gen.CleanResponse, error) {
 	return gen.CleanResponse{Message: &message}, nil
 }
 
+func checkIfHarborProjectExists(api *BuildsApi, projectName string) (bool, error) {
+	_, err := api.Clients.Harbor.V2().Project.HeadProject(
+		context.TODO(),
+		&harborProject.HeadProjectParams{ProjectName: projectName},
+	)
+
+	if err != nil {
+		if _, ok := err.(*harborProject.HeadProjectNotFound); ok {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
 func GetHarborQuota(api *BuildsApi, toolName string) (HarborQuotaResponse, error) {
 	harborProjectName, err := ToolNameToHarborProjectName(toolName)
 	if err != nil {
 		return HarborQuotaResponse{}, err
+	}
+
+	projectExists, err := checkIfHarborProjectExists(api, harborProjectName)
+	if err != nil {
+		return HarborQuotaResponse{}, err
+	}
+
+	if !projectExists {
+		return HarborQuotaResponse{}, fmt.Errorf("Quota cannot be displayed because no builds have run yet")
 	}
 
 	response, err := api.Clients.Harbor.V2().Project.GetProjectSummary(

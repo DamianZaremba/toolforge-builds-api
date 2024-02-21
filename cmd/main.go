@@ -92,7 +92,7 @@ func main() {
 		log.Fatalf("Error setting up middlewares: %s", err)
 	}
 
-	gen.RegisterHandlersWithBaseURL(e, buildsApi, "/v1")
+	gen.RegisterHandlersWithBaseURL(e, buildsApi, "")
 	log.Info("Registered routes:")
 	for _, route := range e.Routes() {
 		log.Infof("%v", *route)

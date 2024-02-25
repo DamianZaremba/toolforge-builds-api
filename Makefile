@@ -86,8 +86,8 @@ ifndef OAPI
 endif
 
 gen-api: check_requirements ## Generate API code from OpenAPI specification
-	$(OAPI) -config openapi/gen_config/api_config.yaml openapi/v1.yaml
-	$(OAPI) -config openapi/gen_config/models_config.yaml openapi/v1.yaml
+	$(OAPI) -config openapi/gen_config/api_config.yaml openapi/openapi.yaml
+	$(OAPI) -config openapi/gen_config/models_config.yaml openapi/openapi.yaml
 	go mod tidy
 
 build-api: ## Build the API

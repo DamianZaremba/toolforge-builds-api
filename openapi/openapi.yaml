@@ -12,6 +12,33 @@ servers:
   - url: "https://api.svc.toolsbeta.eqiad1.wikimedia.cloud:30003/builds"
     description: "Toolforge beta internal API gateway endpoint."
 
+.common:
+  common_responses:
+    bad-parameters: &bad-parameters
+      description: Bad parameters passed
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/BadRequest"
+    unauthorized: &unauthorized
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Unauthorized"
+    not-found: &not-found
+      description: The latest build was not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/NotFound"
+    internal-error: &internal-error
+      description: An internal error happened
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/InternalError"
+
 paths:
   /v1/healthz:
     get:
@@ -46,24 +73,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StartResponse"
-        "400":
-          description: Bad parameters passed
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BadRequest"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Unauthorized"
-        "500":
-          description: An internal error happened
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/InternalError"
+        "400": *bad-parameters
+        "401": *unauthorized
+        "404": *not-found
+        "500": *internal-error
       security:
         - key: []
       x-codegen-request-body-name: new_build
@@ -76,18 +89,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ListResponse"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Unauthorized"
-        "500":
-          description: An internal error happened
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/InternalError"
+        "401": *unauthorized
+        "500": *internal-error
       security:
         - key: []
   /v1/build/latest:
@@ -100,30 +103,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/LatestResponse"
-        "400":
-          description: Bad parameters passed
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BadRequest"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Unauthorized"
-        "404":
-          description: The latest build was not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/NotFound"
-        "500":
-          description: An internal error happened
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/InternalError"
+        "400": *bad-parameters
+        "401": *unauthorized
+        "404": *not-found
+        "500": *internal-error
       security:
         - key: []
   /v1/build/{id}:
@@ -144,31 +127,11 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Build"
-        "400":
-          description: Bad parameters passed
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BadRequest"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Unauthorized"
-        "404":
-          description: The build was not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/NotFound"
-        "500":
-          description: An internal error happened
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/InternalError"
+                $ref: "#/components/schemas/GetResponse"
+        "400": *bad-parameters
+        "401": *unauthorized
+        "404": *not-found
+        "500": *internal-error
       security:
         - key: []
     delete:
@@ -189,30 +152,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DeleteResponse"
-        "400":
-          description: Bad parameters passed
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BadRequest"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Unauthorized"
-        "404":
-          description: The build was not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/NotFound"
-        "500":
-          description: An internal error happened
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/InternalError"
+        "400": *bad-parameters
+        "401": *unauthorized
+        "404": *not-found
+        "500": *internal-error
       security:
         - key: []
   /v1/build/{id}/cancel:
@@ -233,37 +176,17 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Build"
-        "400":
-          description: Bad parameters passed
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BadRequest"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Unauthorized"
-        "404":
-          description: The build was not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/NotFound"
+                $ref: "#/components/schemas/CancelResponse"
+        "400": *bad-parameters
+        "401": *unauthorized
+        "404": *not-found
         "409":
           description: The build is not in a cancelable state
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Conflict"
-        "500":
-          description: An internal error happened
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/InternalError"
+        "500": *internal-error
       security:
         - key: []
   /v1/clean:
@@ -277,18 +200,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CleanResponse"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Unauthorized"
-        "500":
-          description: An internal error happened
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/InternalError"
+        "401": *unauthorized
+        "500": *internal-error
       security:
         - key: []
   /v1/build/{id}/logs:
@@ -318,30 +231,10 @@ paths:
             text/plain:
               schema:
                 $ref: "#/components/schemas/BuildLog"
-        "400":
-          description: Bad parameters passed
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/BadRequest"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Unauthorized"
-        "404":
-          description: The build was not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/NotFound"
-        "500":
-          description: An internal error happened
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/InternalError"
+        "400": *bad-parameters
+        "401": *unauthorized
+        "404": *not-found
+        "500": *internal-error
       security:
         - key: []
   /v1/quota:
@@ -354,18 +247,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/QuotaResponse"
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Unauthorized"
-        "500":
-          description: An internal error happened
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/InternalError"
+        "401": *unauthorized
+        "500": *internal-error
       security: []
   /openapi.json:
     get:
@@ -457,6 +340,7 @@ components:
         messages:
           $ref: "#/components/schemas/ResponseMessages"
         id:
+          description: "Id of the deleted build"
           type: string
     ListResponse:
       type: object
@@ -481,6 +365,26 @@ components:
           $ref: "#/components/schemas/ResponseMessages"
         quota:
           $ref: "#/components/schemas/Quota"
+    GetResponse:
+      type: object
+      properties:
+        messages:
+          $ref: "#/components/schemas/ResponseMessages"
+        build:
+          $ref: "#/components/schemas/Build"
+    CancelResponse:
+      type: object
+      properties:
+        messages:
+          $ref: "#/components/schemas/ResponseMessages"
+        id:
+          description: "Id of the cancelled build"
+          type: string
+    CleanResponse:
+      type: object
+      properties:
+        messages:
+          $ref: "#/components/schemas/ResponseMessages"
     BuildLog:
       type: object
       properties:
@@ -579,11 +483,6 @@ components:
         available:
           type: string
         capacity:
-          type: string
-    CleanResponse:
-      type: object
-      properties:
-        message:
           type: string
 
   securitySchemes:

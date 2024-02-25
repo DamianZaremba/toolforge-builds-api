@@ -1,9 +1,16 @@
 openapi: 3.1.0
 info:
   title: Toolforge builds API
-  version: 0.0.1
+  version: 0.0.2
 servers:
-  - url: ""
+  - url: "http://127.0.0.1:8000"
+    description: "Local direct development server."
+  - url: "https://127.0.0.1:3000/builds"
+    description: "Lima-kilo development server."
+  - url: "https://api.svc.tools.eqiad1.wikimedia.cloud:30003/builds"
+    description: "Toolforge internal API gateway endpoint."
+  - url: "https://api.svc.toolsbeta.eqiad1.wikimedia.cloud:30003/builds"
+    description: "Toolforge beta internal API gateway endpoint."
 
 paths:
   /v1/healthz:
@@ -68,9 +75,7 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Build"
+                $ref: "#/components/schemas/ListResponse"
         "401":
           description: Unauthorized
           content:
@@ -94,7 +99,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Build"
+                $ref: "#/components/schemas/LatestResponse"
         "400":
           description: Bad parameters passed
           content:
@@ -183,7 +188,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/BuildId"
+                $ref: "#/components/schemas/DeleteResponse"
         "400":
           description: Bad parameters passed
           content:
@@ -305,7 +310,7 @@ paths:
             default: false
       responses:
         "200":
-          description:
+          description: |
             returns newline separated sequence of "#/components/schemas/BuildLog" or
             "#/component/schemas/InternalError" if there was an error after the
             streaming has started (as the http status code can't be changed)
@@ -348,7 +353,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Quota"
+                $ref: "#/components/schemas/QuotaResponse"
         "401":
           description: Unauthorized
           content:
@@ -386,17 +391,6 @@ paths:
       security: []
 components:
   schemas:
-    HealthResponse:
-      type: object
-      properties:
-        status:
-          type: string
-          enum:
-            - OK
-            - ERROR
-        message:
-          type: string
-    # TODO: combine all reponses that have single "message" property into one "Reponse"
     NotFound:
       type: object
       properties:
@@ -422,20 +416,11 @@ components:
       properties:
         message:
           type: string
-    BuildLog:
-      type: object
-      properties:
-        line:
-          type: string
-    StartResponse:
-      type: object
-      properties:
-        messages:
-          $ref: "#/components/schemas/ResponseMessages"
-        new_build:
-          $ref: "#/components/schemas/NewBuild"
     ResponseMessages:
       type: object
+      description: |
+        Lists of messages by priority, note that there will be a warning here when the endpoint is being deprecated
+        with information on how to proceed to update it.
       properties:
         info:
           type: array
@@ -449,6 +434,58 @@ components:
           type: array
           items:
             type: string
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - OK
+            - ERROR
+        messages:
+          $ref: "#/components/schemas/ResponseMessages"
+    StartResponse:
+      type: object
+      properties:
+        messages:
+          $ref: "#/components/schemas/ResponseMessages"
+        new_build:
+          $ref: "#/components/schemas/NewBuild"
+    DeleteResponse:
+      type: object
+      properties:
+        messages:
+          $ref: "#/components/schemas/ResponseMessages"
+        id:
+          type: string
+    ListResponse:
+      type: object
+      properties:
+        messages:
+          $ref: "#/components/schemas/ResponseMessages"
+        builds:
+          type: array
+          items:
+            $ref: "#/components/schemas/Build"
+    LatestResponse:
+      type: object
+      properties:
+        messages:
+          $ref: "#/components/schemas/ResponseMessages"
+        build:
+          $ref: "#/components/schemas/Build"
+    QuotaResponse:
+      type: object
+      properties:
+        messages:
+          $ref: "#/components/schemas/ResponseMessages"
+        quota:
+          $ref: "#/components/schemas/Quota"
+    BuildLog:
+      type: object
+      properties:
+        line:
+          type: string
     NewBuild:
       type: object
       properties:
@@ -456,11 +493,6 @@ components:
           type: string
         parameters:
           $ref: "#/components/schemas/BuildParameters"
-    BuildId:
-      type: object
-      properties:
-        id:
-          type: string
     # TODO: remove this as it doesn't seem to be used
     principal:
       type: object
@@ -489,7 +521,7 @@ components:
       properties:
         source_url:
           type: string
-          description:
+          description: |
             URL to the public git repository that contains the source code
             to build
         ref:
@@ -525,25 +557,29 @@ components:
         categories:
           type: array
           items:
-            type: object
-            properties:
-              name:
-                type: string
-              items:
-                type: array
-                items:
-                  type: object
-                  properties:
-                    name:
-                      type: string
-                    limit:
-                      type: string
-                    used:
-                      type: string
-                    available:
-                      type: string
-                    capacity:
-                      type: string
+            $ref: "#/components/schemas/QuotaCategory"
+    QuotaCategory:
+      type: object
+      properties:
+        name:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/QuotaCategoryItem"
+    QuotaCategoryItem:
+      type: object
+      properties:
+        name:
+          type: string
+        limit:
+          type: string
+        used:
+          type: string
+        available:
+          type: string
+        capacity:
+          type: string
     CleanResponse:
       type: object
       properties:

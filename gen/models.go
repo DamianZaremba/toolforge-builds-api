@@ -61,16 +61,29 @@ type BuildParameters struct {
 	// Ref Source code reference to build (ex. a git branch name)
 	Ref *string `json:"ref,omitempty"`
 
-	// SourceUrl URL to the public git repository that contains the source code to build
+	// SourceUrl URL to the public git repository that contains the source code
+	// to build
 	SourceUrl string `json:"source_url"`
 }
 
 // BuildStatus defines model for BuildStatus.
 type BuildStatus string
 
+// CancelResponse defines model for CancelResponse.
+type CancelResponse struct {
+	// Id Id of the cancelled build
+	Id *string `json:"id,omitempty"`
+
+	// Messages Lists of messages by priority, note that there will be a warning here when the endpoint is being deprecated
+	// with information on how to proceed to update it.
+	Messages *ResponseMessages `json:"messages,omitempty"`
+}
+
 // CleanResponse defines model for CleanResponse.
 type CleanResponse struct {
-	Message *string `json:"message,omitempty"`
+	// Messages Lists of messages by priority, note that there will be a warning here when the endpoint is being deprecated
+	// with information on how to proceed to update it.
+	Messages *ResponseMessages `json:"messages,omitempty"`
 }
 
 // Conflict defines model for Conflict.
@@ -80,7 +93,17 @@ type Conflict struct {
 
 // DeleteResponse defines model for DeleteResponse.
 type DeleteResponse struct {
+	// Id Id of the deleted build
 	Id *string `json:"id,omitempty"`
+
+	// Messages Lists of messages by priority, note that there will be a warning here when the endpoint is being deprecated
+	// with information on how to proceed to update it.
+	Messages *ResponseMessages `json:"messages,omitempty"`
+}
+
+// GetResponse defines model for GetResponse.
+type GetResponse struct {
+	Build *Build `json:"build,omitempty"`
 
 	// Messages Lists of messages by priority, note that there will be a warning here when the endpoint is being deprecated
 	// with information on how to proceed to update it.
@@ -134,16 +157,22 @@ type NotFound struct {
 
 // Quota defines model for Quota.
 type Quota struct {
-	Categories *[]struct {
-		Items *[]struct {
-			Available *string `json:"available,omitempty"`
-			Capacity  *string `json:"capacity,omitempty"`
-			Limit     *string `json:"limit,omitempty"`
-			Name      *string `json:"name,omitempty"`
-			Used      *string `json:"used,omitempty"`
-		} `json:"items,omitempty"`
-		Name *string `json:"name,omitempty"`
-	} `json:"categories,omitempty"`
+	Categories *[]QuotaCategory `json:"categories,omitempty"`
+}
+
+// QuotaCategory defines model for QuotaCategory.
+type QuotaCategory struct {
+	Items *[]QuotaCategoryItem `json:"items,omitempty"`
+	Name  *string              `json:"name,omitempty"`
+}
+
+// QuotaCategoryItem defines model for QuotaCategoryItem.
+type QuotaCategoryItem struct {
+	Available *string `json:"available,omitempty"`
+	Capacity  *string `json:"capacity,omitempty"`
+	Limit     *string `json:"limit,omitempty"`
+	Name      *string `json:"name,omitempty"`
+	Used      *string `json:"used,omitempty"`
 }
 
 // QuotaResponse defines model for QuotaResponse.

@@ -1440,9 +1440,9 @@ func TestDeleteReturnsDeletedBuildName(t *testing.T) {
 		t.Fatalf("I was expecting a 200 response, got (%s): %v", recorder.Result().Status, recorder.Body.String())
 	}
 
-	gottenDeletedId := response.(gen.BuildId)
-	if *gottenDeletedId.Id != expectedId {
-		t.Fatalf("Got unexpected build id, expected '%s', got '%s'", expectedId, *gottenDeletedId.Id)
+	deletedResponse := response.(gen.DeleteResponse)
+	if *deletedResponse.Id != expectedId {
+		t.Fatalf("Got unexpected build id, expected '%s', got '%s'", expectedId, *deletedResponse.Id)
 	}
 }
 
@@ -1523,12 +1523,12 @@ func TestListReturnsBuilds(t *testing.T) {
 		t.Fatalf("I was expecting a 200 response, got (%s): %v", recorder.Result().Status, recorder.Body.String())
 	}
 
-	gottenBuilds := response.([]gen.Build)
-	if len(gottenBuilds) != 1 {
-		t.Fatalf("Got unexpected number of builds, expected 1, got %d", len(gottenBuilds))
+	listResponse := response.(gen.ListResponse)
+	if len(*listResponse.Builds) != 1 {
+		t.Fatalf("Got unexpected number of builds, expected 1, got %d", len(*listResponse.Builds))
 	}
-	if *gottenBuilds[0].BuildId != expectedBuildId {
-		t.Fatalf("Got unexpected build id, expected '%s', got '%s'", expectedBuildId, *gottenBuilds[0].BuildId)
+	if *(*listResponse.Builds)[0].BuildId != expectedBuildId {
+		t.Fatalf("Got unexpected build id, expected '%s', got '%s'", expectedBuildId, *(*listResponse.Builds)[0].BuildId)
 	}
 }
 
@@ -1641,9 +1641,9 @@ func TestGetReturnsBuildsOk(t *testing.T) {
 		t.Fatalf("I was expecting a '%d' response, got (%d): %v", expected_code, code, recorder.Body.String())
 	}
 
-	build := response.(*gen.Build)
-	if *build.BuildId != buildId {
-		t.Fatalf("Got unexpected build id, expected '%s', got '%s'", buildId, *build.BuildId)
+	getResponse := response.(gen.GetResponse)
+	if *getResponse.Build.BuildId != buildId {
+		t.Fatalf("Got unexpected build id, expected '%s', got '%s'", buildId, *getResponse.Build.BuildId)
 	}
 }
 
@@ -1974,9 +1974,9 @@ func TestCancelReturnsCancelledBuild(t *testing.T) {
 		t.Fatalf("I was expecting a 200 response, got: %d", code)
 	}
 
-	gottenBuildId := response.(gen.BuildId)
-	if *gottenBuildId.Id != buildId {
-		t.Fatalf("Got unexpected build id, expected '%s', got '%s'", buildId, *gottenBuildId.Id)
+	cancelResponse := response.(gen.CancelResponse)
+	if *cancelResponse.Id != buildId {
+		t.Fatalf("Got unexpected build id, expected '%s', got '%s'", buildId, *cancelResponse.Id)
 	}
 }
 
@@ -2065,9 +2065,9 @@ func TestLatestReturnsBuildsOk(t *testing.T) {
 		t.Fatalf("I was expecting a '%d' response, got (%d): %v", expected_code, code, recorder.Body.String())
 	}
 
-	build := response.(*gen.Build)
-	if *build.BuildId != latestBuildId {
-		t.Fatalf("Got unexpected build id, expected '%s', got '%s'", latestBuildId, *build.BuildId)
+	latestResponse := response.(gen.LatestResponse)
+	if *latestResponse.Build.BuildId != latestBuildId {
+		t.Fatalf("Got unexpected build id, expected '%s', got '%s'", latestBuildId, *latestResponse.Build.BuildId)
 	}
 }
 

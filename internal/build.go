@@ -24,24 +24,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// Structs
-type HarborQuotaResponse struct {
-	Categories []Category `json:"categories"`
-}
-
-type Category struct {
-	Name  string `json:"name"`
-	Items []Item `json:"items"`
-}
-
-type Item struct {
-	Name      string `json:"name"`
-	Limit     string `json:"limit"`
-	Used      string `json:"used"`
-	Available string `json:"available,omitempty"`
-	Capacity  string `json:"capacity,omitempty"`
-}
-
 // Helper functions
 func getContainersFromPod(client *Clients, podName string, namespace string) ([]string, error) {
 	pod, err := client.K8s.CoreV1().Pods(namespace).Get(
@@ -575,7 +557,11 @@ func cleanHarbor(api *BuildsApi, toolName string) (gen.CleanResponse, error) {
 		message = "Nothing to clean up"
 	}
 
-	return gen.CleanResponse{Message: &message}, nil
+	return gen.CleanResponse{
+		Messages: &gen.ResponseMessages{
+			Info: &[]string{message},
+		},
+	}, nil
 }
 
 func checkIfHarborProjectExists(api *BuildsApi, projectName string) (bool, error) {
@@ -593,19 +579,19 @@ func checkIfHarborProjectExists(api *BuildsApi, projectName string) (bool, error
 	return true, nil
 }
 
-func GetHarborQuota(api *BuildsApi, toolName string) (HarborQuotaResponse, error) {
+func GetHarborQuota(api *BuildsApi, toolName string) (gen.Quota, error) {
 	harborProjectName, err := ToolNameToHarborProjectName(toolName)
 	if err != nil {
-		return HarborQuotaResponse{}, err
+		return gen.Quota{}, err
 	}
 
 	projectExists, err := checkIfHarborProjectExists(api, harborProjectName)
 	if err != nil {
-		return HarborQuotaResponse{}, err
+		return gen.Quota{}, err
 	}
 
 	if !projectExists {
-		return HarborQuotaResponse{}, fmt.Errorf("Quota cannot be displayed because no builds have run yet")
+		return gen.Quota{}, fmt.Errorf("Quota cannot be displayed because no builds have run yet")
 	}
 
 	response, err := api.Clients.Harbor.V2().Project.GetProjectSummary(
@@ -615,7 +601,7 @@ func GetHarborQuota(api *BuildsApi, toolName string) (HarborQuotaResponse, error
 
 	if err != nil {
 		log.Error(err.Error())
-		return HarborQuotaResponse{}, fmt.Errorf("failed to get harbor quota: %s", getNiceHarborError(err))
+		return gen.Quota{}, fmt.Errorf("failed to get harbor quota: %s", getNiceHarborError(err))
 	}
 
 	quota := response.Payload.Quota
@@ -639,12 +625,14 @@ func GetHarborQuota(api *BuildsApi, toolName string) (HarborQuotaResponse, error
 
 	storageUsedStr := formatBytes(storageUsed)
 
-	res := HarborQuotaResponse{
-		Categories: []Category{
+	category := "Registry"
+	itemName := "Storage"
+	res := gen.Quota{
+		Categories: &[]gen.QuotaCategory{
 			{
-				Name: "Registry",
-				Items: []Item{
-					{Name: "Storage", Limit: storageHardStr, Used: storageUsedStr, Available: storageAvailableStr, Capacity: storageCapacityStr},
+				Name: &category,
+				Items: &[]gen.QuotaCategoryItem{
+					{Name: &itemName, Limit: &storageHardStr, Used: &storageUsedStr, Available: &storageAvailableStr, Capacity: &storageCapacityStr},
 				},
 			},
 		},
@@ -774,8 +762,8 @@ func Start(
 	if err != nil {
 		log.Errorf("Got error while trying to get harbor quota for tool %s: %s", toolName, err)
 	} else {
-		quotaCapacityStr := quota.Categories[0].Items[0].Capacity
-		quotaCapacity, err := strconv.ParseFloat(strings.TrimSuffix(quotaCapacityStr, "%"), 64)
+		quotaCapacityStr := (*(*quota.Categories)[0].Items)[0].Capacity
+		quotaCapacity, err := strconv.ParseFloat(strings.TrimSuffix(*quotaCapacityStr, "%"), 64)
 		if err != nil {
 			log.Errorf("Got error while trying to parse harbor quota capacity for tool %s: %s", toolName, err)
 		} else if quotaCapacity > 90 {
@@ -784,7 +772,7 @@ func Start(
 				"Warning: Tool %s has used up %s of it's alloted quota."+
 					"To avoid the possibility of your build failing, run \"toolforge build clean\" to free up quota.",
 				toolName,
-				quotaCapacityStr,
+				*quotaCapacityStr,
 			)
 			responseMessages = gen.ResponseMessages{Warning: &[]string{message}}
 		}
@@ -835,7 +823,7 @@ func Delete(
 		return http.StatusInternalServerError, gen.InternalError{Message: &message}
 	}
 
-	return http.StatusOK, gen.BuildId{Id: &buildId}
+	return http.StatusOK, gen.DeleteResponse{Id: &buildId, Messages: &gen.ResponseMessages{}}
 }
 
 func Get(
@@ -867,7 +855,7 @@ func Get(
 	// In k8s/tekton two objects cannot share metadata.name in the same namespace anyway
 
 	build := getBuild(pipelineRuns[0])
-	return http.StatusOK, build
+	return http.StatusOK, gen.GetResponse{Build: build, Messages: &gen.ResponseMessages{}}
 }
 
 func List(
@@ -886,7 +874,7 @@ func List(
 	for i, run := range pipelineRuns {
 		builds[i] = *getBuild(run)
 	}
-	return http.StatusOK, builds
+	return http.StatusOK, gen.ListResponse{Builds: &builds, Messages: &gen.ResponseMessages{}}
 }
 
 func Latest(
@@ -911,7 +899,7 @@ func Latest(
 
 	// getPipelineRuns returns a sorted array per creationTimestamp
 	build := getBuild(pipelineRuns[0])
-	return http.StatusOK, build
+	return http.StatusOK, gen.LatestResponse{Build: build, Messages: &gen.ResponseMessages{}}
 }
 
 func Cancel(
@@ -971,7 +959,7 @@ func Cancel(
 		return http.StatusInternalServerError, gen.InternalError{Message: &message}
 	}
 
-	return http.StatusOK, gen.BuildId{Id: &buildId}
+	return http.StatusOK, gen.CancelResponse{Id: &buildId, Messages: &gen.ResponseMessages{}}
 }
 
 func Quota(api *BuildsApi, toolName string) (int, interface{}) {
@@ -982,18 +970,21 @@ func Quota(api *BuildsApi, toolName string) (int, interface{}) {
 		return http.StatusInternalServerError, gen.InternalError{Message: &message}
 	}
 
-	return http.StatusOK, quota
+	return http.StatusOK, gen.QuotaResponse{
+		Quota:    &gen.Quota{Categories: quota.Categories},
+		Messages: &gen.ResponseMessages{},
+	}
 }
 
 func Clean(api *BuildsApi, toolName string) (int, interface{}) {
-	response, err := cleanHarbor(api, toolName)
+	cleanResponse, err := cleanHarbor(api, toolName)
 	if err != nil {
 		log.Error(err)
 		message := fmt.Sprintf("Error cleaning up: %s", err)
 		return http.StatusInternalServerError, gen.InternalError{Message: &message}
 	}
 
-	return http.StatusOK, response
+	return http.StatusOK, cleanResponse
 }
 
 func Healthcheck(api *BuildsApi) (int, gen.HealthResponse) {
@@ -1007,15 +998,19 @@ func Healthcheck(api *BuildsApi) (int, gen.HealthResponse) {
 		message := fmt.Sprintf("Unable to contact the k8s API: %s", err)
 		status := gen.HealthResponseStatus(gen.ERROR)
 		return http.StatusInternalServerError, gen.HealthResponse{
-			Message: &message,
-			Status:  &status,
+			Messages: &gen.ResponseMessages{
+				Info: &[]string{message},
+			},
+			Status: &status,
 		}
 	}
 
 	message := "All systems normal"
 	status := gen.HealthResponseStatus(gen.OK)
 	return http.StatusOK, gen.HealthResponse{
-		Message: &message,
-		Status:  &status,
+		Messages: &gen.ResponseMessages{
+			Info: &[]string{message},
+		},
+		Status: &status,
 	}
 }

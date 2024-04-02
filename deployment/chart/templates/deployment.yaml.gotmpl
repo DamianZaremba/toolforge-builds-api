@@ -17,6 +17,13 @@ spec:
       labels:
         name: builds-api
     spec:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              name: builds-api
       containers:
         - name: api
           image: "{{ .Values.image.name }}:{{ .Values.image.tag }}"

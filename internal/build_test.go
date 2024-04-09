@@ -1691,9 +1691,9 @@ func TestGetReturnsBuildsNotAuth(t *testing.T) {
 	}
 
 	expected_response := fmt.Sprintf("Build '%s' does not exist or belong to tool '%s'. Double check the name and try again.", buildId, toolName)
-	resp := response.(gen.Unauthorized)
-	if *resp.Message != expected_response {
-		t.Fatalf("Expected response '%s' but got '%s'", expected_response, *resp.Message)
+	resp := response.(gen.ResponseMessages)
+	if (*resp.Error)[0] != expected_response {
+		t.Fatalf("Expected response '%s' but got '%s'", expected_response, (*resp.Error)[0])
 	}
 }
 
@@ -1724,9 +1724,9 @@ func TestGetReturnsBuildsNotFound(t *testing.T) {
 	}
 
 	expected_response := fmt.Sprintf("Build with id %s not found.", buildId)
-	resp := response.(gen.NotFound)
-	if *resp.Message != expected_response {
-		t.Fatalf("Expected response '%s' but got '%s'", expected_response, *resp.Message)
+	resp := response.(gen.ResponseMessages)
+	if (*resp.Error)[0] != expected_response {
+		t.Fatalf("Expected response '%s' but got '%s'", expected_response, (*resp.Error)[0])
 	}
 }
 
@@ -1761,9 +1761,9 @@ func TestGetReturnsAPIError(t *testing.T) {
 	}
 
 	expected_response := "Unable to get build! This might be a bug. Please contact a Toolforge admin."
-	resp := response.(gen.InternalError)
-	if *resp.Message != expected_response {
-		t.Fatalf("Expected response '%s' but got '%s'", expected_response, *resp.Message)
+	resp := response.(gen.ResponseMessages)
+	if (*resp.Error)[0] != expected_response {
+		t.Fatalf("Expected response '%s' but got '%s'", expected_response, (*resp.Error)[0])
 	}
 }
 
@@ -2117,9 +2117,9 @@ func TestLatestReturnsAPIError(t *testing.T) {
 	}
 
 	expected_response := "Unable to get build! This might be a bug. Please contact a Toolforge admin."
-	resp := response.(gen.InternalError)
-	if *resp.Message != expected_response {
-		t.Fatalf("Expected response '%s' but got '%s'", expected_response, *resp.Message)
+	resp := response.(gen.ResponseMessages)
+	if (*resp.Error)[0] != expected_response {
+		t.Fatalf("Expected response '%s' but got '%s'", expected_response, (*resp.Error)[0])
 	}
 }
 
@@ -2148,9 +2148,9 @@ func TestLatestReturnsBuildsNotFound(t *testing.T) {
 	}
 
 	expected_response := "No builds exist yet."
-	resp := response.(gen.NotFound)
-	if *resp.Message != expected_response {
-		t.Fatalf("Expected response '%s' but got '%s'", expected_response, *resp.Message)
+	resp := response.(gen.ResponseMessages)
+	if (*resp.Error)[0] != expected_response {
+		t.Fatalf("Expected response '%s' but got '%s'", expected_response, (*resp.Error)[0])
 	}
 }
 
@@ -2280,7 +2280,7 @@ func TestCleanHappyPath(t *testing.T) {
 			api.Clients.Harbor = testHarborClientSet
 			responseCode, response := Clean(&api, fmt.Sprintf("dummy-tool-name-%s", strings.ReplaceAll(strings.ToLower(testName), " ", "-")))
 			if responseCode != 200 {
-				t.Fatalf("I was expecting no errors, got return code %d, and response: %v", responseCode, *response.(gen.InternalError).Message)
+				t.Fatalf("I was expecting no errors, got return code %d, and response: %v", responseCode, (*response.(gen.ResponseMessages).Error)[0])
 			}
 		})
 	}

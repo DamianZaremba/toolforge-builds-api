@@ -447,24 +447,24 @@ func Logs(ctx echo.Context, api *BuildsApi, buildId string, toolName string, fol
 
 	if err := ToolIsAllowedForBuild(toolName, buildId, api.Config.BuildIdPrefix); err != nil {
 		message := fmt.Sprintf("%s", err)
-		return http.StatusUnauthorized, gen.Unauthorized{Message: &message}
+		return http.StatusUnauthorized, gen.ResponseMessages{Error: &[]string{message}}
 	}
 
 	listoptions := metav1.ListOptions{FieldSelector: fmt.Sprintf("metadata.name=%s", buildId)}
 	pipelineRuns, err := getPipelineRuns(&api.Clients, api.Config.BuildNamespace, listoptions)
 	if err != nil {
 		message := "Unable to find any pipelineruns! New installation?"
-		return http.StatusNotFound, gen.NotFound{Message: &message}
+		return http.StatusNotFound, gen.ResponseMessages{Error: &[]string{message}}
 	}
 
 	if len(pipelineRuns) == 0 {
 		message := fmt.Sprintf("Unable to find build with id '%s'", buildId)
-		return http.StatusNotFound, gen.NotFound{Message: &message}
+		return http.StatusNotFound, gen.ResponseMessages{Error: &[]string{message}}
 
 	} else if len(pipelineRuns) > 1 {
 		message := fmt.Sprintf("Got %d builds matching name %s, only 1 was expected.", len(pipelineRuns), buildId)
 		log.Warning(message)
-		return http.StatusNotFound, gen.NotFound{Message: &message}
+		return http.StatusNotFound, gen.ResponseMessages{Error: &[]string{message}}
 	}
 
 	err = StreamAfterPipelineRunStarted(ctx, &api.Clients, api.Config.BuildNamespace, follow, listoptions, waitTimeout)
@@ -473,7 +473,7 @@ func Logs(ctx echo.Context, api *BuildsApi, buildId string, toolName string, fol
 		log.Errorf(message)
 		// Note that when streaming, once the first line is sent, you can't really change the http error code,
 		// so this internal server error is only effective if we did not yet send any data.
-		return http.StatusInternalServerError, gen.InternalError{Message: &message}
+		return http.StatusInternalServerError, gen.ResponseMessages{Error: &[]string{message}}
 	}
 
 	return http.StatusOK, nil
@@ -686,13 +686,13 @@ func Start(
 	err := ValidateEnvvars(envvars)
 	if err != nil {
 		message := fmt.Sprintf("Not valid environment variables passed: %s", err)
-		return http.StatusBadRequest, gen.BadRequest{Message: &message}
+		return http.StatusBadRequest, gen.ResponseMessages{Error: &[]string{message}}
 	}
 
 	err = CreateHarborProjectForTool(api, toolName)
 	if err != nil {
 		message := fmt.Sprintf("Failed to create harbor project for tool %s: %s", toolName, err)
-		return http.StatusServiceUnavailable, gen.InternalError{Message: &message}
+		return http.StatusServiceUnavailable, gen.ResponseMessages{Error: &[]string{message}}
 	}
 	cleanup_err := cleanupOldPipelineRuns(&api.Clients, api.Config.BuildNamespace, toolName, api.Config.OkToKeep, api.Config.FailedToKeep)
 	for _, err := range cleanup_err {
@@ -771,7 +771,7 @@ func Start(
 	if err != nil {
 		message := fmt.Sprintf("Got error when creating a new pipelinerun on namespace %s: %s", api.Config.BuildNamespace, err)
 		log.Warn(message)
-		return http.StatusInternalServerError, gen.InternalError{Message: &message}
+		return http.StatusInternalServerError, gen.ResponseMessages{Error: &[]string{message}}
 	}
 
 	var responseMessages gen.ResponseMessages
@@ -817,7 +817,7 @@ func Delete(
 ) (int, interface{}) {
 	if err := ToolIsAllowedForBuild(toolName, buildId, api.Config.BuildIdPrefix); err != nil {
 		message := fmt.Sprintf("%s", err)
-		return http.StatusUnauthorized, gen.Unauthorized{Message: &message}
+		return http.StatusUnauthorized, gen.ResponseMessages{Error: &[]string{message}}
 	}
 	// TODO: Delete also the associated image on harbor
 	log.Debugf("Deleting build: buildId=%s, namespace=%s, toolName=%s", buildId, api.Config.BuildNamespace, toolName)
@@ -830,14 +830,14 @@ func Delete(
 		// A bit flaky way of handling, maybe improve in the future
 		if strings.HasSuffix(err.Error(), "not found") {
 			message := fmt.Sprintf("Build with id %s not found", buildId)
-			return http.StatusNotFound, gen.NotFound{Message: &message}
+			return http.StatusNotFound, gen.ResponseMessages{Error: &[]string{message}}
 		}
 
 		log.Warnf(
 			"Got error when deleting pipelinerun %s on namespace %s: %s", buildId, api.Config.BuildNamespace, err,
 		)
 		message := "Unable to delete build!"
-		return http.StatusInternalServerError, gen.InternalError{Message: &message}
+		return http.StatusInternalServerError, gen.ResponseMessages{Error: &[]string{message}}
 	}
 
 	return http.StatusOK, gen.DeleteResponse{Id: &buildId, Messages: &gen.ResponseMessages{}}
@@ -850,7 +850,7 @@ func Get(
 ) (int, interface{}) {
 	if err := ToolIsAllowedForBuild(toolName, id, api.Config.BuildIdPrefix); err != nil {
 		message := fmt.Sprintf("%s", err)
-		return http.StatusUnauthorized, gen.Unauthorized{Message: &message}
+		return http.StatusUnauthorized, gen.ResponseMessages{Error: &[]string{message}}
 	}
 	log.Debugf("Getting build: buildId=%s, namespace=%s, toolName=%s", id, api.Config.BuildNamespace, toolName)
 
@@ -860,12 +860,12 @@ func Get(
 			"Got error when getting pipelinerun %s on namespace %s: %s", id, api.Config.BuildNamespace, err,
 		)
 		message := "Unable to get build! This might be a bug. Please contact a Toolforge admin."
-		return http.StatusInternalServerError, gen.InternalError{Message: &message}
+		return http.StatusInternalServerError, gen.ResponseMessages{Error: &[]string{message}}
 	}
 
 	if len(pipelineRuns) == 0 {
 		message := fmt.Sprintf("Build with id %s not found.", id)
-		return http.StatusNotFound, gen.NotFound{Message: &message}
+		return http.StatusNotFound, gen.ResponseMessages{Error: &[]string{message}}
 	}
 
 	// NOTE: we assume here the first pipelineRun from the search is what we are looking for.
@@ -883,7 +883,7 @@ func List(
 	pipelineRuns, err := getPipelineRuns(&api.Clients, api.Config.BuildNamespace, metav1.ListOptions{LabelSelector: fmt.Sprintf("user=%s", toolName)})
 	if err != nil {
 		message := fmt.Sprintf("Got error when listing %s's pipelineruns on namespace %s: %s", toolName, api.Config.BuildNamespace, err)
-		return http.StatusInternalServerError, gen.InternalError{Message: &message}
+		return http.StatusInternalServerError, gen.ResponseMessages{Error: &[]string{message}}
 	}
 	log.Debugf("Found %d pipelineruns for %s", len(pipelineRuns), toolName)
 
@@ -906,12 +906,12 @@ func Latest(
 			"Got error when getting latest pipelineruns on namespace %s: %s", api.Config.BuildNamespace, err,
 		)
 		message := "Unable to get build! This might be a bug. Please contact a Toolforge admin."
-		return http.StatusInternalServerError, gen.InternalError{Message: &message}
+		return http.StatusInternalServerError, gen.ResponseMessages{Error: &[]string{message}}
 	}
 
 	if len(pipelineRuns) == 0 {
 		message := "No builds exist yet."
-		return http.StatusNotFound, gen.NotFound{Message: &message}
+		return http.StatusNotFound, gen.ResponseMessages{Error: &[]string{message}}
 	}
 
 	// getPipelineRuns returns a sorted array per creationTimestamp
@@ -926,7 +926,7 @@ func Cancel(
 ) (int, interface{}) {
 	if err := ToolIsAllowedForBuild(toolName, buildId, api.Config.BuildIdPrefix); err != nil {
 		message := fmt.Sprintf("%s", err)
-		return http.StatusUnauthorized, gen.Unauthorized{Message: &message}
+		return http.StatusUnauthorized, gen.ResponseMessages{Error: &[]string{message}}
 	}
 	log.Debugf("Getting build: buildId=%s, namespace=%s, toolName=%s", buildId, api.Config.BuildNamespace, toolName)
 	pipelineRun, err := api.Clients.Tekton.TektonV1beta1().PipelineRuns(api.Config.BuildNamespace).Get(
@@ -937,14 +937,14 @@ func Cancel(
 	if err != nil {
 		if strings.HasSuffix(err.Error(), "not found") {
 			message := fmt.Sprintf("Build with id %s not found", buildId)
-			return http.StatusNotFound, gen.NotFound{Message: &message}
+			return http.StatusNotFound, gen.ResponseMessages{Error: &[]string{message}}
 		}
 
 		log.Warnf(
 			"Got error when getting pipelinerun %s on namespace %s: %s", buildId, api.Config.BuildNamespace, err,
 		)
 		message := "Error: Unable to cancel build!"
-		return http.StatusInternalServerError, gen.InternalError{Message: &message}
+		return http.StatusInternalServerError, gen.ResponseMessages{Error: &[]string{message}}
 	}
 
 	buildCondition := getBuildConditionFromPipelineRun(pipelineRun)
@@ -953,11 +953,11 @@ func Cancel(
 	case gen.BUILDSUCCESS, gen.BUILDFAILURE, gen.BUILDTIMEOUT:
 		message := fmt.Sprintf("Build %s cannot be cancelled because it has already completed", buildId)
 		log.Warnf(message)
-		return http.StatusConflict, gen.Conflict{Message: &message}
+		return http.StatusConflict, gen.ResponseMessages{Error: &[]string{message}}
 	case gen.BUILDCANCELLED:
 		message := fmt.Sprintf("Build %s cannot be cancelled again. It has already been cancelled", buildId)
 		log.Warnf(message)
-		return http.StatusConflict, gen.Conflict{Message: &message}
+		return http.StatusConflict, gen.ResponseMessages{Error: &[]string{message}}
 	}
 
 	pipelineRun.Spec.Status = "PipelineRunCancelled"
@@ -973,7 +973,7 @@ func Cancel(
 			"Got error when updating pipelinerun %s on namespace %s: %s", buildId, api.Config.BuildNamespace, err,
 		)
 		message := "Unable to cancel build!"
-		return http.StatusInternalServerError, gen.InternalError{Message: &message}
+		return http.StatusInternalServerError, gen.ResponseMessages{Error: &[]string{message}}
 	}
 
 	return http.StatusOK, gen.CancelResponse{Id: &buildId, Messages: &gen.ResponseMessages{}}
@@ -984,7 +984,7 @@ func Quota(api *BuildsApi, toolName string) (int, interface{}) {
 	if err != nil {
 		log.Error(err)
 		message := fmt.Sprintf("Error getting quota from Harbor: %s", err)
-		return http.StatusInternalServerError, gen.InternalError{Message: &message}
+		return http.StatusInternalServerError, gen.ResponseMessages{Error: &[]string{message}}
 	}
 
 	return http.StatusOK, gen.QuotaResponse{
@@ -998,7 +998,7 @@ func Clean(api *BuildsApi, toolName string) (int, interface{}) {
 	if err != nil {
 		log.Error(err)
 		message := fmt.Sprintf("Error cleaning up: %s", err)
-		return http.StatusInternalServerError, gen.InternalError{Message: &message}
+		return http.StatusInternalServerError, gen.ResponseMessages{Error: &[]string{message}}
 	}
 
 	return http.StatusOK, cleanResponse

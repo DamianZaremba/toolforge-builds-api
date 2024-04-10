@@ -81,9 +81,12 @@ else
 endif
 endif
 ifndef OAPI
-	@echo "You need oapi-codegen installed, see https://github.com/deepmap/oapi-codegen"
+	@echo "You need oapi-codegen installed. Run 'make install-oapi-codegen' to install it"
 	exit 1
 endif
+
+install-oapi-codegen: ## Install oapi-codegen
+	go install github.com/deepmap/oapi-codegen/v2/cmd/oapi-codegen@v2.1.0
 
 gen-api: check_requirements ## Generate API code from OpenAPI specification
 	$(OAPI) -config openapi/gen_config/api_config.yaml openapi/openapi.yaml

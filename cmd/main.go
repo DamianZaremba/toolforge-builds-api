@@ -24,12 +24,12 @@ import (
 	"os"
 	"time"
 
-	"github.com/deepmap/oapi-codegen/pkg/middleware"
 	"github.com/getkin/kin-openapi/openapi3filter"
 	"github.com/goharbor/go-client/pkg/harbor"
 	prom "github.com/labstack/echo-contrib/echoprometheus"
 	"github.com/labstack/echo/v4"
 	echomiddleware "github.com/labstack/echo/v4/middleware"
+	oapiechomiddleware "github.com/oapi-codegen/echo-middleware"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	"github.com/tektoncd/pipeline/pkg/client/clientset/versioned"
@@ -180,9 +180,9 @@ func addMiddleware(router *echo.Echo) error {
 	}
 
 	// authentication
-	authValidator := middleware.OapiRequestValidatorWithOptions(
+	authValidator := oapiechomiddleware.OapiRequestValidatorWithOptions(
 		swagger,
-		&middleware.Options{
+		&oapiechomiddleware.Options{
 			Options: openapi3filter.Options{
 				AuthenticationFunc: func(ctx context.Context, input *openapi3filter.AuthenticationInput) error {
 					log.Debugf("Authenticating for %s", input.RequestValidationInput.Request.URL.RequestURI())

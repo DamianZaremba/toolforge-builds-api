@@ -47,6 +47,7 @@ func main() {
 	viper.AllowEmptyEnv(true)
 	viper.SetDefault("debug", false)
 	viper.SetDefault("port", 8000)
+	viper.SetDefault("address", "127.0.0.1")
 	// note that the builder is the full ref for the image
 	viper.SetDefault("builder", "tools-harbor.wmcloud.org/toolforge/heroku-builder:22")
 	viper.SetDefault("ok_builds_to_keep", 1)
@@ -61,6 +62,7 @@ func main() {
 	}
 
 	port := viper.GetInt("port")
+	address := viper.GetString("address")
 
 	harborRepository := viper.GetString("HARBOR_REPOSITORY")
 	if harborRepository == "" {
@@ -115,7 +117,7 @@ func main() {
 		log.Infof("%v", *route)
 	}
 
-	e.Logger.Fatal(e.Start(fmt.Sprintf("0.0.0.0:%d", port)))
+	e.Logger.Fatal(e.Start(fmt.Sprintf("%s:%d", address, port)))
 
 }
 

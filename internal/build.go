@@ -495,7 +495,12 @@ func formatBytes(bytes int64) string {
 func cleanHarbor(api *BuildsApi, toolName string) (gen.CleanResponse, error) {
 	harborProjectName, err := ToolNameToHarborProjectName(toolName)
 	if err != nil {
-		return gen.CleanResponse{}, fmt.Errorf("error trying to map tool %s to harbor project: %s", toolName, err)
+		return gen.CleanResponse{
+			Messages: &gen.ResponseMessages{
+				Info:    &[]string{"info message"},
+				Warning: &[]string{"warning message"},
+				Error:   &[]string{"error message"},
+			}}, fmt.Errorf("error trying to map tool %s to harbor project: %s", toolName, err)
 	}
 
 	pageSize := int64(-1)
@@ -506,17 +511,25 @@ func cleanHarbor(api *BuildsApi, toolName string) (gen.CleanResponse, error) {
 	if err != nil {
 		log.Error(err.Error())
 		if _, ok := err.(*harborRepository.ListRepositoriesNotFound); ok {
-			return gen.CleanResponse{}, fmt.Errorf(
-				"the project %s does not exist, have you started a build yet?",
-				harborProjectName,
-			)
+			return gen.CleanResponse{Messages: &gen.ResponseMessages{
+					Info:    &[]string{"info message"},
+					Warning: &[]string{"warning message"},
+					Error:   &[]string{"error message"},
+				}}, fmt.Errorf(
+					"the project %s does not exist, have you started a build yet?",
+					harborProjectName,
+				)
 		}
 
-		return gen.CleanResponse{}, fmt.Errorf(
-			"error trying to get the repositories for project %s: %s",
-			harborProjectName,
-			getNiceHarborError(err),
-		)
+		return gen.CleanResponse{Messages: &gen.ResponseMessages{
+				Info:    &[]string{"info message"},
+				Warning: &[]string{"warning message"},
+				Error:   &[]string{"error message"},
+			}}, fmt.Errorf(
+				"error trying to get the repositories for project %s: %s",
+				harborProjectName,
+				getNiceHarborError(err),
+			)
 	}
 
 	message := ""
@@ -536,11 +549,15 @@ func cleanHarbor(api *BuildsApi, toolName string) (gen.CleanResponse, error) {
 		)
 		if err != nil {
 			log.Error(err.Error())
-			return gen.CleanResponse{}, fmt.Errorf(
-				"error trying to get the artifacts for project %s: %s",
-				harborProjectName,
-				getNiceHarborError(err),
-			)
+			return gen.CleanResponse{Messages: &gen.ResponseMessages{
+					Info:    &[]string{"info message"},
+					Warning: &[]string{"warning message"},
+					Error:   &[]string{"error message"},
+				}}, fmt.Errorf(
+					"error trying to get the artifacts for project %s: %s",
+					harborProjectName,
+					getNiceHarborError(err),
+				)
 		}
 
 		artifacts := response.Payload
@@ -560,12 +577,16 @@ func cleanHarbor(api *BuildsApi, toolName string) (gen.CleanResponse, error) {
 			)
 			if err != nil {
 				log.Error(err.Error())
-				return gen.CleanResponse{}, fmt.Errorf(
-					"error trying to delete artifact %s from project %s: %s",
-					artifact.Digest,
-					harborProjectName,
-					getNiceHarborError(err),
-				)
+				return gen.CleanResponse{Messages: &gen.ResponseMessages{
+						Info:    &[]string{"info message"},
+						Warning: &[]string{"warning message"},
+						Error:   &[]string{"error message"},
+					}}, fmt.Errorf(
+						"error trying to delete artifact %s from project %s: %s",
+						artifact.Digest,
+						harborProjectName,
+						getNiceHarborError(err),
+					)
 			}
 		}
 		message += fmt.Sprintf("Deleted %d artifacts from harbor repository %s/%s\n", len(artifacts), harborProjectName, repoName)
@@ -576,7 +597,9 @@ func cleanHarbor(api *BuildsApi, toolName string) (gen.CleanResponse, error) {
 
 	return gen.CleanResponse{
 		Messages: &gen.ResponseMessages{
-			Info: &[]string{message},
+			Info:    &[]string{message},
+			Warning: &[]string{"warning message"},
+			Error:   &[]string{"error message"},
 		},
 	}, nil
 }
@@ -791,7 +814,7 @@ func Start(
 				toolName,
 				*quotaCapacityStr,
 			)
-			responseMessages = gen.ResponseMessages{Warning: &[]string{message}}
+			responseMessages = gen.ResponseMessages{Warning: &[]string{message}, Info: &[]string{"info message"}, Error: &[]string{"error message"}}
 		}
 	}
 
@@ -840,7 +863,11 @@ func Delete(
 		return http.StatusInternalServerError, gen.ResponseMessages{Error: &[]string{message}}
 	}
 
-	return http.StatusOK, gen.DeleteResponse{Id: &buildId, Messages: &gen.ResponseMessages{}}
+	return http.StatusOK, gen.DeleteResponse{Id: &buildId, Messages: &gen.ResponseMessages{
+		Info:    &[]string{"info message"},
+		Warning: &[]string{"warning message"},
+		Error:   &[]string{"error message"},
+	}}
 }
 
 func Get(
@@ -872,7 +899,11 @@ func Get(
 	// In k8s/tekton two objects cannot share metadata.name in the same namespace anyway
 
 	build := getBuild(pipelineRuns[0])
-	return http.StatusOK, gen.GetResponse{Build: build, Messages: &gen.ResponseMessages{}}
+	return http.StatusOK, gen.GetResponse{Build: build, Messages: &gen.ResponseMessages{
+		Info:    &[]string{"info message"},
+		Warning: &[]string{"warning message"},
+		Error:   &[]string{"error message"},
+	}}
 }
 
 func List(
@@ -891,7 +922,11 @@ func List(
 	for i, run := range pipelineRuns {
 		builds[i] = *getBuild(run)
 	}
-	return http.StatusOK, gen.ListResponse{Builds: &builds, Messages: &gen.ResponseMessages{}}
+	return http.StatusOK, gen.ListResponse{Builds: &builds, Messages: &gen.ResponseMessages{
+		Info:    &[]string{"info message"},
+		Warning: &[]string{"warning message"},
+		Error:   &[]string{"error message"},
+	}}
 }
 
 func Latest(
@@ -916,7 +951,11 @@ func Latest(
 
 	// getPipelineRuns returns a sorted array per creationTimestamp
 	build := getBuild(pipelineRuns[0])
-	return http.StatusOK, gen.LatestResponse{Build: build, Messages: &gen.ResponseMessages{}}
+	return http.StatusOK, gen.LatestResponse{Build: build, Messages: &gen.ResponseMessages{
+		Info:    &[]string{"info message"},
+		Warning: &[]string{"warning message"},
+		Error:   &[]string{"error message"},
+	}}
 }
 
 func Cancel(
@@ -976,7 +1015,11 @@ func Cancel(
 		return http.StatusInternalServerError, gen.ResponseMessages{Error: &[]string{message}}
 	}
 
-	return http.StatusOK, gen.CancelResponse{Id: &buildId, Messages: &gen.ResponseMessages{}}
+	return http.StatusOK, gen.CancelResponse{Id: &buildId, Messages: &gen.ResponseMessages{
+		Info:    &[]string{"info message"},
+		Warning: &[]string{"warning message"},
+		Error:   &[]string{"error message"},
+	}}
 }
 
 func Quota(api *BuildsApi, toolName string) (int, interface{}) {
@@ -988,8 +1031,12 @@ func Quota(api *BuildsApi, toolName string) (int, interface{}) {
 	}
 
 	return http.StatusOK, gen.QuotaResponse{
-		Quota:    &gen.Quota{Categories: quota.Categories},
-		Messages: &gen.ResponseMessages{},
+		Quota: &gen.Quota{Categories: quota.Categories},
+		Messages: &gen.ResponseMessages{
+			Info:    &[]string{"info message"},
+			Warning: &[]string{"warning message"},
+			Error:   &[]string{"error message"},
+		},
 	}
 }
 
@@ -1016,7 +1063,9 @@ func Healthcheck(api *BuildsApi) (int, gen.HealthResponse) {
 		status := gen.HealthResponseStatus(gen.ERROR)
 		return http.StatusInternalServerError, gen.HealthResponse{
 			Messages: &gen.ResponseMessages{
-				Info: &[]string{message},
+				Info:    &[]string{message},
+				Error:   &[]string{"error message"},
+				Warning: &[]string{"warning message"},
 			},
 			Status: &status,
 		}
@@ -1026,7 +1075,9 @@ func Healthcheck(api *BuildsApi) (int, gen.HealthResponse) {
 	status := gen.HealthResponseStatus(gen.OK)
 	return http.StatusOK, gen.HealthResponse{
 		Messages: &gen.ResponseMessages{
-			Info: &[]string{message},
+			Info:    &[]string{message},
+			Error:   &[]string{"error message"},
+			Warning: &[]string{"warning message"},
 		},
 		Status: &status,
 	}

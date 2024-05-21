@@ -113,6 +113,28 @@ func (api BuildsApi) Start(ctx echo.Context) error {
 	return ctx.JSON(code, response)
 }
 
+func (api BuildsApi) StartWithToolname(ctx echo.Context, toolname string) error {
+	authenticatedToolName := getToolFromContext(ctx)
+	if toolname != authenticatedToolName {
+		return ctx.JSON(http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
+	}
+	var buildParameters gen.BuildParameters
+	err := (&echo.DefaultBinder{}).BindBody(ctx, &buildParameters)
+	if err != nil {
+		return ctx.JSON(http.StatusBadRequest, fmt.Sprintf("Bad parameters passed: %s", err))
+	}
+
+	code, response := Start(
+		&api,
+		safeDeref[string](&buildParameters.SourceUrl),
+		safeDeref[string](buildParameters.Ref),
+		safeDeref[string](buildParameters.ImageName),
+		authenticatedToolName,
+		safeDeref[map[string]string](buildParameters.Envvars),
+	)
+	return ctx.JSON(code, response)
+}
+
 func (api BuildsApi) Delete(ctx echo.Context, id string) error {
 	toolName := getToolFromContext(ctx)
 
@@ -136,6 +158,15 @@ func (api BuildsApi) List(ctx echo.Context) error {
 	toolName := getToolFromContext(ctx)
 
 	code, response := List(&api, toolName)
+	return ctx.JSON(code, response)
+}
+
+func (api BuildsApi) ListWithToolname(ctx echo.Context, toolname string) error {
+	authenticatedToolName := getToolFromContext(ctx)
+	if toolname != authenticatedToolName {
+		return ctx.JSON(http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
+	}
+	code, response := List(&api, authenticatedToolName)
 	return ctx.JSON(code, response)
 }
 

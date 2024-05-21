@@ -46,23 +46,6 @@ servers:
             $ref: "#/components/schemas/ResponseMessages"
 
 paths:
-  /v1/healthz:
-    get:
-      operationId: healthcheck
-      responses:
-        "200":
-          description: Returns the health status of the service
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/HealthResponse"
-        "503":
-          description: Returned when the service is not ready
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/HealthResponse"
-      security: []
   /v1/build:
     post:
       operationId: start
@@ -88,6 +71,56 @@ paths:
       x-codegen-request-body-name: new_build
     get:
       operationId: list
+      responses:
+        "200":
+          description: Returns the list of builds
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListResponse"
+        "401": *unauthorized
+        "500": *internal-error
+      security:
+        - key: []
+  /tool/{toolname}/v1/build:
+    post:
+      operationId: startWithToolname
+      parameters:
+        - name: toolname
+          in: path
+          required: true
+          description: Name of the tool
+          schema:
+            type: string
+      requestBody:
+        content:
+          "application/json":
+            schema:
+              $ref: "#/components/schemas/BuildParameters"
+        required: true
+      responses:
+        "200":
+          description: returns the newly created build information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StartResponse"
+        "400": *bad-parameters
+        "401": *unauthorized
+        "404": *not-found
+        "500": *internal-error
+      security:
+        - key: []
+      x-codegen-request-body-name: new_build
+    get:
+      operationId: listWithToolname
+      parameters:
+        - name: toolname
+          in: path
+          required: true
+          description: Name of the tool
+          schema:
+            type: string
       responses:
         "200":
           description: Returns the list of builds
@@ -251,17 +284,6 @@ paths:
         "401": *unauthorized
         "500": *internal-error
       security: []
-  /openapi.json:
-    get:
-      operationId: openapi
-      parameters: []
-      responses:
-        "200":
-          description: returns the openapi definition
-          content:
-            application/json:
-              schema:
-                type: object
   /v1/metrics:
     get:
       operationId: metrics
@@ -273,56 +295,34 @@ paths:
               schema:
                 type: string
       security: []
-  /tool/{toolname}/v1/build:
-    post:
-      operationId: startWithToolname
-      parameters:
-        - name: toolname
-          in: path
-          required: true
-          description: Name of the tool
-          schema:
-            type: string
-      requestBody:
-        content:
-          "application/json":
-            schema:
-              $ref: "#/components/schemas/BuildParameters"
-        required: true
-      responses:
-        "200":
-          description: returns the newly created build information
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/StartResponse"
-        "400": *bad-parameters
-        "401": *unauthorized
-        "404": *not-found
-        "500": *internal-error
-      security:
-        - key: []
-      x-codegen-request-body-name: new_build
+  /v1/healthz:
     get:
-      operationId: listWithToolname
-      parameters:
-        - name: toolname
-          in: path
-          required: true
-          description: Name of the tool
-          schema:
-            type: string
+      operationId: healthcheck
       responses:
         "200":
-          description: Returns the list of builds
+          description: Returns the health status of the service
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ListResponse"
-        "401": *unauthorized
-        "500": *internal-error
-      security:
-        - key: []
+                $ref: "#/components/schemas/HealthResponse"
+        "503":
+          description: Returned when the service is not ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+      security: []
+  /openapi.json:
+    get:
+      operationId: openapi
+      parameters: []
+      responses:
+        "200":
+          description: returns the openapi definition
+          content:
+            application/json:
+              schema:
+                type: object
 components:
   schemas:
     ResponseMessages:

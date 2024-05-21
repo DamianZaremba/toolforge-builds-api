@@ -24,6 +24,7 @@ ifneq ($(strip $(shell command -v oapi-codegen 2>/dev/null)), )
 OAPI=$(shell command -v oapi-codegen)
 endif
 
+OAPI_CODEGEN_VERSION=v2.1.0
 PROJECT_SLUG=builds
 IMAGE_NAME=tools-harbor.wmcloud.org/toolforge/$(PROJECT_SLUG)-api:dev
 
@@ -86,9 +87,13 @@ ifndef OAPI
 endif
 
 install-oapi-codegen: ## Install oapi-codegen
-	go install github.com/deepmap/oapi-codegen/v2/cmd/oapi-codegen@v2.1.0
+	go install github.com/deepmap/oapi-codegen/v2/cmd/oapi-codegen@$(OAPI_CODEGEN_VERSION)
 
 gen-api: check_requirements ## Generate API code from OpenAPI specification
+	@if [ "$$(oapi-codegen -version 2>/dev/null | grep $(OAPI_CODEGEN_VERSION))" = "" ]; then \
+		echo "Warning: Your oapi-codegen version does not match $(OAPI_CODEGEN_VERSION). Please run 'make install-oapi-codegen'"; \
+		exit 1; \
+	fi
 	$(OAPI) -config openapi/gen_config/api_config.yaml openapi/openapi.yaml
 	$(OAPI) -config openapi/gen_config/models_config.yaml openapi/openapi.yaml
 	go mod tidy

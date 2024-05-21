@@ -273,6 +273,56 @@ paths:
               schema:
                 type: string
       security: []
+  /tool/{toolname}/v1/build:
+    post:
+      operationId: startWithToolname
+      parameters:
+        - name: toolname
+          in: path
+          required: true
+          description: Name of the tool
+          schema:
+            type: string
+      requestBody:
+        content:
+          "application/json":
+            schema:
+              $ref: "#/components/schemas/BuildParameters"
+        required: true
+      responses:
+        "200":
+          description: returns the newly created build information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StartResponse"
+        "400": *bad-parameters
+        "401": *unauthorized
+        "404": *not-found
+        "500": *internal-error
+      security:
+        - key: []
+      x-codegen-request-body-name: new_build
+    get:
+      operationId: listWithToolname
+      parameters:
+        - name: toolname
+          in: path
+          required: true
+          description: Name of the tool
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Returns the list of builds
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListResponse"
+        "401": *unauthorized
+        "500": *internal-error
+      security:
+        - key: []
 components:
   schemas:
     ResponseMessages:

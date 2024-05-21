@@ -179,6 +179,12 @@ type StartResponse struct {
 	NewBuild *NewBuild         `json:"new_build,omitempty"`
 }
 
+// LogsWithToolnameParams defines parameters for LogsWithToolname.
+type LogsWithToolnameParams struct {
+	// Follow Follow the logs
+	Follow *bool `form:"follow,omitempty" json:"follow,omitempty"`
+}
+
 // LogsParams defines parameters for Logs.
 type LogsParams struct {
 	// Follow Follow the logs

@@ -148,6 +148,29 @@ paths:
         "500": *internal-error
       security:
         - key: []
+  /tool/{toolname}/v1/build/latest:
+    get:
+      operationId: latestWithToolname
+      parameters:
+        - name: toolname
+          in: path
+          required: true
+          description: Name of the tool
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The latest build
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LatestResponse"
+        "400": *bad-parameters
+        "401": *unauthorized
+        "404": *not-found
+        "500": *internal-error
+      security:
+        - key: []
   /v1/build/{id}:
     get:
       operationId: get
@@ -197,6 +220,67 @@ paths:
         "500": *internal-error
       security:
         - key: []
+  /tool/{toolname}/v1/build/{id}:
+    get:
+      operationId: getWithToolname
+      parameters:
+        - name: toolname
+          in: path
+          required: true
+          description: Name of the tool
+          schema:
+            type: string
+        - name: id
+          in: path
+          description: Id of the build
+          required: true
+          style: simple
+          explode: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The build was found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GetResponse"
+        "400": *bad-parameters
+        "401": *unauthorized
+        "404": *not-found
+        "500": *internal-error
+      security:
+        - key: []
+    delete:
+      operationId: deleteWithToolname
+      parameters:
+        - name: toolname
+          in: path
+          required: true
+          description: Name of the tool
+          schema:
+            type: string
+        - name: id
+          in: path
+          description: Id of the build
+          required: true
+          style: simple
+          explode: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The build was deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteResponse"
+        "400": *bad-parameters
+        "401": *unauthorized
+        "404": *not-found
+        "500": *internal-error
+      security:
+        - key: []
   /v1/build/{id}/cancel:
     put:
       operationId: cancel
@@ -223,10 +307,63 @@ paths:
         "500": *internal-error
       security:
         - key: []
+  /tool/{toolname}/v1/build/{id}/cancel:
+    put:
+      operationId: cancelWithToolname
+      parameters:
+        - name: toolname
+          in: path
+          required: true
+          description: Name of the tool
+          schema:
+            type: string
+        - name: id
+          in: path
+          description: Id of the build
+          required: true
+          style: simple
+          explode: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The build was canceled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CancelResponse"
+        "400": *bad-parameters
+        "401": *unauthorized
+        "404": *not-found
+        "409": *conflict
+        "500": *internal-error
+      security:
+        - key: []
   /v1/clean:
     post:
       operationId: clean
       parameters: []
+      responses:
+        "200":
+          description: Returns a summary of what was cleaned up.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CleanResponse"
+        "401": *unauthorized
+        "500": *internal-error
+      security:
+        - key: []
+  /tool/{toolname}/v1/clean:
+    post:
+      operationId: cleanWithToolname
+      parameters:
+        - name: toolname
+          in: path
+          required: true
+          description: Name of the tool
+          schema:
+            type: string
       responses:
         "200":
           description: Returns a summary of what was cleaned up.
@@ -271,6 +408,45 @@ paths:
         "500": *internal-error
       security:
         - key: []
+  /tool/{toolname}/v1/build/{id}/logs:
+    get:
+      operationId: logsWithToolname
+      parameters:
+        - name: toolname
+          in: path
+          required: true
+          description: Name of the tool
+          schema:
+            type: string
+        - name: id
+          in: path
+          description: Id of the build
+          required: true
+          schema:
+            type: string
+        - name: follow
+          in: query
+          description: Follow the logs
+          required: false
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: |
+            returns newline separated sequence of "#/components/schemas/BuildLog" or
+            "#/component/schemas/InternalError" if there was an error after the
+            streaming has started (as the http status code can't be changed)
+          content:
+            text/plain:
+              schema:
+                $ref: "#/components/schemas/BuildLog"
+        "400": *bad-parameters
+        "401": *unauthorized
+        "404": *not-found
+        "500": *internal-error
+      security:
+        - key: []
   /v1/quota:
     get:
       operationId: quota
@@ -284,6 +460,27 @@ paths:
         "401": *unauthorized
         "500": *internal-error
       security: []
+  /tool/{toolname}/v1/quota:
+    get:
+      operationId: quotaWithToolname
+      parameters:
+        - name: toolname
+          in: path
+          required: true
+          description: Name of the tool
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Returns the quota information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuotaResponse"
+        "401": *unauthorized
+        "500": *internal-error
+      security:
+        - key: []
   /v1/metrics:
     get:
       operationId: metrics

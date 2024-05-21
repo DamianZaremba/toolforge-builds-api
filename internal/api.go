@@ -94,6 +94,23 @@ func (api BuildsApi) Logs(ctx echo.Context, buildId string, params gen.LogsParam
 	return ctx.JSON(code, response)
 }
 
+func (api BuildsApi) LogsWithToolname(ctx echo.Context, toolname string, buildId string, params gen.LogsWithToolnameParams) error {
+	authenticatedToolName := getToolFromContext(ctx)
+	if toolname != authenticatedToolName {
+		return ctx.JSON(http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
+	}
+	if *params.Follow {
+		// Disable buffering on nginx to be able to stream replies
+		// see https://www.nginx.com/resources/wiki/start/topics/examples/x-accel/#x-accel-buffering
+		ctx.Response().Header().Set("X-Accel-Buffering", "no")
+	}
+	code, response := Logs(ctx, &api, buildId, authenticatedToolName, *params.Follow)
+	if response == nil {
+		return nil
+	}
+	return ctx.JSON(code, response)
+}
+
 func (api BuildsApi) Start(ctx echo.Context) error {
 	toolName := getToolFromContext(ctx)
 	var buildParameters gen.BuildParameters
@@ -142,10 +159,28 @@ func (api BuildsApi) Delete(ctx echo.Context, id string) error {
 	return ctx.JSON(code, response)
 }
 
+func (api BuildsApi) DeleteWithToolname(ctx echo.Context, toolname string, id string) error {
+	authenticatedToolName := getToolFromContext(ctx)
+	if toolname != authenticatedToolName {
+		return ctx.JSON(http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
+	}
+	code, response := Delete(&api, id, authenticatedToolName)
+	return ctx.JSON(code, response)
+}
+
 func (api BuildsApi) Cancel(ctx echo.Context, id string) error {
 	toolName := getToolFromContext(ctx)
 
 	code, response := Cancel(&api, id, toolName)
+	return ctx.JSON(code, response)
+}
+
+func (api BuildsApi) CancelWithToolname(ctx echo.Context, toolname string, id string) error {
+	authenticatedToolName := getToolFromContext(ctx)
+	if toolname != authenticatedToolName {
+		return ctx.JSON(http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
+	}
+	code, response := Cancel(&api, id, authenticatedToolName)
 	return ctx.JSON(code, response)
 }
 
@@ -177,10 +212,28 @@ func (api BuildsApi) Get(ctx echo.Context, id string) error {
 	return ctx.JSON(code, response)
 }
 
+func (api BuildsApi) GetWithToolname(ctx echo.Context, toolname string, id string) error {
+	authenticatedToolName := getToolFromContext(ctx)
+	if toolname != authenticatedToolName {
+		return ctx.JSON(http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
+	}
+	code, response := Get(&api, id, authenticatedToolName)
+	return ctx.JSON(code, response)
+}
+
 func (api BuildsApi) Latest(ctx echo.Context) error {
 	toolName := getToolFromContext(ctx)
 
 	code, response := Latest(&api, toolName)
+	return ctx.JSON(code, response)
+}
+
+func (api BuildsApi) LatestWithToolname(ctx echo.Context, toolname string) error {
+	authenticatedToolName := getToolFromContext(ctx)
+	if toolname != authenticatedToolName {
+		return ctx.JSON(http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
+	}
+	code, response := Latest(&api, authenticatedToolName)
 	return ctx.JSON(code, response)
 }
 
@@ -191,10 +244,28 @@ func (api BuildsApi) Quota(ctx echo.Context) error {
 	return ctx.JSON(code, response)
 }
 
+func (api BuildsApi) QuotaWithToolname(ctx echo.Context, toolname string) error {
+	authenticatedToolName := getToolFromContext(ctx)
+	if toolname != authenticatedToolName {
+		return ctx.JSON(http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
+	}
+	code, response := Quota(&api, authenticatedToolName)
+	return ctx.JSON(code, response)
+}
+
 func (api BuildsApi) Clean(ctx echo.Context) error {
 	toolName := getToolFromContext(ctx)
 
 	code, response := Clean(&api, toolName)
+	return ctx.JSON(code, response)
+}
+
+func (api BuildsApi) CleanWithToolname(ctx echo.Context, toolname string) error {
+	authenticatedToolName := getToolFromContext(ctx)
+	if toolname != authenticatedToolName {
+		return ctx.JSON(http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
+	}
+	code, response := Clean(&api, authenticatedToolName)
 	return ctx.JSON(code, response)
 }
 

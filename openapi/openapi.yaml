@@ -82,7 +82,7 @@ paths:
         "500": *internal-error
       security:
         - key: []
-  /tool/{toolname}/v1/build:
+  /v1/tool/{toolname}/build:
     post:
       operationId: startWithToolname
       parameters:
@@ -148,7 +148,7 @@ paths:
         "500": *internal-error
       security:
         - key: []
-  /tool/{toolname}/v1/build/latest:
+  /v1/tool/{toolname}/build/latest:
     get:
       operationId: latestWithToolname
       parameters:
@@ -220,7 +220,7 @@ paths:
         "500": *internal-error
       security:
         - key: []
-  /tool/{toolname}/v1/build/{id}:
+  /v1/tool/{toolname}/build/{id}:
     get:
       operationId: getWithToolname
       parameters:
@@ -307,7 +307,7 @@ paths:
         "500": *internal-error
       security:
         - key: []
-  /tool/{toolname}/v1/build/{id}/cancel:
+  /v1/tool/{toolname}/build/{id}/cancel:
     put:
       operationId: cancelWithToolname
       parameters:
@@ -354,7 +354,7 @@ paths:
         "500": *internal-error
       security:
         - key: []
-  /tool/{toolname}/v1/clean:
+  /v1/tool/{toolname}/clean:
     post:
       operationId: cleanWithToolname
       parameters:
@@ -408,7 +408,7 @@ paths:
         "500": *internal-error
       security:
         - key: []
-  /tool/{toolname}/v1/build/{id}/logs:
+  /v1/tool/{toolname}/build/{id}/logs:
     get:
       operationId: logsWithToolname
       parameters:
@@ -460,7 +460,7 @@ paths:
         "401": *unauthorized
         "500": *internal-error
       security: []
-  /tool/{toolname}/v1/quota:
+  /v1/tool/{toolname}/quota:
     get:
       operationId: quotaWithToolname
       parameters:

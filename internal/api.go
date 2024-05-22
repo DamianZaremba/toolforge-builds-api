@@ -232,9 +232,10 @@ func (api BuildsApi) LatestWithToolname(ctx echo.Context, toolname string) error
 	authenticatedToolName := getToolFromContext(ctx)
 	if toolname != authenticatedToolName {
 		return ctx.JSON(http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
+	} else {
+		code, response := Latest(&api, authenticatedToolName)
+		return ctx.JSON(code, response)
 	}
-	code, response := Latest(&api, authenticatedToolName)
-	return ctx.JSON(code, response)
 }
 
 func (api BuildsApi) Quota(ctx echo.Context) error {

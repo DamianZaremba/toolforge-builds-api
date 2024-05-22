@@ -24,33 +24,6 @@ type ServerInterface interface {
 	// (GET /openapi.json)
 	Openapi(ctx echo.Context) error
 
-	// (GET /tool/{toolname}/v1/build)
-	ListWithToolname(ctx echo.Context, toolname string) error
-
-	// (POST /tool/{toolname}/v1/build)
-	StartWithToolname(ctx echo.Context, toolname string) error
-
-	// (GET /tool/{toolname}/v1/build/latest)
-	LatestWithToolname(ctx echo.Context, toolname string) error
-
-	// (DELETE /tool/{toolname}/v1/build/{id})
-	DeleteWithToolname(ctx echo.Context, toolname string, id string) error
-
-	// (GET /tool/{toolname}/v1/build/{id})
-	GetWithToolname(ctx echo.Context, toolname string, id string) error
-
-	// (PUT /tool/{toolname}/v1/build/{id}/cancel)
-	CancelWithToolname(ctx echo.Context, toolname string, id string) error
-
-	// (GET /tool/{toolname}/v1/build/{id}/logs)
-	LogsWithToolname(ctx echo.Context, toolname string, id string, params LogsWithToolnameParams) error
-
-	// (POST /tool/{toolname}/v1/clean)
-	CleanWithToolname(ctx echo.Context, toolname string) error
-
-	// (GET /tool/{toolname}/v1/quota)
-	QuotaWithToolname(ctx echo.Context, toolname string) error
-
 	// (GET /v1/build)
 	List(ctx echo.Context) error
 
@@ -83,6 +56,33 @@ type ServerInterface interface {
 
 	// (GET /v1/quota)
 	Quota(ctx echo.Context) error
+
+	// (GET /v1/tool/{toolname}/build)
+	ListWithToolname(ctx echo.Context, toolname string) error
+
+	// (POST /v1/tool/{toolname}/build)
+	StartWithToolname(ctx echo.Context, toolname string) error
+
+	// (GET /v1/tool/{toolname}/build/latest)
+	LatestWithToolname(ctx echo.Context, toolname string) error
+
+	// (DELETE /v1/tool/{toolname}/build/{id})
+	DeleteWithToolname(ctx echo.Context, toolname string, id string) error
+
+	// (GET /v1/tool/{toolname}/build/{id})
+	GetWithToolname(ctx echo.Context, toolname string, id string) error
+
+	// (PUT /v1/tool/{toolname}/build/{id}/cancel)
+	CancelWithToolname(ctx echo.Context, toolname string, id string) error
+
+	// (GET /v1/tool/{toolname}/build/{id}/logs)
+	LogsWithToolname(ctx echo.Context, toolname string, id string, params LogsWithToolnameParams) error
+
+	// (POST /v1/tool/{toolname}/clean)
+	CleanWithToolname(ctx echo.Context, toolname string) error
+
+	// (GET /v1/tool/{toolname}/quota)
+	QuotaWithToolname(ctx echo.Context, toolname string) error
 }
 
 // ServerInterfaceWrapper converts echo contexts to parameters.
@@ -96,6 +96,158 @@ func (w *ServerInterfaceWrapper) Openapi(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.Openapi(ctx)
+	return err
+}
+
+// List converts echo context to params.
+func (w *ServerInterfaceWrapper) List(ctx echo.Context) error {
+	var err error
+
+	ctx.Set(KeyScopes, []string{})
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.List(ctx)
+	return err
+}
+
+// Start converts echo context to params.
+func (w *ServerInterfaceWrapper) Start(ctx echo.Context) error {
+	var err error
+
+	ctx.Set(KeyScopes, []string{})
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.Start(ctx)
+	return err
+}
+
+// Latest converts echo context to params.
+func (w *ServerInterfaceWrapper) Latest(ctx echo.Context) error {
+	var err error
+
+	ctx.Set(KeyScopes, []string{})
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.Latest(ctx)
+	return err
+}
+
+// Delete converts echo context to params.
+func (w *ServerInterfaceWrapper) Delete(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	ctx.Set(KeyScopes, []string{})
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.Delete(ctx, id)
+	return err
+}
+
+// Get converts echo context to params.
+func (w *ServerInterfaceWrapper) Get(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	ctx.Set(KeyScopes, []string{})
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.Get(ctx, id)
+	return err
+}
+
+// Cancel converts echo context to params.
+func (w *ServerInterfaceWrapper) Cancel(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	ctx.Set(KeyScopes, []string{})
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.Cancel(ctx, id)
+	return err
+}
+
+// Logs converts echo context to params.
+func (w *ServerInterfaceWrapper) Logs(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	ctx.Set(KeyScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params LogsParams
+	// ------------- Optional query parameter "follow" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "follow", ctx.QueryParams(), &params.Follow)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter follow: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.Logs(ctx, id, params)
+	return err
+}
+
+// Clean converts echo context to params.
+func (w *ServerInterfaceWrapper) Clean(ctx echo.Context) error {
+	var err error
+
+	ctx.Set(KeyScopes, []string{})
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.Clean(ctx)
+	return err
+}
+
+// Healthcheck converts echo context to params.
+func (w *ServerInterfaceWrapper) Healthcheck(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.Healthcheck(ctx)
+	return err
+}
+
+// Metrics converts echo context to params.
+func (w *ServerInterfaceWrapper) Metrics(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.Metrics(ctx)
+	return err
+}
+
+// Quota converts echo context to params.
+func (w *ServerInterfaceWrapper) Quota(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.Quota(ctx)
 	return err
 }
 
@@ -302,158 +454,6 @@ func (w *ServerInterfaceWrapper) QuotaWithToolname(ctx echo.Context) error {
 	return err
 }
 
-// List converts echo context to params.
-func (w *ServerInterfaceWrapper) List(ctx echo.Context) error {
-	var err error
-
-	ctx.Set(KeyScopes, []string{})
-
-	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.List(ctx)
-	return err
-}
-
-// Start converts echo context to params.
-func (w *ServerInterfaceWrapper) Start(ctx echo.Context) error {
-	var err error
-
-	ctx.Set(KeyScopes, []string{})
-
-	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.Start(ctx)
-	return err
-}
-
-// Latest converts echo context to params.
-func (w *ServerInterfaceWrapper) Latest(ctx echo.Context) error {
-	var err error
-
-	ctx.Set(KeyScopes, []string{})
-
-	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.Latest(ctx)
-	return err
-}
-
-// Delete converts echo context to params.
-func (w *ServerInterfaceWrapper) Delete(ctx echo.Context) error {
-	var err error
-	// ------------- Path parameter "id" -------------
-	var id string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
-	}
-
-	ctx.Set(KeyScopes, []string{})
-
-	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.Delete(ctx, id)
-	return err
-}
-
-// Get converts echo context to params.
-func (w *ServerInterfaceWrapper) Get(ctx echo.Context) error {
-	var err error
-	// ------------- Path parameter "id" -------------
-	var id string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
-	}
-
-	ctx.Set(KeyScopes, []string{})
-
-	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.Get(ctx, id)
-	return err
-}
-
-// Cancel converts echo context to params.
-func (w *ServerInterfaceWrapper) Cancel(ctx echo.Context) error {
-	var err error
-	// ------------- Path parameter "id" -------------
-	var id string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
-	}
-
-	ctx.Set(KeyScopes, []string{})
-
-	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.Cancel(ctx, id)
-	return err
-}
-
-// Logs converts echo context to params.
-func (w *ServerInterfaceWrapper) Logs(ctx echo.Context) error {
-	var err error
-	// ------------- Path parameter "id" -------------
-	var id string
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
-	}
-
-	ctx.Set(KeyScopes, []string{})
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params LogsParams
-	// ------------- Optional query parameter "follow" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "follow", ctx.QueryParams(), &params.Follow)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter follow: %s", err))
-	}
-
-	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.Logs(ctx, id, params)
-	return err
-}
-
-// Clean converts echo context to params.
-func (w *ServerInterfaceWrapper) Clean(ctx echo.Context) error {
-	var err error
-
-	ctx.Set(KeyScopes, []string{})
-
-	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.Clean(ctx)
-	return err
-}
-
-// Healthcheck converts echo context to params.
-func (w *ServerInterfaceWrapper) Healthcheck(ctx echo.Context) error {
-	var err error
-
-	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.Healthcheck(ctx)
-	return err
-}
-
-// Metrics converts echo context to params.
-func (w *ServerInterfaceWrapper) Metrics(ctx echo.Context) error {
-	var err error
-
-	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.Metrics(ctx)
-	return err
-}
-
-// Quota converts echo context to params.
-func (w *ServerInterfaceWrapper) Quota(ctx echo.Context) error {
-	var err error
-
-	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.Quota(ctx)
-	return err
-}
-
 // This is a simple interface which specifies echo.Route addition functions which
 // are present on both echo.Echo and echo.Group, since we want to allow using
 // either of them for path registration
@@ -483,15 +483,6 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 	}
 
 	router.GET(baseURL+"/openapi.json", wrapper.Openapi)
-	router.GET(baseURL+"/tool/:toolname/v1/build", wrapper.ListWithToolname)
-	router.POST(baseURL+"/tool/:toolname/v1/build", wrapper.StartWithToolname)
-	router.GET(baseURL+"/tool/:toolname/v1/build/latest", wrapper.LatestWithToolname)
-	router.DELETE(baseURL+"/tool/:toolname/v1/build/:id", wrapper.DeleteWithToolname)
-	router.GET(baseURL+"/tool/:toolname/v1/build/:id", wrapper.GetWithToolname)
-	router.PUT(baseURL+"/tool/:toolname/v1/build/:id/cancel", wrapper.CancelWithToolname)
-	router.GET(baseURL+"/tool/:toolname/v1/build/:id/logs", wrapper.LogsWithToolname)
-	router.POST(baseURL+"/tool/:toolname/v1/clean", wrapper.CleanWithToolname)
-	router.GET(baseURL+"/tool/:toolname/v1/quota", wrapper.QuotaWithToolname)
 	router.GET(baseURL+"/v1/build", wrapper.List)
 	router.POST(baseURL+"/v1/build", wrapper.Start)
 	router.GET(baseURL+"/v1/build/latest", wrapper.Latest)
@@ -503,48 +494,57 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 	router.GET(baseURL+"/v1/healthz", wrapper.Healthcheck)
 	router.GET(baseURL+"/v1/metrics", wrapper.Metrics)
 	router.GET(baseURL+"/v1/quota", wrapper.Quota)
+	router.GET(baseURL+"/v1/tool/:toolname/build", wrapper.ListWithToolname)
+	router.POST(baseURL+"/v1/tool/:toolname/build", wrapper.StartWithToolname)
+	router.GET(baseURL+"/v1/tool/:toolname/build/latest", wrapper.LatestWithToolname)
+	router.DELETE(baseURL+"/v1/tool/:toolname/build/:id", wrapper.DeleteWithToolname)
+	router.GET(baseURL+"/v1/tool/:toolname/build/:id", wrapper.GetWithToolname)
+	router.PUT(baseURL+"/v1/tool/:toolname/build/:id/cancel", wrapper.CancelWithToolname)
+	router.GET(baseURL+"/v1/tool/:toolname/build/:id/logs", wrapper.LogsWithToolname)
+	router.POST(baseURL+"/v1/tool/:toolname/clean", wrapper.CleanWithToolname)
+	router.GET(baseURL+"/v1/tool/:toolname/quota", wrapper.QuotaWithToolname)
 
 }
 
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
+	"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",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

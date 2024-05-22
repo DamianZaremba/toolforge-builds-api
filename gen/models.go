@@ -179,20 +179,20 @@ type StartResponse struct {
 	NewBuild *NewBuild         `json:"new_build,omitempty"`
 }
 
-// LogsWithToolnameParams defines parameters for LogsWithToolname.
-type LogsWithToolnameParams struct {
-	// Follow Follow the logs
-	Follow *bool `form:"follow,omitempty" json:"follow,omitempty"`
-}
-
 // LogsParams defines parameters for Logs.
 type LogsParams struct {
 	// Follow Follow the logs
 	Follow *bool `form:"follow,omitempty" json:"follow,omitempty"`
 }
 
-// StartWithToolnameJSONRequestBody defines body for StartWithToolname for application/json ContentType.
-type StartWithToolnameJSONRequestBody = BuildParameters
+// LogsWithToolnameParams defines parameters for LogsWithToolname.
+type LogsWithToolnameParams struct {
+	// Follow Follow the logs
+	Follow *bool `form:"follow,omitempty" json:"follow,omitempty"`
+}
 
 // StartJSONRequestBody defines body for Start for application/json ContentType.
 type StartJSONRequestBody = BuildParameters
+
+// StartWithToolnameJSONRequestBody defines body for StartWithToolname for application/json ContentType.
+type StartWithToolnameJSONRequestBody = BuildParameters

@@ -81,9 +81,9 @@ func safeDeref[T any](pointer *T) T {
 }
 
 // TODO: Dummy auth for now; implement real authn/authz when we have it
-func checkToolnameAuthorization(ctx echo.Context, toolNameFromPath string, toolNameFromContext string) error {
+func checkToolnameAuthorization(toolNameFromPath string, toolNameFromContext string) error {
 	if toolNameFromPath != toolNameFromContext {
-		return ctx.JSON(http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
+		return echo.NewHTTPError(http.StatusUnauthorized, "Unauthorized")
 	}
 	return nil
 }
@@ -104,7 +104,7 @@ func (api BuildsApi) Logs(ctx echo.Context, buildId string, params gen.LogsParam
 
 func (api BuildsApi) LogsWithToolname(ctx echo.Context, toolname string, buildId string, params gen.LogsWithToolnameParams) error {
 	toolName := getToolFromContext(ctx)
-	if err := checkToolnameAuthorization(ctx, toolname, toolName); err != nil {
+	if err := checkToolnameAuthorization(toolname, toolName); err != nil {
 		return err
 	}
 	if *params.Follow {
@@ -140,7 +140,7 @@ func (api BuildsApi) Start(ctx echo.Context) error {
 
 func (api BuildsApi) StartWithToolname(ctx echo.Context, toolname string) error {
 	toolName := getToolFromContext(ctx)
-	if err := checkToolnameAuthorization(ctx, toolname, toolName); err != nil {
+	if err := checkToolnameAuthorization(toolname, toolName); err != nil {
 		return err
 	}
 	var buildParameters gen.BuildParameters
@@ -169,7 +169,7 @@ func (api BuildsApi) Delete(ctx echo.Context, id string) error {
 
 func (api BuildsApi) DeleteWithToolname(ctx echo.Context, toolname string, id string) error {
 	toolName := getToolFromContext(ctx)
-	if err := checkToolnameAuthorization(ctx, toolname, toolName); err != nil {
+	if err := checkToolnameAuthorization(toolname, toolName); err != nil {
 		return err
 	}
 	code, response := Delete(&api, id, toolName)
@@ -185,7 +185,7 @@ func (api BuildsApi) Cancel(ctx echo.Context, id string) error {
 
 func (api BuildsApi) CancelWithToolname(ctx echo.Context, toolname string, id string) error {
 	toolName := getToolFromContext(ctx)
-	if err := checkToolnameAuthorization(ctx, toolname, toolName); err != nil {
+	if err := checkToolnameAuthorization(toolname, toolName); err != nil {
 		return err
 	}
 	code, response := Cancel(&api, id, toolName)
@@ -206,7 +206,7 @@ func (api BuildsApi) List(ctx echo.Context) error {
 
 func (api BuildsApi) ListWithToolname(ctx echo.Context, toolname string) error {
 	toolName := getToolFromContext(ctx)
-	if err := checkToolnameAuthorization(ctx, toolname, toolName); err != nil {
+	if err := checkToolnameAuthorization(toolname, toolName); err != nil {
 		return err
 	}
 	code, response := List(&api, toolName)
@@ -222,7 +222,7 @@ func (api BuildsApi) Get(ctx echo.Context, id string) error {
 
 func (api BuildsApi) GetWithToolname(ctx echo.Context, toolname string, id string) error {
 	toolName := getToolFromContext(ctx)
-	if err := checkToolnameAuthorization(ctx, toolname, toolName); err != nil {
+	if err := checkToolnameAuthorization(toolname, toolName); err != nil {
 		return err
 	}
 	code, response := Get(&api, id, toolName)
@@ -238,7 +238,7 @@ func (api BuildsApi) Latest(ctx echo.Context) error {
 
 func (api BuildsApi) LatestWithToolname(ctx echo.Context, toolname string) error {
 	toolName := getToolFromContext(ctx)
-	if err := checkToolnameAuthorization(ctx, toolname, toolName); err != nil {
+	if err := checkToolnameAuthorization(toolname, toolName); err != nil {
 		return err
 	}
 	code, response := Latest(&api, toolName)
@@ -254,7 +254,7 @@ func (api BuildsApi) Quota(ctx echo.Context) error {
 
 func (api BuildsApi) QuotaWithToolname(ctx echo.Context, toolname string) error {
 	toolName := getToolFromContext(ctx)
-	if err := checkToolnameAuthorization(ctx, toolname, toolName); err != nil {
+	if err := checkToolnameAuthorization(toolname, toolName); err != nil {
 		return err
 	}
 	code, response := Quota(&api, toolName)
@@ -270,7 +270,7 @@ func (api BuildsApi) Clean(ctx echo.Context) error {
 
 func (api BuildsApi) CleanWithToolname(ctx echo.Context, toolname string) error {
 	toolName := getToolFromContext(ctx)
-	if err := checkToolnameAuthorization(ctx, toolname, toolName); err != nil {
+	if err := checkToolnameAuthorization(toolname, toolName); err != nil {
 		return err
 	}
 	code, response := Clean(&api, toolName)

@@ -80,6 +80,14 @@ func safeDeref[T any](pointer *T) T {
 	return *pointer
 }
 
+// TODO: Dummy auth for now; implement real authn/authz when we have it
+func checkToolnameAuthorization(ctx echo.Context, toolNameFromPath string, toolNameFromContext string) error {
+	if toolNameFromPath != toolNameFromContext {
+		return ctx.JSON(http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
+	}
+	return nil
+}
+
 func (api BuildsApi) Logs(ctx echo.Context, buildId string, params gen.LogsParams) error {
 	toolName := getToolFromContext(ctx)
 	if *params.Follow {
@@ -95,16 +103,16 @@ func (api BuildsApi) Logs(ctx echo.Context, buildId string, params gen.LogsParam
 }
 
 func (api BuildsApi) LogsWithToolname(ctx echo.Context, toolname string, buildId string, params gen.LogsWithToolnameParams) error {
-	authenticatedToolName := getToolFromContext(ctx)
-	if toolname != authenticatedToolName {
-		return ctx.JSON(http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
+	toolName := getToolFromContext(ctx)
+	if err := checkToolnameAuthorization(ctx, toolname, toolName); err != nil {
+		return err
 	}
 	if *params.Follow {
 		// Disable buffering on nginx to be able to stream replies
 		// see https://www.nginx.com/resources/wiki/start/topics/examples/x-accel/#x-accel-buffering
 		ctx.Response().Header().Set("X-Accel-Buffering", "no")
 	}
-	code, response := Logs(ctx, &api, buildId, authenticatedToolName, *params.Follow)
+	code, response := Logs(ctx, &api, buildId, toolName, *params.Follow)
 	if response == nil {
 		return nil
 	}
@@ -131,9 +139,9 @@ func (api BuildsApi) Start(ctx echo.Context) error {
 }
 
 func (api BuildsApi) StartWithToolname(ctx echo.Context, toolname string) error {
-	authenticatedToolName := getToolFromContext(ctx)
-	if toolname != authenticatedToolName {
-		return ctx.JSON(http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
+	toolName := getToolFromContext(ctx)
+	if err := checkToolnameAuthorization(ctx, toolname, toolName); err != nil {
+		return err
 	}
 	var buildParameters gen.BuildParameters
 	err := (&echo.DefaultBinder{}).BindBody(ctx, &buildParameters)
@@ -146,7 +154,7 @@ func (api BuildsApi) StartWithToolname(ctx echo.Context, toolname string) error 
 		safeDeref[string](&buildParameters.SourceUrl),
 		safeDeref[string](buildParameters.Ref),
 		safeDeref[string](buildParameters.ImageName),
-		authenticatedToolName,
+		toolName,
 		safeDeref[map[string]string](buildParameters.Envvars),
 	)
 	return ctx.JSON(code, response)
@@ -160,11 +168,11 @@ func (api BuildsApi) Delete(ctx echo.Context, id string) error {
 }
 
 func (api BuildsApi) DeleteWithToolname(ctx echo.Context, toolname string, id string) error {
-	authenticatedToolName := getToolFromContext(ctx)
-	if toolname != authenticatedToolName {
-		return ctx.JSON(http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
+	toolName := getToolFromContext(ctx)
+	if err := checkToolnameAuthorization(ctx, toolname, toolName); err != nil {
+		return err
 	}
-	code, response := Delete(&api, id, authenticatedToolName)
+	code, response := Delete(&api, id, toolName)
 	return ctx.JSON(code, response)
 }
 
@@ -176,11 +184,11 @@ func (api BuildsApi) Cancel(ctx echo.Context, id string) error {
 }
 
 func (api BuildsApi) CancelWithToolname(ctx echo.Context, toolname string, id string) error {
-	authenticatedToolName := getToolFromContext(ctx)
-	if toolname != authenticatedToolName {
-		return ctx.JSON(http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
+	toolName := getToolFromContext(ctx)
+	if err := checkToolnameAuthorization(ctx, toolname, toolName); err != nil {
+		return err
 	}
-	code, response := Cancel(&api, id, authenticatedToolName)
+	code, response := Cancel(&api, id, toolName)
 	return ctx.JSON(code, response)
 }
 
@@ -197,11 +205,11 @@ func (api BuildsApi) List(ctx echo.Context) error {
 }
 
 func (api BuildsApi) ListWithToolname(ctx echo.Context, toolname string) error {
-	authenticatedToolName := getToolFromContext(ctx)
-	if toolname != authenticatedToolName {
-		return ctx.JSON(http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
+	toolName := getToolFromContext(ctx)
+	if err := checkToolnameAuthorization(ctx, toolname, toolName); err != nil {
+		return err
 	}
-	code, response := List(&api, authenticatedToolName)
+	code, response := List(&api, toolName)
 	return ctx.JSON(code, response)
 }
 
@@ -213,11 +221,11 @@ func (api BuildsApi) Get(ctx echo.Context, id string) error {
 }
 
 func (api BuildsApi) GetWithToolname(ctx echo.Context, toolname string, id string) error {
-	authenticatedToolName := getToolFromContext(ctx)
-	if toolname != authenticatedToolName {
-		return ctx.JSON(http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
+	toolName := getToolFromContext(ctx)
+	if err := checkToolnameAuthorization(ctx, toolname, toolName); err != nil {
+		return err
 	}
-	code, response := Get(&api, id, authenticatedToolName)
+	code, response := Get(&api, id, toolName)
 	return ctx.JSON(code, response)
 }
 
@@ -229,11 +237,11 @@ func (api BuildsApi) Latest(ctx echo.Context) error {
 }
 
 func (api BuildsApi) LatestWithToolname(ctx echo.Context, toolname string) error {
-	authenticatedToolName := getToolFromContext(ctx)
-	if toolname != authenticatedToolName {
-		return ctx.JSON(http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
+	toolName := getToolFromContext(ctx)
+	if err := checkToolnameAuthorization(ctx, toolname, toolName); err != nil {
+		return err
 	}
-	code, response := Latest(&api, authenticatedToolName)
+	code, response := Latest(&api, toolName)
 	return ctx.JSON(code, response)
 }
 
@@ -245,11 +253,11 @@ func (api BuildsApi) Quota(ctx echo.Context) error {
 }
 
 func (api BuildsApi) QuotaWithToolname(ctx echo.Context, toolname string) error {
-	authenticatedToolName := getToolFromContext(ctx)
-	if toolname != authenticatedToolName {
-		return ctx.JSON(http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
+	toolName := getToolFromContext(ctx)
+	if err := checkToolnameAuthorization(ctx, toolname, toolName); err != nil {
+		return err
 	}
-	code, response := Quota(&api, authenticatedToolName)
+	code, response := Quota(&api, toolName)
 	return ctx.JSON(code, response)
 }
 
@@ -261,11 +269,11 @@ func (api BuildsApi) Clean(ctx echo.Context) error {
 }
 
 func (api BuildsApi) CleanWithToolname(ctx echo.Context, toolname string) error {
-	authenticatedToolName := getToolFromContext(ctx)
-	if toolname != authenticatedToolName {
-		return ctx.JSON(http.StatusUnauthorized, map[string]string{"error": "Unauthorized"})
+	toolName := getToolFromContext(ctx)
+	if err := checkToolnameAuthorization(ctx, toolname, toolName); err != nil {
+		return err
 	}
-	code, response := Clean(&api, authenticatedToolName)
+	code, response := Clean(&api, toolName)
 	return ctx.JSON(code, response)
 }
 

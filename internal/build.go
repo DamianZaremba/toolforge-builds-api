@@ -467,6 +467,8 @@ func Logs(ctx echo.Context, api *BuildsApi, buildId string, toolName string, fol
 		return http.StatusNotFound, gen.ResponseMessages{Error: &[]string{message}}
 	}
 
+	// DONOTMERGE: this is to test timeouts before getting any logs
+	time.Sleep(300 * time.Second)
 	err = StreamAfterPipelineRunStarted(ctx, &api.Clients, api.Config.BuildNamespace, follow, listoptions, waitTimeout)
 	if err != nil {
 		message := fmt.Sprintf("Error getting the logs for %s: %s", buildId, err)

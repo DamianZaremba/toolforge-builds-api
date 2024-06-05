@@ -11,40 +11,6 @@ servers:
     description: "Toolforge internal API gateway endpoint."
   - url: "https://api.svc.toolsbeta.eqiad1.wikimedia.cloud:30003/builds"
     description: "Toolforge beta internal API gateway endpoint."
-
-.common:
-  common_responses:
-    bad-parameters: &bad-parameters
-      description: Bad parameters passed
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/ResponseMessages"
-    unauthorized: &unauthorized
-      description: Unauthorized
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/ResponseMessages"
-    not-found: &not-found
-      description: The latest build was not found
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/ResponseMessages"
-    internal-error: &internal-error
-      description: An internal error happened
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/ResponseMessages"
-    conflict: &conflict
-      description: operation conflicts with the current state of a build(s)
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/ResponseMessages"
-
 paths:
   /v1/build:
     post:
@@ -62,10 +28,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StartResponse"
-        "400": *bad-parameters
-        "401": *unauthorized
-        "404": *not-found
-        "500": *internal-error
+        "400":
+          $ref: "#/components/responses/bad-parameters"
+        "401":
+          $ref: "#/components/responses/unauthorized"
+        "404":
+          $ref: "#/components/responses/not-found"
+        "500":
+          $ref: "#/components/responses/internal-error"
       security:
         - key: []
       x-codegen-request-body-name: new_build
@@ -78,8 +48,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ListResponse"
-        "401": *unauthorized
-        "500": *internal-error
+        "401":
+          $ref: "#/components/responses/unauthorized"
+        "500":
+          $ref: "#/components/responses/internal-error"
       security:
         - key: []
   /v1/tool/{toolname}/build:
@@ -105,10 +77,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StartResponse"
-        "400": *bad-parameters
-        "401": *unauthorized
-        "404": *not-found
-        "500": *internal-error
+        "400":
+          $ref: "#/components/responses/bad-parameters"
+        "401":
+          $ref: "#/components/responses/unauthorized"
+        "404":
+          $ref: "#/components/responses/not-found"
+        "500":
+          $ref: "#/components/responses/internal-error"
       security:
         - key: []
       x-codegen-request-body-name: new_build
@@ -128,8 +104,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ListResponse"
-        "401": *unauthorized
-        "500": *internal-error
+        "401":
+          $ref: "#/components/responses/unauthorized"
+        "500":
+          $ref: "#/components/responses/internal-error"
       security:
         - key: []
   /v1/build/latest:
@@ -142,10 +120,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/LatestResponse"
-        "400": *bad-parameters
-        "401": *unauthorized
-        "404": *not-found
-        "500": *internal-error
+        "400":
+          $ref: "#/components/responses/bad-parameters"
+        "401":
+          $ref: "#/components/responses/unauthorized"
+        "404":
+          $ref: "#/components/responses/not-found"
+        "500":
+          $ref: "#/components/responses/internal-error"
       security:
         - key: []
   /v1/tool/{toolname}/build/latest:
@@ -165,10 +147,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/LatestResponse"
-        "400": *bad-parameters
-        "401": *unauthorized
-        "404": *not-found
-        "500": *internal-error
+        "400":
+          $ref: "#/components/responses/bad-parameters"
+        "401":
+          $ref: "#/components/responses/unauthorized"
+        "404":
+          $ref: "#/components/responses/not-found"
+        "500":
+          $ref: "#/components/responses/internal-error"
       security:
         - key: []
   /v1/build/{id}:
@@ -190,10 +176,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/GetResponse"
-        "400": *bad-parameters
-        "401": *unauthorized
-        "404": *not-found
-        "500": *internal-error
+        "400":
+          $ref: "#/components/responses/bad-parameters"
+        "401":
+          $ref: "#/components/responses/unauthorized"
+        "404":
+          $ref: "#/components/responses/not-found"
+        "500":
+          $ref: "#/components/responses/internal-error"
       security:
         - key: []
     delete:
@@ -214,10 +204,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DeleteResponse"
-        "400": *bad-parameters
-        "401": *unauthorized
-        "404": *not-found
-        "500": *internal-error
+        "400":
+          $ref: "#/components/responses/bad-parameters"
+        "401":
+          $ref: "#/components/responses/unauthorized"
+        "404":
+          $ref: "#/components/responses/not-found"
+        "500":
+          $ref: "#/components/responses/internal-error"
       security:
         - key: []
   /v1/tool/{toolname}/build/{id}:
@@ -245,10 +239,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/GetResponse"
-        "400": *bad-parameters
-        "401": *unauthorized
-        "404": *not-found
-        "500": *internal-error
+        "400":
+          $ref: "#/components/responses/bad-parameters"
+        "401":
+          $ref: "#/components/responses/unauthorized"
+        "404":
+          $ref: "#/components/responses/not-found"
+        "500":
+          $ref: "#/components/responses/internal-error"
       security:
         - key: []
     delete:
@@ -275,10 +273,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DeleteResponse"
-        "400": *bad-parameters
-        "401": *unauthorized
-        "404": *not-found
-        "500": *internal-error
+        "400":
+          $ref: "#/components/responses/bad-parameters"
+        "401":
+          $ref: "#/components/responses/unauthorized"
+        "404":
+          $ref: "#/components/responses/not-found"
+        "500":
+          $ref: "#/components/responses/internal-error"
       security:
         - key: []
   /v1/build/{id}/cancel:
@@ -300,11 +302,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CancelResponse"
-        "400": *bad-parameters
-        "401": *unauthorized
-        "404": *not-found
-        "409": *conflict
-        "500": *internal-error
+        "400":
+          $ref: "#/components/responses/bad-parameters"
+        "401":
+          $ref: "#/components/responses/unauthorized"
+        "404":
+          $ref: "#/components/responses/not-found"
+        "409":
+          $ref: "#/components/responses/conflict"
+        "500":
+          $ref: "#/components/responses/internal-error"
       security:
         - key: []
   /v1/tool/{toolname}/build/{id}/cancel:
@@ -332,11 +339,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CancelResponse"
-        "400": *bad-parameters
-        "401": *unauthorized
-        "404": *not-found
-        "409": *conflict
-        "500": *internal-error
+        "400":
+          $ref: "#/components/responses/bad-parameters"
+        "401":
+          $ref: "#/components/responses/unauthorized"
+        "404":
+          $ref: "#/components/responses/not-found"
+        "409":
+          $ref: "#/components/responses/conflict"
+        "500":
+          $ref: "#/components/responses/internal-error"
       security:
         - key: []
   /v1/clean:
@@ -350,8 +362,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CleanResponse"
-        "401": *unauthorized
-        "500": *internal-error
+        "401":
+          $ref: "#/components/responses/unauthorized"
+        "500":
+          $ref: "#/components/responses/internal-error"
       security:
         - key: []
   /v1/tool/{toolname}/clean:
@@ -371,8 +385,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CleanResponse"
-        "401": *unauthorized
-        "500": *internal-error
+        "401":
+          $ref: "#/components/responses/unauthorized"
+        "500":
+          $ref: "#/components/responses/internal-error"
       security:
         - key: []
   /v1/build/{id}/logs:
@@ -402,10 +418,14 @@ paths:
             text/plain:
               schema:
                 $ref: "#/components/schemas/BuildLog"
-        "400": *bad-parameters
-        "401": *unauthorized
-        "404": *not-found
-        "500": *internal-error
+        "400":
+          $ref: "#/components/responses/bad-parameters"
+        "401":
+          $ref: "#/components/responses/unauthorized"
+        "404":
+          $ref: "#/components/responses/not-found"
+        "500":
+          $ref: "#/components/responses/internal-error"
       security:
         - key: []
   /v1/tool/{toolname}/build/{id}/logs:
@@ -441,10 +461,14 @@ paths:
             text/plain:
               schema:
                 $ref: "#/components/schemas/BuildLog"
-        "400": *bad-parameters
-        "401": *unauthorized
-        "404": *not-found
-        "500": *internal-error
+        "400":
+          $ref: "#/components/responses/bad-parameters"
+        "401":
+          $ref: "#/components/responses/unauthorized"
+        "404":
+          $ref: "#/components/responses/not-found"
+        "500":
+          $ref: "#/components/responses/internal-error"
       security:
         - key: []
   /v1/quota:
@@ -457,8 +481,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/QuotaResponse"
-        "401": *unauthorized
-        "500": *internal-error
+        "401":
+          $ref: "#/components/responses/unauthorized"
+        "500":
+          $ref: "#/components/responses/internal-error"
       security: []
   /v1/tool/{toolname}/quota:
     get:
@@ -477,8 +503,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/QuotaResponse"
-        "401": *unauthorized
-        "500": *internal-error
+        "401":
+          $ref: "#/components/responses/unauthorized"
+        "500":
+          $ref: "#/components/responses/internal-error"
       security:
         - key: []
   /v1/metrics:
@@ -707,6 +735,37 @@ components:
           type: string
         capacity:
           type: string
+  responses:
+    bad-parameters:
+      description: Bad parameters passed
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ResponseMessages"
+    unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ResponseMessages"
+    not-found:
+      description: The latest build was not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ResponseMessages"
+    internal-error:
+      description: An internal error happened
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ResponseMessages"
+    conflict:
+      description: operation conflicts with the current state of a build(s)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ResponseMessages"
 
   securitySchemes:
     key:

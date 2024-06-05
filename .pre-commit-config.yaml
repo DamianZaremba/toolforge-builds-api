@@ -10,12 +10,20 @@ repos:
       - id: check-shebang-scripts-are-executable
       - id: check-executables-have-shebangs
       - id: check-merge-conflict
+
   - repo: https://github.com/golangci/golangci-lint
     rev: v1.59.0
     hooks:
       - id: golangci-lint
         args: ["--timeout=10m"]
+
   - repo: https://github.com/shellcheck-py/shellcheck-py
     rev: v0.10.0.1
     hooks:
       - id: shellcheck
+
+  - repo: https://github.com/python-openapi/openapi-spec-validator
+    rev: 0.7.1
+    hooks:
+      - id: openapi-spec-validator
+        exclude: .*_config.yaml

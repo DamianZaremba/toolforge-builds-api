@@ -179,6 +179,26 @@ type StartResponse struct {
 	NewBuild *NewBuild         `json:"new_build,omitempty"`
 }
 
+// BadParameters Lists of messages by priority, note that there will be a warning here when the endpoint is being deprecated
+// with information on how to proceed to update it.
+type BadParameters = ResponseMessages
+
+// Conflict Lists of messages by priority, note that there will be a warning here when the endpoint is being deprecated
+// with information on how to proceed to update it.
+type Conflict = ResponseMessages
+
+// InternalError Lists of messages by priority, note that there will be a warning here when the endpoint is being deprecated
+// with information on how to proceed to update it.
+type InternalError = ResponseMessages
+
+// NotFound Lists of messages by priority, note that there will be a warning here when the endpoint is being deprecated
+// with information on how to proceed to update it.
+type NotFound = ResponseMessages
+
+// Unauthorized Lists of messages by priority, note that there will be a warning here when the endpoint is being deprecated
+// with information on how to proceed to update it.
+type Unauthorized = ResponseMessages
+
 // LogsParams defines parameters for Logs.
 type LogsParams struct {
 	// Follow Follow the logs

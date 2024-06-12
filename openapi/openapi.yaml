@@ -12,9 +12,16 @@ servers:
   - url: "https://api.svc.toolsbeta.eqiad1.wikimedia.cloud:30003/builds"
     description: "Toolforge beta internal API gateway endpoint."
 paths:
-  /v1/build:
+  /v1/tool/{toolname}/build:
     post:
       operationId: start
+      parameters:
+        - name: toolname
+          in: path
+          required: true
+          description: Name of the tool
+          schema:
+            type: string
       requestBody:
         content:
           "application/json":
@@ -41,55 +48,6 @@ paths:
       x-codegen-request-body-name: new_build
     get:
       operationId: list
-      responses:
-        "200":
-          description: Returns the list of builds
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ListResponse"
-        "401":
-          $ref: "#/components/responses/unauthorized"
-        "500":
-          $ref: "#/components/responses/internal-error"
-      security:
-        - key: []
-  /v1/tool/{toolname}/build:
-    post:
-      operationId: startWithToolname
-      parameters:
-        - name: toolname
-          in: path
-          required: true
-          description: Name of the tool
-          schema:
-            type: string
-      requestBody:
-        content:
-          "application/json":
-            schema:
-              $ref: "#/components/schemas/BuildParameters"
-        required: true
-      responses:
-        "200":
-          description: returns the newly created build information
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/StartResponse"
-        "400":
-          $ref: "#/components/responses/bad-parameters"
-        "401":
-          $ref: "#/components/responses/unauthorized"
-        "404":
-          $ref: "#/components/responses/not-found"
-        "500":
-          $ref: "#/components/responses/internal-error"
-      security:
-        - key: []
-      x-codegen-request-body-name: new_build
-    get:
-      operationId: listWithToolname
       parameters:
         - name: toolname
           in: path
@@ -106,33 +64,13 @@ paths:
                 $ref: "#/components/schemas/ListResponse"
         "401":
           $ref: "#/components/responses/unauthorized"
-        "500":
-          $ref: "#/components/responses/internal-error"
-      security:
-        - key: []
-  /v1/build/latest:
-    get:
-      operationId: latest
-      responses:
-        "200":
-          description: The latest build
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/LatestResponse"
-        "400":
-          $ref: "#/components/responses/bad-parameters"
-        "401":
-          $ref: "#/components/responses/unauthorized"
-        "404":
-          $ref: "#/components/responses/not-found"
         "500":
           $ref: "#/components/responses/internal-error"
       security:
         - key: []
   /v1/tool/{toolname}/build/latest:
     get:
-      operationId: latestWithToolname
+      operationId: latest
       parameters:
         - name: toolname
           in: path
@@ -157,10 +95,16 @@ paths:
           $ref: "#/components/responses/internal-error"
       security:
         - key: []
-  /v1/build/{id}:
+  /v1/tool/{toolname}/build/{id}:
     get:
       operationId: get
       parameters:
+        - name: toolname
+          in: path
+          required: true
+          description: Name of the tool
+          schema:
+            type: string
         - name: id
           in: path
           description: Id of the build
@@ -189,69 +133,6 @@ paths:
     delete:
       operationId: delete
       parameters:
-        - name: id
-          in: path
-          description: Id of the build
-          required: true
-          style: simple
-          explode: false
-          schema:
-            type: string
-      responses:
-        "200":
-          description: The build was deleted
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DeleteResponse"
-        "400":
-          $ref: "#/components/responses/bad-parameters"
-        "401":
-          $ref: "#/components/responses/unauthorized"
-        "404":
-          $ref: "#/components/responses/not-found"
-        "500":
-          $ref: "#/components/responses/internal-error"
-      security:
-        - key: []
-  /v1/tool/{toolname}/build/{id}:
-    get:
-      operationId: getWithToolname
-      parameters:
-        - name: toolname
-          in: path
-          required: true
-          description: Name of the tool
-          schema:
-            type: string
-        - name: id
-          in: path
-          description: Id of the build
-          required: true
-          style: simple
-          explode: false
-          schema:
-            type: string
-      responses:
-        "200":
-          description: The build was found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/GetResponse"
-        "400":
-          $ref: "#/components/responses/bad-parameters"
-        "401":
-          $ref: "#/components/responses/unauthorized"
-        "404":
-          $ref: "#/components/responses/not-found"
-        "500":
-          $ref: "#/components/responses/internal-error"
-      security:
-        - key: []
-    delete:
-      operationId: deleteWithToolname
-      parameters:
         - name: toolname
           in: path
           required: true
@@ -279,44 +160,13 @@ paths:
           $ref: "#/components/responses/unauthorized"
         "404":
           $ref: "#/components/responses/not-found"
-        "500":
-          $ref: "#/components/responses/internal-error"
-      security:
-        - key: []
-  /v1/build/{id}/cancel:
-    put:
-      operationId: cancel
-      parameters:
-        - name: id
-          in: path
-          description: Id of the build
-          required: true
-          style: simple
-          explode: false
-          schema:
-            type: string
-      responses:
-        "200":
-          description: The build was canceled
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/CancelResponse"
-        "400":
-          $ref: "#/components/responses/bad-parameters"
-        "401":
-          $ref: "#/components/responses/unauthorized"
-        "404":
-          $ref: "#/components/responses/not-found"
-        "409":
-          $ref: "#/components/responses/conflict"
         "500":
           $ref: "#/components/responses/internal-error"
       security:
         - key: []
   /v1/tool/{toolname}/build/{id}/cancel:
     put:
-      operationId: cancelWithToolname
+      operationId: cancel
       parameters:
         - name: toolname
           in: path
@@ -351,26 +201,9 @@ paths:
           $ref: "#/components/responses/internal-error"
       security:
         - key: []
-  /v1/clean:
-    post:
-      operationId: clean
-      parameters: []
-      responses:
-        "200":
-          description: Returns a summary of what was cleaned up.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/CleanResponse"
-        "401":
-          $ref: "#/components/responses/unauthorized"
-        "500":
-          $ref: "#/components/responses/internal-error"
-      security:
-        - key: []
   /v1/tool/{toolname}/clean:
     post:
-      operationId: cleanWithToolname
+      operationId: clean
       parameters:
         - name: toolname
           in: path
@@ -387,50 +220,13 @@ paths:
                 $ref: "#/components/schemas/CleanResponse"
         "401":
           $ref: "#/components/responses/unauthorized"
-        "500":
-          $ref: "#/components/responses/internal-error"
-      security:
-        - key: []
-  /v1/build/{id}/logs:
-    get:
-      operationId: logs
-      parameters:
-        - name: id
-          in: path
-          description: Id of the build
-          required: true
-          schema:
-            type: string
-        - name: follow
-          in: query
-          description: Follow the logs
-          required: false
-          schema:
-            type: boolean
-            default: false
-      responses:
-        "200":
-          description: |
-            returns newline separated sequence of "#/components/schemas/BuildLog" or
-            "#/component/schemas/InternalError" if there was an error after the
-            streaming has started (as the http status code can't be changed)
-          content:
-            text/plain:
-              schema:
-                $ref: "#/components/schemas/BuildLog"
-        "400":
-          $ref: "#/components/responses/bad-parameters"
-        "401":
-          $ref: "#/components/responses/unauthorized"
-        "404":
-          $ref: "#/components/responses/not-found"
         "500":
           $ref: "#/components/responses/internal-error"
       security:
         - key: []
   /v1/tool/{toolname}/build/{id}/logs:
     get:
-      operationId: logsWithToolname
+      operationId: logs
       parameters:
         - name: toolname
           in: path
@@ -471,24 +267,9 @@ paths:
           $ref: "#/components/responses/internal-error"
       security:
         - key: []
-  /v1/quota:
-    get:
-      operationId: quota
-      responses:
-        "200":
-          description: Returns the quota information
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/QuotaResponse"
-        "401":
-          $ref: "#/components/responses/unauthorized"
-        "500":
-          $ref: "#/components/responses/internal-error"
-      security: []
   /v1/tool/{toolname}/quota:
     get:
-      operationId: quotaWithToolname
+      operationId: quota
       parameters:
         - name: toolname
           in: path

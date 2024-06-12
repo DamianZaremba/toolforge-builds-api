@@ -928,7 +928,7 @@ func TestLogsXAccelBufferHeaderValue(t *testing.T) {
 					BuildNamespace: BuildNamespace,
 				},
 			}
-			_ = api.Logs(ctx, buildName, params)
+			_ = api.Logs(ctx, ctx.User, buildName, params)
 
 			if follow && recorder.Header().Get("X-Accel-Buffering") != "no" {
 				t.Fatalf("X-Accel-Buffering header should be set to 'no' when follow is true")

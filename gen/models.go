@@ -205,14 +205,5 @@ type LogsParams struct {
 	Follow *bool `form:"follow,omitempty" json:"follow,omitempty"`
 }
 
-// LogsWithToolnameParams defines parameters for LogsWithToolname.
-type LogsWithToolnameParams struct {
-	// Follow Follow the logs
-	Follow *bool `form:"follow,omitempty" json:"follow,omitempty"`
-}
-
 // StartJSONRequestBody defines body for Start for application/json ContentType.
 type StartJSONRequestBody = BuildParameters
-
-// StartWithToolnameJSONRequestBody defines body for StartWithToolname for application/json ContentType.
-type StartWithToolnameJSONRequestBody = BuildParameters

@@ -81,16 +81,16 @@ func safeDeref[T any](pointer *T) T {
 }
 
 // TODO: Dummy auth for now; implement real authn/authz when we have it
-func checkToolnameAuthorization(toolNameFromPath string, toolNameFromContext string) error {
-	if toolNameFromPath != toolNameFromContext {
+func checkToolnameAuthorization(toolnameFromRequest string, toolnameFromContext string) error {
+	if toolnameFromRequest != toolnameFromContext {
 		return echo.NewHTTPError(http.StatusUnauthorized, "Unauthorized")
 	}
 	return nil
 }
 
-func (api BuildsApi) Logs(ctx echo.Context, toolname string, buildId string, params gen.LogsParams) error {
-	toolName := getToolFromContext(ctx)
-	if err := checkToolnameAuthorization(toolname, toolName); err != nil {
+func (api BuildsApi) Logs(ctx echo.Context, toolnameFromRequest string, buildId string, params gen.LogsParams) error {
+	toolnameFromContext := getToolFromContext(ctx)
+	if err := checkToolnameAuthorization(toolnameFromRequest, toolnameFromContext); err != nil {
 		return err
 	}
 	if *params.Follow {
@@ -98,16 +98,16 @@ func (api BuildsApi) Logs(ctx echo.Context, toolname string, buildId string, par
 		// see https://www.nginx.com/resources/wiki/start/topics/examples/x-accel/#x-accel-buffering
 		ctx.Response().Header().Set("X-Accel-Buffering", "no")
 	}
-	code, response := Logs(ctx, &api, buildId, toolName, *params.Follow)
+	code, response := Logs(ctx, &api, buildId, toolnameFromContext, *params.Follow)
 	if response == nil {
 		return nil
 	}
 	return ctx.JSON(code, response)
 }
 
-func (api BuildsApi) Start(ctx echo.Context, toolname string) error {
-	toolName := getToolFromContext(ctx)
-	if err := checkToolnameAuthorization(toolname, toolName); err != nil {
+func (api BuildsApi) Start(ctx echo.Context, toolnameFromRequest string) error {
+	toolnameFromContext := getToolFromContext(ctx)
+	if err := checkToolnameAuthorization(toolnameFromRequest, toolnameFromContext); err != nil {
 		return err
 	}
 	var buildParameters gen.BuildParameters
@@ -121,27 +121,27 @@ func (api BuildsApi) Start(ctx echo.Context, toolname string) error {
 		safeDeref[string](&buildParameters.SourceUrl),
 		safeDeref[string](buildParameters.Ref),
 		safeDeref[string](buildParameters.ImageName),
-		toolName,
+		toolnameFromContext,
 		safeDeref[map[string]string](buildParameters.Envvars),
 	)
 	return ctx.JSON(code, response)
 }
 
-func (api BuildsApi) Delete(ctx echo.Context, toolname string, id string) error {
-	toolName := getToolFromContext(ctx)
-	if err := checkToolnameAuthorization(toolname, toolName); err != nil {
+func (api BuildsApi) Delete(ctx echo.Context, toolnameFromRequest string, id string) error {
+	toolnameFromContext := getToolFromContext(ctx)
+	if err := checkToolnameAuthorization(toolnameFromRequest, toolnameFromContext); err != nil {
 		return err
 	}
-	code, response := Delete(&api, id, toolName)
+	code, response := Delete(&api, id, toolnameFromContext)
 	return ctx.JSON(code, response)
 }
 
-func (api BuildsApi) Cancel(ctx echo.Context, toolname string, id string) error {
-	toolName := getToolFromContext(ctx)
-	if err := checkToolnameAuthorization(toolname, toolName); err != nil {
+func (api BuildsApi) Cancel(ctx echo.Context, toolnameFromRequest string, id string) error {
+	toolnameFromContext := getToolFromContext(ctx)
+	if err := checkToolnameAuthorization(toolnameFromRequest, toolnameFromContext); err != nil {
 		return err
 	}
-	code, response := Cancel(&api, id, toolName)
+	code, response := Cancel(&api, id, toolnameFromContext)
 	return ctx.JSON(code, response)
 }
 
@@ -150,48 +150,48 @@ func (api BuildsApi) Healthcheck(ctx echo.Context) error {
 	return ctx.JSON(code, response)
 }
 
-func (api BuildsApi) List(ctx echo.Context, toolname string) error {
-	toolName := getToolFromContext(ctx)
-	if err := checkToolnameAuthorization(toolname, toolName); err != nil {
+func (api BuildsApi) List(ctx echo.Context, toolnameFromRequest string) error {
+	toolnameFromContext := getToolFromContext(ctx)
+	if err := checkToolnameAuthorization(toolnameFromRequest, toolnameFromContext); err != nil {
 		return err
 	}
-	code, response := List(&api, toolName)
+	code, response := List(&api, toolnameFromContext)
 	return ctx.JSON(code, response)
 }
 
-func (api BuildsApi) Get(ctx echo.Context, toolname string, id string) error {
-	toolName := getToolFromContext(ctx)
-	if err := checkToolnameAuthorization(toolname, toolName); err != nil {
+func (api BuildsApi) Get(ctx echo.Context, toolnameFromRequest string, id string) error {
+	toolnameFromContext := getToolFromContext(ctx)
+	if err := checkToolnameAuthorization(toolnameFromRequest, toolnameFromContext); err != nil {
 		return err
 	}
-	code, response := Get(&api, id, toolName)
+	code, response := Get(&api, id, toolnameFromContext)
 	return ctx.JSON(code, response)
 }
 
-func (api BuildsApi) Latest(ctx echo.Context, toolname string) error {
-	toolName := getToolFromContext(ctx)
-	if err := checkToolnameAuthorization(toolname, toolName); err != nil {
+func (api BuildsApi) Latest(ctx echo.Context, toolnameFromRequest string) error {
+	toolnameFromContext := getToolFromContext(ctx)
+	if err := checkToolnameAuthorization(toolnameFromRequest, toolnameFromContext); err != nil {
 		return err
 	}
-	code, response := Latest(&api, toolName)
+	code, response := Latest(&api, toolnameFromContext)
 	return ctx.JSON(code, response)
 }
 
-func (api BuildsApi) Quota(ctx echo.Context, toolname string) error {
-	toolName := getToolFromContext(ctx)
-	if err := checkToolnameAuthorization(toolname, toolName); err != nil {
+func (api BuildsApi) Quota(ctx echo.Context, toolnameFromRequest string) error {
+	toolnameFromContext := getToolFromContext(ctx)
+	if err := checkToolnameAuthorization(toolnameFromRequest, toolnameFromContext); err != nil {
 		return err
 	}
-	code, response := Quota(&api, toolName)
+	code, response := Quota(&api, toolnameFromContext)
 	return ctx.JSON(code, response)
 }
 
-func (api BuildsApi) Clean(ctx echo.Context, toolname string) error {
-	toolName := getToolFromContext(ctx)
-	if err := checkToolnameAuthorization(toolname, toolName); err != nil {
+func (api BuildsApi) Clean(ctx echo.Context, toolnameFromRequest string) error {
+	toolnameFromContext := getToolFromContext(ctx)
+	if err := checkToolnameAuthorization(toolnameFromRequest, toolnameFromContext); err != nil {
 		return err
 	}
-	code, response := Clean(&api, toolName)
+	code, response := Clean(&api, toolnameFromContext)
 	return ctx.JSON(code, response)
 }
 

@@ -19,43 +19,57 @@ package internal
 
 import (
 	"fmt"
+	"net/http"
 	"testing"
 )
 
-func TestValidateUserFailsWhenInvalidSubject(t *testing.T) {
-	_, err := ValidateUser("dummy invalid subject line")
-
-	if err == nil {
-		t.Error("Expected an error for an invalid subject line.")
-	}
-}
-
-func TestValidateUserFailsWhenNoOrg(t *testing.T) {
-	_, err := ValidateUser("CN=dummyuserwithoutorg")
-
-	if err == nil {
-		t.Error("Expected an error for an invalid subject line.")
-	}
-}
-
-func TestValidateUserFailsWhenNoOrgIsNotToolforge(t *testing.T) {
-	_, err := ValidateUser("CN=dummyuser,O=nottoolforge")
-
-	if err == nil {
-		t.Error("Expected an error for an invalid subject line.")
-	}
-}
-
-func TestValidateUserReturnsUserWhenOrgIsToolforge(t *testing.T) {
-	expectedUser := "myuser"
-	gottenUser, err := ValidateUser("CN=myuser,O=toolforge")
+func TestGetUserFromRequestWorksWhenToolHeaderPassed(t *testing.T) {
+	expectedUser := "dummy_user"
+	gottenUser, err := GetUserFromRequest(&http.Request{
+		Header: http.Header{"X-Toolforge-Tool": []string{expectedUser}},
+	})
 
 	if err != nil {
-		t.Errorf("Expected no error but got: %s", err)
+		t.Errorf("Expected no error, got %s", err)
 	}
 
 	if gottenUser != expectedUser {
-		t.Errorf("I was expecting user '%s', but got '%s'", expectedUser, gottenUser)
+		t.Errorf("Expected user %s, got %s", expectedUser, gottenUser)
+	}
+}
+
+func TestGetUserFromRequestFailsWhenEmptyHeaderPassed(t *testing.T) {
+	_, err := GetUserFromRequest(&http.Request{
+		Header: http.Header{"X-Toolforge-Tool": []string{}},
+	})
+
+	if err == nil {
+		t.Errorf("Expected an error, did not get any")
+	}
+}
+
+func TestGetUserFromRequestFailsWhenManyValuesInHeaderPassed(t *testing.T) {
+	_, err := GetUserFromRequest(&http.Request{
+		Header: http.Header{"X-Toolforge-Tool": []string{"user_one", "user_two"}},
+	})
+
+	if err == nil {
+		t.Errorf("Expected an error, did not get any")
+	}
+}
+
+func TestGetUserFromRequestReturnsEmptyWhenNoHeaderPassed(t *testing.T) {
+	expectedUser := ""
+	gottenUser, err := GetUserFromRequest(&http.Request{
+		Header: http.Header{},
+	})
+
+	if err != nil {
+		t.Errorf("Expected no error, got %s", err)
+	}
+
+	if gottenUser != expectedUser {
+		t.Errorf("Expected user %s, got %s", expectedUser, gottenUser)
 	}
 }
 
@@ -63,6 +77,7 @@ func TestToolIsAllowedForBuildFailsIfBuildIsNotPrefixedWithUser(t *testing.T) {
 	err := ToolIsAllowedForBuild("user", "nouser-prefixed-buildId", BuildIdPrefix)
 	if err == nil {
 		t.Error("I was expecting an error.")
+		t.Errorf("Expected an error, did not get any")
 	}
 }
 

@@ -4,3 +4,4 @@ include:
     ref: main
 variables:
   PROJECT_NAME: builds-api
+  MEMORY_OPTIMIZED: true

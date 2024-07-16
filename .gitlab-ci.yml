@@ -5,3 +5,4 @@ include:
 variables:
   PROJECT_NAME: builds-api
   MEMORY_OPTIMIZED: true
+  RUNNER_TAG: "memory-optimized"

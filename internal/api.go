@@ -215,3 +215,41 @@ func (api BuildsApi) Openapi(ctx echo.Context) error {
 func (api BuildsApi) Metrics(ctx echo.Context) error {
 	return api.MetricsHandler(ctx)
 }
+
+// Deprecated handlers
+func (api BuildsApi) DeprecatedLogs(ctx echo.Context, toolnameFromRequest string, buildId string, params gen.DeprecatedLogsParams) error {
+	logsParams := gen.LogsParams(params)
+	return api.Logs(ctx, toolnameFromRequest, buildId, logsParams)
+}
+
+func (api BuildsApi) DeprecatedStart(ctx echo.Context, toolnameFromRequest string) error {
+	return api.Start(ctx, toolnameFromRequest)
+}
+
+func (api BuildsApi) DeprecatedDelete(ctx echo.Context, toolnameFromRequest string, id string) error {
+	return api.Delete(ctx, toolnameFromRequest, id)
+}
+
+func (api BuildsApi) DeprecatedCancel(ctx echo.Context, toolnameFromRequest string, id string) error {
+	return api.Cancel(ctx, toolnameFromRequest, id)
+}
+
+func (api BuildsApi) DeprecatedList(ctx echo.Context, toolnameFromRequest string) error {
+	return api.List(ctx, toolnameFromRequest)
+}
+
+func (api BuildsApi) DeprecatedGet(ctx echo.Context, toolnameFromRequest string, id string) error {
+	return api.Get(ctx, toolnameFromRequest, id)
+}
+
+func (api BuildsApi) DeprecatedLatest(ctx echo.Context, toolnameFromRequest string) error {
+	return api.Latest(ctx, toolnameFromRequest)
+}
+
+func (api BuildsApi) DeprecatedQuota(ctx echo.Context, toolnameFromRequest string) error {
+	return api.Quota(ctx, toolnameFromRequest)
+}
+
+func (api BuildsApi) DeprecatedClean(ctx echo.Context, toolnameFromRequest string) error {
+	return api.Clean(ctx, toolnameFromRequest)
+}

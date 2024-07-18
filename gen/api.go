@@ -31,30 +31,54 @@ type ServerInterface interface {
 	Metrics(ctx echo.Context) error
 
 	// (GET /v1/tool/{toolname}/build)
-	List(ctx echo.Context, toolname string) error
+	DeprecatedList(ctx echo.Context, toolname string) error
 
 	// (POST /v1/tool/{toolname}/build)
-	Start(ctx echo.Context, toolname string) error
+	DeprecatedStart(ctx echo.Context, toolname string) error
 
 	// (GET /v1/tool/{toolname}/build/latest)
-	Latest(ctx echo.Context, toolname string) error
+	DeprecatedLatest(ctx echo.Context, toolname string) error
 
 	// (DELETE /v1/tool/{toolname}/build/{id})
-	Delete(ctx echo.Context, toolname string, id string) error
+	DeprecatedDelete(ctx echo.Context, toolname string, id string) error
 
 	// (GET /v1/tool/{toolname}/build/{id})
-	Get(ctx echo.Context, toolname string, id string) error
+	DeprecatedGet(ctx echo.Context, toolname string, id string) error
 
 	// (PUT /v1/tool/{toolname}/build/{id}/cancel)
-	Cancel(ctx echo.Context, toolname string, id string) error
+	DeprecatedCancel(ctx echo.Context, toolname string, id string) error
 
 	// (GET /v1/tool/{toolname}/build/{id}/logs)
+	DeprecatedLogs(ctx echo.Context, toolname string, id string, params DeprecatedLogsParams) error
+
+	// (GET /v1/tool/{toolname}/builds)
+	List(ctx echo.Context, toolname string) error
+
+	// (POST /v1/tool/{toolname}/builds)
+	Start(ctx echo.Context, toolname string) error
+
+	// (GET /v1/tool/{toolname}/builds/latest)
+	Latest(ctx echo.Context, toolname string) error
+
+	// (DELETE /v1/tool/{toolname}/builds/{id})
+	Delete(ctx echo.Context, toolname string, id string) error
+
+	// (GET /v1/tool/{toolname}/builds/{id})
+	Get(ctx echo.Context, toolname string, id string) error
+
+	// (PUT /v1/tool/{toolname}/builds/{id}/cancel)
+	Cancel(ctx echo.Context, toolname string, id string) error
+
+	// (GET /v1/tool/{toolname}/builds/{id}/logs)
 	Logs(ctx echo.Context, toolname string, id string, params LogsParams) error
 
 	// (POST /v1/tool/{toolname}/clean)
 	Clean(ctx echo.Context, toolname string) error
 
 	// (GET /v1/tool/{toolname}/quota)
+	DeprecatedQuota(ctx echo.Context, toolname string) error
+
+	// (GET /v1/tool/{toolname}/quotas)
 	Quota(ctx echo.Context, toolname string) error
 }
 
@@ -87,6 +111,173 @@ func (w *ServerInterfaceWrapper) Metrics(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.Metrics(ctx)
+	return err
+}
+
+// DeprecatedList converts echo context to params.
+func (w *ServerInterfaceWrapper) DeprecatedList(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "toolname" -------------
+	var toolname string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "toolname", ctx.Param("toolname"), &toolname, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter toolname: %s", err))
+	}
+
+	ctx.Set(KeyScopes, []string{})
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.DeprecatedList(ctx, toolname)
+	return err
+}
+
+// DeprecatedStart converts echo context to params.
+func (w *ServerInterfaceWrapper) DeprecatedStart(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "toolname" -------------
+	var toolname string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "toolname", ctx.Param("toolname"), &toolname, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter toolname: %s", err))
+	}
+
+	ctx.Set(KeyScopes, []string{})
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.DeprecatedStart(ctx, toolname)
+	return err
+}
+
+// DeprecatedLatest converts echo context to params.
+func (w *ServerInterfaceWrapper) DeprecatedLatest(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "toolname" -------------
+	var toolname string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "toolname", ctx.Param("toolname"), &toolname, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter toolname: %s", err))
+	}
+
+	ctx.Set(KeyScopes, []string{})
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.DeprecatedLatest(ctx, toolname)
+	return err
+}
+
+// DeprecatedDelete converts echo context to params.
+func (w *ServerInterfaceWrapper) DeprecatedDelete(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "toolname" -------------
+	var toolname string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "toolname", ctx.Param("toolname"), &toolname, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter toolname: %s", err))
+	}
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	ctx.Set(KeyScopes, []string{})
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.DeprecatedDelete(ctx, toolname, id)
+	return err
+}
+
+// DeprecatedGet converts echo context to params.
+func (w *ServerInterfaceWrapper) DeprecatedGet(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "toolname" -------------
+	var toolname string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "toolname", ctx.Param("toolname"), &toolname, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter toolname: %s", err))
+	}
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	ctx.Set(KeyScopes, []string{})
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.DeprecatedGet(ctx, toolname, id)
+	return err
+}
+
+// DeprecatedCancel converts echo context to params.
+func (w *ServerInterfaceWrapper) DeprecatedCancel(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "toolname" -------------
+	var toolname string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "toolname", ctx.Param("toolname"), &toolname, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter toolname: %s", err))
+	}
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	ctx.Set(KeyScopes, []string{})
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.DeprecatedCancel(ctx, toolname, id)
+	return err
+}
+
+// DeprecatedLogs converts echo context to params.
+func (w *ServerInterfaceWrapper) DeprecatedLogs(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "toolname" -------------
+	var toolname string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "toolname", ctx.Param("toolname"), &toolname, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter toolname: %s", err))
+	}
+
+	// ------------- Path parameter "id" -------------
+	var id string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", ctx.Param("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter id: %s", err))
+	}
+
+	ctx.Set(KeyScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeprecatedLogsParams
+	// ------------- Optional query parameter "follow" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "follow", ctx.QueryParams(), &params.Follow)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter follow: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.DeprecatedLogs(ctx, toolname, id, params)
 	return err
 }
 
@@ -275,6 +466,24 @@ func (w *ServerInterfaceWrapper) Clean(ctx echo.Context) error {
 	return err
 }
 
+// DeprecatedQuota converts echo context to params.
+func (w *ServerInterfaceWrapper) DeprecatedQuota(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "toolname" -------------
+	var toolname string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "toolname", ctx.Param("toolname"), &toolname, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter toolname: %s", err))
+	}
+
+	ctx.Set(KeyScopes, []string{})
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.DeprecatedQuota(ctx, toolname)
+	return err
+}
+
 // Quota converts echo context to params.
 func (w *ServerInterfaceWrapper) Quota(ctx echo.Context) error {
 	var err error
@@ -324,55 +533,66 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 	router.GET(baseURL+"/openapi.json", wrapper.Openapi)
 	router.GET(baseURL+"/v1/healthz", wrapper.Healthcheck)
 	router.GET(baseURL+"/v1/metrics", wrapper.Metrics)
-	router.GET(baseURL+"/v1/tool/:toolname/build", wrapper.List)
-	router.POST(baseURL+"/v1/tool/:toolname/build", wrapper.Start)
-	router.GET(baseURL+"/v1/tool/:toolname/build/latest", wrapper.Latest)
-	router.DELETE(baseURL+"/v1/tool/:toolname/build/:id", wrapper.Delete)
-	router.GET(baseURL+"/v1/tool/:toolname/build/:id", wrapper.Get)
-	router.PUT(baseURL+"/v1/tool/:toolname/build/:id/cancel", wrapper.Cancel)
-	router.GET(baseURL+"/v1/tool/:toolname/build/:id/logs", wrapper.Logs)
+	router.GET(baseURL+"/v1/tool/:toolname/build", wrapper.DeprecatedList)
+	router.POST(baseURL+"/v1/tool/:toolname/build", wrapper.DeprecatedStart)
+	router.GET(baseURL+"/v1/tool/:toolname/build/latest", wrapper.DeprecatedLatest)
+	router.DELETE(baseURL+"/v1/tool/:toolname/build/:id", wrapper.DeprecatedDelete)
+	router.GET(baseURL+"/v1/tool/:toolname/build/:id", wrapper.DeprecatedGet)
+	router.PUT(baseURL+"/v1/tool/:toolname/build/:id/cancel", wrapper.DeprecatedCancel)
+	router.GET(baseURL+"/v1/tool/:toolname/build/:id/logs", wrapper.DeprecatedLogs)
+	router.GET(baseURL+"/v1/tool/:toolname/builds", wrapper.List)
+	router.POST(baseURL+"/v1/tool/:toolname/builds", wrapper.Start)
+	router.GET(baseURL+"/v1/tool/:toolname/builds/latest", wrapper.Latest)
+	router.DELETE(baseURL+"/v1/tool/:toolname/builds/:id", wrapper.Delete)
+	router.GET(baseURL+"/v1/tool/:toolname/builds/:id", wrapper.Get)
+	router.PUT(baseURL+"/v1/tool/:toolname/builds/:id/cancel", wrapper.Cancel)
+	router.GET(baseURL+"/v1/tool/:toolname/builds/:id/logs", wrapper.Logs)
 	router.POST(baseURL+"/v1/tool/:toolname/clean", wrapper.Clean)
-	router.GET(baseURL+"/v1/tool/:toolname/quota", wrapper.Quota)
+	router.GET(baseURL+"/v1/tool/:toolname/quota", wrapper.DeprecatedQuota)
+	router.GET(baseURL+"/v1/tool/:toolname/quotas", wrapper.Quota)
 
 }
 
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
-	"//8qK0ghIC0AAA==",
+	"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",
+	"vM4ED2hGAAA=",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

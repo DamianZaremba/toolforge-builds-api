@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Toolforge builds API
-  version: 1.0.0
+  version: 2.0.0
 servers:
   - url: "http://127.0.0.1:8000"
     description: "Local direct development server."
@@ -12,66 +12,6 @@ servers:
   - url: "https://api.svc.toolsbeta.eqiad1.wikimedia.cloud:30003/builds"
     description: "Toolforge beta internal API gateway endpoint."
 paths:
-  /v1/tool/{toolname}/build:
-    post:
-      operationId: deprecatedStart
-      deprecated: true
-      description: This endpoint is deprecated. Please use the plural form /v1/tool/{toolname}/builds instead.
-      parameters:
-        - name: toolname
-          in: path
-          required: true
-          description: Name of the tool
-          schema:
-            type: string
-      requestBody:
-        content:
-          "application/json":
-            schema:
-              $ref: "#/components/schemas/BuildParameters"
-        required: true
-      responses:
-        "200":
-          description: returns the newly created build information
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/StartResponse"
-        "400":
-          $ref: "#/components/responses/bad-parameters"
-        "401":
-          $ref: "#/components/responses/unauthorized"
-        "404":
-          $ref: "#/components/responses/not-found"
-        "500":
-          $ref: "#/components/responses/internal-error"
-      security:
-        - key: []
-      x-codegen-request-body-name: new_build
-    get:
-      operationId: deprecatedList
-      deprecated: true
-      description: This endpoint is deprecated. Please use the plural form /v1/tool/{toolname}/builds instead.
-      parameters:
-        - name: toolname
-          in: path
-          required: true
-          description: Name of the tool
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Returns the list of builds
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ListResponse"
-        "401":
-          $ref: "#/components/responses/unauthorized"
-        "500":
-          $ref: "#/components/responses/internal-error"
-      security:
-        - key: []
   /v1/tool/{toolname}/builds:
     post:
       operationId: start
@@ -128,35 +68,6 @@ paths:
           $ref: "#/components/responses/internal-error"
       security:
         - key: []
-  /v1/tool/{toolname}/build/latest:
-    get:
-      operationId: deprecatedLatest
-      deprecated: true
-      description: This endpoint is deprecated. Please use the plural form /v1/tool/{toolname}/builds/latest instead.
-      parameters:
-        - name: toolname
-          in: path
-          required: true
-          description: Name of the tool
-          schema:
-            type: string
-      responses:
-        "200":
-          description: The latest build
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/LatestResponse"
-        "400":
-          $ref: "#/components/responses/bad-parameters"
-        "401":
-          $ref: "#/components/responses/unauthorized"
-        "404":
-          $ref: "#/components/responses/not-found"
-        "500":
-          $ref: "#/components/responses/internal-error"
-      security:
-        - key: []
   /v1/tool/{toolname}/builds/latest:
     get:
       operationId: latest
@@ -174,79 +85,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/LatestResponse"
-        "400":
-          $ref: "#/components/responses/bad-parameters"
-        "401":
-          $ref: "#/components/responses/unauthorized"
-        "404":
-          $ref: "#/components/responses/not-found"
-        "500":
-          $ref: "#/components/responses/internal-error"
-      security:
-        - key: []
-  /v1/tool/{toolname}/build/{id}:
-    get:
-      operationId: deprecatedGet
-      deprecated: true
-      description: This endpoint is deprecated. Please use the plural form /v1/tool/{toolname}/builds/{id} instead.
-      parameters:
-        - name: toolname
-          in: path
-          required: true
-          description: Name of the tool
-          schema:
-            type: string
-        - name: id
-          in: path
-          description: Id of the build
-          required: true
-          style: simple
-          explode: false
-          schema:
-            type: string
-      responses:
-        "200":
-          description: The build was found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/GetResponse"
-        "400":
-          $ref: "#/components/responses/bad-parameters"
-        "401":
-          $ref: "#/components/responses/unauthorized"
-        "404":
-          $ref: "#/components/responses/not-found"
-        "500":
-          $ref: "#/components/responses/internal-error"
-      security:
-        - key: []
-    delete:
-      operationId: deprecatedDelete
-      deprecated: true
-      description: This endpoint is deprecated. Please use the plural form /v1/tool/{toolname}/builds/{id} instead.
-      parameters:
-        - name: toolname
-          in: path
-          required: true
-          description: Name of the tool
-          schema:
-            type: string
-        - name: id
-          in: path
-          description: Id of the build
-          required: true
-          style: simple
-          explode: false
-          schema:
-            type: string
-      responses:
-        "200":
-          description: The build was deleted
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DeleteResponse"
         "400":
           $ref: "#/components/responses/bad-parameters"
         "401":
@@ -326,45 +164,6 @@ paths:
           $ref: "#/components/responses/internal-error"
       security:
         - key: []
-  /v1/tool/{toolname}/build/{id}/cancel:
-    put:
-      operationId: deprecatedCancel
-      deprecated: true
-      description: This endpoint is deprecated. Please use the plural form /v1/tool/{toolname}/builds/{id}/cancel instead.
-      parameters:
-        - name: toolname
-          in: path
-          required: true
-          description: Name of the tool
-          schema:
-            type: string
-        - name: id
-          in: path
-          description: Id of the build
-          required: true
-          style: simple
-          explode: false
-          schema:
-            type: string
-      responses:
-        "200":
-          description: The build was canceled
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/CancelResponse"
-        "400":
-          $ref: "#/components/responses/bad-parameters"
-        "401":
-          $ref: "#/components/responses/unauthorized"
-        "404":
-          $ref: "#/components/responses/not-found"
-        "409":
-          $ref: "#/components/responses/conflict"
-        "500":
-          $ref: "#/components/responses/internal-error"
-      security:
-        - key: []
   /v1/tool/{toolname}/builds/{id}/cancel:
     put:
       operationId: cancel
@@ -398,51 +197,6 @@ paths:
           $ref: "#/components/responses/not-found"
         "409":
           $ref: "#/components/responses/conflict"
-        "500":
-          $ref: "#/components/responses/internal-error"
-      security:
-        - key: []
-  /v1/tool/{toolname}/build/{id}/logs:
-    get:
-      operationId: deprecatedLogs
-      deprecated: true
-      description: This endpoint is deprecated. Please use the plural form /v1/tool/{toolname}/builds/{id}/logs instead.
-      parameters:
-        - name: toolname
-          in: path
-          required: true
-          description: Name of the tool
-          schema:
-            type: string
-        - name: id
-          in: path
-          description: Id of the build
-          required: true
-          schema:
-            type: string
-        - name: follow
-          in: query
-          description: Follow the logs
-          required: false
-          schema:
-            type: boolean
-            default: false
-      responses:
-        "200":
-          description: |
-            returns newline separated sequence of "#/components/schemas/BuildLog" or
-            "#/component/schemas/InternalError" if there was an error after the
-            streaming has started (as the http status code can't be changed)
-          content:
-            text/plain:
-              schema:
-                $ref: "#/components/schemas/BuildLog"
-        "400":
-          $ref: "#/components/responses/bad-parameters"
-        "401":
-          $ref: "#/components/responses/unauthorized"
-        "404":
-          $ref: "#/components/responses/not-found"
         "500":
           $ref: "#/components/responses/internal-error"
       security:
@@ -507,31 +261,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CleanResponse"
-        "401":
-          $ref: "#/components/responses/unauthorized"
-        "500":
-          $ref: "#/components/responses/internal-error"
-      security:
-        - key: []
-  /v1/tool/{toolname}/quota:
-    get:
-      operationId: deprecatedQuota
-      deprecated: true
-      description: This endpoint is deprecated. Please use the plural form /v1/tool/{toolname}/quotas instead.
-      parameters:
-        - name: toolname
-          in: path
-          required: true
-          description: Name of the tool
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Returns the quota information
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/QuotaResponse"
         "401":
           $ref: "#/components/responses/unauthorized"
         "500":

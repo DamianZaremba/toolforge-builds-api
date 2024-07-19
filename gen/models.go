@@ -199,20 +199,11 @@ type NotFound = ResponseMessages
 // with information on how to proceed to update it.
 type Unauthorized = ResponseMessages
 
-// DeprecatedLogsParams defines parameters for DeprecatedLogs.
-type DeprecatedLogsParams struct {
-	// Follow Follow the logs
-	Follow *bool `form:"follow,omitempty" json:"follow,omitempty"`
-}
-
 // LogsParams defines parameters for Logs.
 type LogsParams struct {
 	// Follow Follow the logs
 	Follow *bool `form:"follow,omitempty" json:"follow,omitempty"`
 }
-
-// DeprecatedStartJSONRequestBody defines body for DeprecatedStart for application/json ContentType.
-type DeprecatedStartJSONRequestBody = BuildParameters
 
 // StartJSONRequestBody defines body for Start for application/json ContentType.
 type StartJSONRequestBody = BuildParameters

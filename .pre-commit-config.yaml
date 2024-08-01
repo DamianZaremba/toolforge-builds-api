@@ -28,6 +28,6 @@ repos:
       - id: openapi-spec-validator
         exclude: .*_config.yaml
   - repo: https://gitlab.wikimedia.org/repos/cloud/cicd/gitlab-ci
-    rev: 383aa0ab8c8c70d0bb6b65e01c03250943096f1e
+    rev: b1a98a67976b24d71a67944b647191a3066f7469
     hooks:
       - id: check-openapi-version-bump

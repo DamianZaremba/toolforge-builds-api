@@ -17,6 +17,8 @@ spec:
       labels:
         name: builds-api
     spec:
+      nodeSelector:
+        "kubernetes.io/hostname": toolforge-worker
       containers:
         - name: api
           image: "{{ .Values.image.name }}:{{ .Values.image.tag }}"

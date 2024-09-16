@@ -1,23 +1,23 @@
 # syntax=docker-registry.wikimedia.org/repos/releng/blubber/buildkit:v0.19.0
 version: v4
-base: docker-registry.wikimedia.org/golang1.19
+base: docker-registry.wikimedia.org/golang1.22
 variants:
   download-deps:
     lives:
       in: /src
     builders:
-     - custom:
-         requirements: [go.mod, go.sum]
-         command:
-           - go
-           - mod
-           - download
-     - custom:
-         command:
-           - chmod
-           - -R
-           - "777"
-           - /go/pkg/mod
+      - custom:
+          requirements: [go.mod, go.sum]
+          command:
+            - go
+            - mod
+            - download
+      - custom:
+          command:
+            - chmod
+            - -R
+            - "777"
+            - /go/pkg/mod
 
   test:
     includes:
@@ -33,11 +33,11 @@ variants:
     includes:
       - download-deps
     builders:
-     - custom:
-         requirements: [./]
-         command:
-           - make
-           - build-api
+      - custom:
+          requirements: [./]
+          command:
+            - make
+            - build-api
 
   image:
     lives:

@@ -35,7 +35,8 @@ import (
 	harborModels "github.com/goharbor/go-client/pkg/sdk/v2.0/models"
 	"github.com/labstack/echo/v4"
 	log "github.com/sirupsen/logrus"
-	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
+	tektonPipelineV1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
+	"github.com/tektoncd/pipeline/pkg/status"
 	gen "gitlab.wikimedia.org/repos/toolforge/builds-api/gen"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -135,9 +136,9 @@ func CreateHarborProjectForTool(api *BuildsApi, toolName string) error {
 	return nil
 }
 
-func getPipelineRuns(clients *Clients, namespace string, listoptions metav1.ListOptions) ([]v1beta1.PipelineRun, error) {
+func getPipelineRuns(clients *Clients, namespace string, listoptions metav1.ListOptions) ([]tektonPipelineV1.PipelineRun, error) {
 
-	pipelineRuns, err := clients.Tekton.TektonV1beta1().PipelineRuns(namespace).List(
+	pipelineRuns, err := clients.Tekton.TektonV1().PipelineRuns(namespace).List(
 		context.TODO(),
 		listoptions,
 	)
@@ -153,7 +154,7 @@ func getPipelineRuns(clients *Clients, namespace string, listoptions metav1.List
 	return pipelineRuns.Items, nil
 }
 
-func getBuildConditionFromPipelineRun(run *v1beta1.PipelineRun) gen.BuildCondition {
+func getBuildConditionFromPipelineRun(run *tektonPipelineV1.PipelineRun) gen.BuildCondition {
 	status := gen.BUILDUNKNOWN
 	message := fmt.Sprintf("build status is unknown. Check the logs with `toolforge build logs %s`", run.Name)
 	buildCondition := &gen.BuildCondition{
@@ -193,7 +194,7 @@ func getBuildConditionFromPipelineRun(run *v1beta1.PipelineRun) gen.BuildConditi
 	return *buildCondition
 }
 
-func getpipelineRunStringParam(pipelineRun v1beta1.PipelineRun, name string) string {
+func getpipelineRunStringParam(pipelineRun tektonPipelineV1.PipelineRun, name string) string {
 	for _, param := range pipelineRun.Spec.Params {
 		if param.Name == name {
 			return fmt.Sprint(param.Value.StringVal)
@@ -205,7 +206,7 @@ func getpipelineRunStringParam(pipelineRun v1beta1.PipelineRun, name string) str
 	return "unknown"
 }
 
-func getpipelineRunArrayParam(pipelineRun v1beta1.PipelineRun, name string) []string {
+func getpipelineRunArrayParam(pipelineRun tektonPipelineV1.PipelineRun, name string) []string {
 	for _, param := range pipelineRun.Spec.Params {
 		if param.Name == name {
 			return param.Value.ArrayVal
@@ -217,7 +218,7 @@ func getpipelineRunArrayParam(pipelineRun v1beta1.PipelineRun, name string) []st
 	return nil
 }
 
-func getBuild(run v1beta1.PipelineRun) *gen.Build {
+func getBuild(run tektonPipelineV1.PipelineRun) *gen.Build {
 	var startTime string
 	var endTime string
 	buildCondition := getBuildConditionFromPipelineRun(&run)
@@ -257,8 +258,8 @@ func getBuild(run v1beta1.PipelineRun) *gen.Build {
 	}
 }
 
-func filterPipelineRunsByStatus(pipelineRuns []v1beta1.PipelineRun, filter gen.BuildStatus) []v1beta1.PipelineRun {
-	var filteredPipelineRuns []v1beta1.PipelineRun
+func filterPipelineRunsByStatus(pipelineRuns []tektonPipelineV1.PipelineRun, filter gen.BuildStatus) []tektonPipelineV1.PipelineRun {
+	var filteredPipelineRuns []tektonPipelineV1.PipelineRun
 	for _, pipelineRun := range pipelineRuns {
 		if *getBuildConditionFromPipelineRun(&pipelineRun).Status == filter {
 			filteredPipelineRuns = append(filteredPipelineRuns, pipelineRun)
@@ -276,7 +277,7 @@ func cleanupOldPipelineRuns(clients *Clients, namespace string, toolName string,
 	runningPipelineRuns := filterPipelineRunsByStatus(pipelineRuns, gen.BUILDRUNNING)
 	successfulPipelineRuns := filterPipelineRunsByStatus(pipelineRuns, gen.BUILDSUCCESS)
 	failedPipelineRuns := filterPipelineRunsByStatus(pipelineRuns, gen.BUILDFAILURE)
-	pipelineRunsToKeep := map[string]v1beta1.PipelineRun{}
+	pipelineRunsToKeep := map[string]tektonPipelineV1.PipelineRun{}
 	for _, pipelineRun := range runningPipelineRuns {
 		pipelineRunsToKeep[pipelineRun.Name] = pipelineRun
 	}
@@ -296,7 +297,7 @@ func cleanupOldPipelineRuns(clients *Clients, namespace string, toolName string,
 	for _, pipelineRun := range pipelineRuns {
 		if _, found := pipelineRunsToKeep[pipelineRun.Name]; !found {
 			log.Debugf("Deleting old pipelinerun %s", pipelineRun.Name)
-			err := clients.Tekton.TektonV1beta1().PipelineRuns(namespace).Delete(
+			err := clients.Tekton.TektonV1().PipelineRuns(namespace).Delete(
 				context.TODO(),
 				pipelineRun.Name,
 				metav1.DeleteOptions{},
@@ -389,25 +390,38 @@ func streamAllContainerLogs(ctx echo.Context, clients *Clients, containers []str
 	return nil
 }
 
-func streamPipelineRunLogs(ctx echo.Context, clients *Clients, namespace string, pipelineRun *v1beta1.PipelineRun, follow bool) error {
+func streamPipelineRunLogs(ctx echo.Context, clients *Clients, namespace string, pipelineRun *tektonPipelineV1.PipelineRun, follow bool) error {
 	// TODO: retrieve also logs from pods that failed to start
 	if !pipelineRun.HasStarted() {
 		return fmt.Errorf(PipelineRunNotStartedErrorStr)
 	}
-	for _, taskRun := range pipelineRun.Status.TaskRuns {
+	taskRunStatuses, _, err := status.GetPipelineTaskStatuses(ctx.Request().Context(), clients.Tekton, namespace, pipelineRun)
+	if err != nil {
+		log.Debugf("Got error when getting task statuses for the pipeline %v: %s", pipelineRun, err)
+		return err
+	}
+	if len(taskRunStatuses) == 0 {
+		log.Debugf("Got no taskrun for the pipeline %v", pipelineRun)
+		return fmt.Errorf("got no taskruns for this pipeline, something weird is going on: %v", pipelineRun)
+	}
+	log.Debugf("Got some taskruns for the pipeline %v: %v", pipelineRun, taskRunStatuses)
+	for _, taskRun := range taskRunStatuses {
 		containers, err := getContainersFromPod(
 			clients,
 			taskRun.Status.PodName,
 			namespace,
 		)
 		if err != nil {
+			log.Debugf("Got error when getting containers for pod %v: %s", taskRun.Status.PodName, err)
 			return err
 		}
 		err = streamAllContainerLogs(ctx, clients, containers, taskRun.Status.PodName, namespace, follow)
 		if err != nil {
+			log.Debugf("Got error when streaming logs from container %v: %s", containers, err)
 			return err
 		}
 	}
+	log.Debugf("Finished streaming pipelinerun logs")
 	return nil
 }
 
@@ -418,23 +432,21 @@ func StreamAfterPipelineRunStarted(ctx echo.Context, clients *Clients, namespace
 	for current_time.Sub(start_time) < timeout {
 		// we need get the pipelinerun in each loop or we will get a stale object
 		pipelineRun, err := getPipelineRuns(clients, namespace, listoptions)
-		if err != nil {
-			message := "unable to find any pipelineruns! New installation?"
-			return fmt.Errorf(message)
+		if err != nil || len(pipelineRun) < 1 {
+			message := "unable to find any pipelineruns! New installation?: %s"
+			return fmt.Errorf(message, pipelineRun)
 		}
 		err = streamPipelineRunLogs(ctx, clients, namespace, &pipelineRun[0], follow)
 		if err == nil {
 			return nil
 		}
-		if err != nil {
-			if !follow {
-				return err
-			}
-			if !strings.Contains(err.Error(), PipelineRunNotStartedErrorStr) &&
-				!strings.Contains(err.Error(), ResourceNameEmptyErrorStr) &&
-				!strings.Contains(err.Error(), PodInitializingErrorStr) {
-				return err
-			}
+		if !follow {
+			return err
+		}
+		if !strings.Contains(err.Error(), PipelineRunNotStartedErrorStr) &&
+			!strings.Contains(err.Error(), ResourceNameEmptyErrorStr) &&
+			!strings.Contains(err.Error(), PodInitializingErrorStr) {
+			return err
 		}
 		time.Sleep(1 * time.Second)
 		current_time = time.Now()
@@ -702,12 +714,12 @@ func Start(
 	if imageNameToUse == "" {
 		imageNameToUse = fmt.Sprintf("tool-%s", toolName)
 	}
-	var envvarsArray []string
+	envvarsArray := make([]string, len(envvars))
 	for varname, value := range envvars {
 		envvarsArray = append(envvarsArray, fmt.Sprintf("%s=%s", varname, value))
 	}
 	log.Debugf("Starting a new build: ref=%s, imageName=%s, toolName=%s, harborRepository=%s, builder=%s", ref, imageName, toolName, api.Config.HarborRepository, api.Config.Builder)
-	newRun := v1beta1.PipelineRun{
+	newRun := tektonPipelineV1.PipelineRun{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: fmt.Sprintf("%s%s", toolName, api.Config.BuildIdPrefix),
 			Namespace:    api.Config.BuildNamespace,
@@ -715,38 +727,45 @@ func Start(
 				"user": toolName,
 			},
 		},
-		Spec: v1beta1.PipelineRunSpec{
-			PipelineRef:        &v1beta1.PipelineRef{Name: "buildpacks"},
-			ServiceAccountName: "buildpacks-service-account",
-			Params: []v1beta1.Param{
+		Spec: tektonPipelineV1.PipelineRunSpec{
+			PipelineRef: &tektonPipelineV1.PipelineRef{Name: "buildpacks"},
+			// The docs say that you can use the serviceAccountName field in the PipelineRun, but there's no such field,
+			// so we use the taskRunSpec instead
+			TaskRunSpecs: []tektonPipelineV1.PipelineTaskRunSpec{
+				{
+					PipelineTaskName:   "build-from-git",
+					ServiceAccountName: "buildpacks-service-account",
+				},
+			},
+			Params: []tektonPipelineV1.Param{
 				{
 					Name: "BUILDER_IMAGE",
-					Value: v1beta1.ParamValue{
+					Value: tektonPipelineV1.ParamValue{
 						StringVal: api.Config.Builder,
-						Type:      v1beta1.ParamTypeString,
+						Type:      tektonPipelineV1.ParamTypeString,
 					},
 				},
 				{
 					Name: "APP_IMAGE",
-					Value: v1beta1.ParamValue{
+					Value: tektonPipelineV1.ParamValue{
 						StringVal: fmt.Sprintf("%s/tool-%s/%s:latest", strings.Split(api.Config.HarborRepository, "//")[1], toolName, imageNameToUse),
-						Type:      v1beta1.ParamTypeString,
+						Type:      tektonPipelineV1.ParamTypeString,
 					},
 				},
 				{
 					Name:  "SOURCE_URL",
-					Value: v1beta1.ParamValue{StringVal: sourceURL, Type: v1beta1.ParamTypeString},
+					Value: tektonPipelineV1.ParamValue{StringVal: sourceURL, Type: tektonPipelineV1.ParamTypeString},
 				},
 				{
 					Name:  "SOURCE_REFERENCE",
-					Value: v1beta1.ParamValue{StringVal: ref, Type: v1beta1.ParamTypeString},
+					Value: tektonPipelineV1.ParamValue{StringVal: ref, Type: tektonPipelineV1.ParamTypeString},
 				},
 				{
 					Name:  "ENV_VARS",
-					Value: v1beta1.ParamValue{ArrayVal: envvarsArray, Type: v1beta1.ParamTypeArray},
+					Value: tektonPipelineV1.ParamValue{ArrayVal: envvarsArray, Type: tektonPipelineV1.ParamTypeArray},
 				},
 			},
-			Workspaces: []v1beta1.WorkspaceBinding{
+			Workspaces: []tektonPipelineV1.WorkspaceBinding{
 				{
 					Name:     "source-ws",
 					EmptyDir: &v1.EmptyDirVolumeSource{},
@@ -763,7 +782,7 @@ func Start(
 		},
 	}
 
-	pipelineRun, err := api.Clients.Tekton.TektonV1beta1().PipelineRuns(api.Config.BuildNamespace).Create(
+	pipelineRun, err := api.Clients.Tekton.TektonV1().PipelineRuns(api.Config.BuildNamespace).Create(
 		context.TODO(),
 		&newRun,
 		metav1.CreateOptions{},
@@ -821,7 +840,7 @@ func Delete(
 	}
 	// TODO: Delete also the associated image on harbor
 	log.Debugf("Deleting build: buildId=%s, namespace=%s, toolName=%s", buildId, api.Config.BuildNamespace, toolName)
-	err := api.Clients.Tekton.TektonV1beta1().PipelineRuns(api.Config.BuildNamespace).Delete(
+	err := api.Clients.Tekton.TektonV1().PipelineRuns(api.Config.BuildNamespace).Delete(
 		context.TODO(),
 		buildId,
 		metav1.DeleteOptions{},
@@ -929,7 +948,7 @@ func Cancel(
 		return http.StatusUnauthorized, gen.ResponseMessages{Error: &[]string{message}}
 	}
 	log.Debugf("Getting build: buildId=%s, namespace=%s, toolName=%s", buildId, api.Config.BuildNamespace, toolName)
-	pipelineRun, err := api.Clients.Tekton.TektonV1beta1().PipelineRuns(api.Config.BuildNamespace).Get(
+	pipelineRun, err := api.Clients.Tekton.TektonV1().PipelineRuns(api.Config.BuildNamespace).Get(
 		context.TODO(),
 		buildId,
 		metav1.GetOptions{},
@@ -960,10 +979,10 @@ func Cancel(
 		return http.StatusConflict, gen.ResponseMessages{Error: &[]string{message}}
 	}
 
-	pipelineRun.Spec.Status = "PipelineRunCancelled"
+	pipelineRun.Spec.Status = "Cancelled"
 
 	log.Debugf("Updating build: buildId=%s, namespace=%s, toolName=%s", buildId, api.Config.BuildNamespace, toolName)
-	_, err = api.Clients.Tekton.TektonV1beta1().PipelineRuns(api.Config.BuildNamespace).Update(
+	_, err = api.Clients.Tekton.TektonV1().PipelineRuns(api.Config.BuildNamespace).Update(
 		context.TODO(),
 		pipelineRun,
 		metav1.UpdateOptions{},

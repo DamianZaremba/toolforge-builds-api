@@ -30,7 +30,7 @@ import (
 
 	"github.com/goharbor/go-client/pkg/harbor"
 	"github.com/labstack/echo/v4"
-	"github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
+	tektonPipelineV1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	tektonFake "github.com/tektoncd/pipeline/pkg/client/clientset/versioned/fake"
 	"gitlab.wikimedia.org/repos/toolforge/builds-api/gen"
 	corev1 "k8s.io/api/core/v1"
@@ -38,7 +38,7 @@ import (
 	k8sRuntime "k8s.io/apimachinery/pkg/runtime"
 	k8sFake "k8s.io/client-go/kubernetes/fake"
 	k8sTesting "k8s.io/client-go/testing"
-	knative "knative.dev/pkg/apis/duck/v1beta1"
+	knative "knative.dev/pkg/apis/duck/v1"
 )
 
 func TestToolNameToHarborProjectNameReturnsErrorIfNameIsInvalidToolforgeToolName(t *testing.T) {
@@ -195,7 +195,7 @@ func TestCreateHarborProjectForToolReturnsNilIfProjectWasCreatedOrAlreadyExists(
 
 func TestGetPipelineRunsReturnsErrorIfApiReturnsError(t *testing.T) {
 	mockTekton := tektonFake.Clientset{}
-	mockTekton.AddReactor("list", "pipelineruns", func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
+	mockTekton.PrependReactor("list", "pipelineruns", func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
 		return true, nil, fmt.Errorf("Dummy error!")
 	})
 	clients := Clients{
@@ -212,8 +212,8 @@ func TestGetPipelineRunsReturnsErrorIfApiReturnsError(t *testing.T) {
 
 func TestGetPipelineRunsReturnsSortedArrayOfPipelineRuns(t *testing.T) {
 	mockTekton := tektonFake.NewSimpleClientset(
-		&v1beta1.PipelineRunList{
-			Items: []v1beta1.PipelineRun{
+		&tektonPipelineV1.PipelineRunList{
+			Items: []tektonPipelineV1.PipelineRun{
 				{
 					ObjectMeta: v1.ObjectMeta{
 						Name:              "one",
@@ -253,16 +253,16 @@ func TestGetPipelineRunsReturnsSortedArrayOfPipelineRuns(t *testing.T) {
 
 func TestCleanupOldPipelineRuns(t *testing.T) {
 	mockTekton := tektonFake.NewSimpleClientset(
-		&v1beta1.PipelineRunList{
-			Items: []v1beta1.PipelineRun{
+		&tektonPipelineV1.PipelineRunList{
+			Items: []tektonPipelineV1.PipelineRun{
 				{
 					ObjectMeta: v1.ObjectMeta{
 						Name: "pipelinerun-cancelled", Namespace: "dummy-namespace",
 						CreationTimestamp: v1.Time{Time: time.Date(2023, 6, 8, 23, 0, 0, 0, time.UTC)},
 						Labels:            map[string]string{"user": "test-user"}},
-					Status: v1beta1.PipelineRunStatus{
+					Status: tektonPipelineV1.PipelineRunStatus{
 						Status:                  knative.Status{Conditions: knative.Conditions{{Reason: "Cancelled", Status: "False"}}},
-						PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)}},
+						PipelineRunStatusFields: tektonPipelineV1.PipelineRunStatusFields{CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)}},
 					},
 				},
 				{
@@ -270,9 +270,9 @@ func TestCleanupOldPipelineRuns(t *testing.T) {
 						Name: "pipelinerun-failed1", Namespace: "dummy-namespace",
 						CreationTimestamp: v1.Time{Time: time.Date(2023, 6, 8, 22, 0, 0, 0, time.UTC)},
 						Labels:            map[string]string{"user": "test-user"}},
-					Status: v1beta1.PipelineRunStatus{
+					Status: tektonPipelineV1.PipelineRunStatus{
 						Status:                  knative.Status{Conditions: knative.Conditions{{Reason: "Failed", Status: "False"}}},
-						PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 15, 0, 0, 0, time.UTC)}},
+						PipelineRunStatusFields: tektonPipelineV1.PipelineRunStatusFields{CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 15, 0, 0, 0, time.UTC)}},
 					},
 				},
 				{
@@ -280,9 +280,9 @@ func TestCleanupOldPipelineRuns(t *testing.T) {
 						Name: "pipelinerun-failed2", Namespace: "dummy-namespace",
 						CreationTimestamp: v1.Time{Time: time.Date(2023, 6, 8, 22, 0, 0, 0, time.UTC)},
 						Labels:            map[string]string{"user": "test-user"}},
-					Status: v1beta1.PipelineRunStatus{
+					Status: tektonPipelineV1.PipelineRunStatus{
 						Status:                  knative.Status{Conditions: knative.Conditions{{Reason: "CreateRunFailed", Status: "False"}}},
-						PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)}},
+						PipelineRunStatusFields: tektonPipelineV1.PipelineRunStatusFields{CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)}},
 					},
 				},
 				{
@@ -290,7 +290,7 @@ func TestCleanupOldPipelineRuns(t *testing.T) {
 						Name: "pipelinerun-running1", Namespace: "dummy-namespace",
 						CreationTimestamp: v1.Time{Time: time.Date(2023, 6, 8, 21, 0, 0, 0, time.UTC)},
 						Labels:            map[string]string{"user": "test-user"}},
-					Status: v1beta1.PipelineRunStatus{
+					Status: tektonPipelineV1.PipelineRunStatus{
 						Status: knative.Status{Conditions: knative.Conditions{{Reason: "Running", Status: "Unknown"}}},
 					},
 				},
@@ -299,7 +299,7 @@ func TestCleanupOldPipelineRuns(t *testing.T) {
 						Name: "pipelinerun-running2", Namespace: "dummy-namespace",
 						CreationTimestamp: v1.Time{Time: time.Date(2023, 6, 8, 20, 0, 0, 0, time.UTC)},
 						Labels:            map[string]string{"user": "test-user"}},
-					Status: v1beta1.PipelineRunStatus{
+					Status: tektonPipelineV1.PipelineRunStatus{
 						Status: knative.Status{Conditions: knative.Conditions{{Reason: "Running", Status: "Unknown"}}},
 					},
 				},
@@ -308,7 +308,7 @@ func TestCleanupOldPipelineRuns(t *testing.T) {
 						Name: "pipelinerun-running3", Namespace: "dummy-namespace",
 						CreationTimestamp: v1.Time{Time: time.Date(2023, 6, 8, 19, 0, 0, 0, time.UTC)},
 						Labels:            map[string]string{"user": "test-user"}},
-					Status: v1beta1.PipelineRunStatus{
+					Status: tektonPipelineV1.PipelineRunStatus{
 						Status: knative.Status{Conditions: knative.Conditions{{Reason: "Running", Status: "Unknown"}}},
 					},
 				},
@@ -317,9 +317,9 @@ func TestCleanupOldPipelineRuns(t *testing.T) {
 						Name: "pipelinerun-succeeded1", Namespace: "dummy-namespace",
 						CreationTimestamp: v1.Time{Time: time.Date(2023, 6, 8, 18, 0, 0, 0, time.UTC)},
 						Labels:            map[string]string{"user": "test-user"}},
-					Status: v1beta1.PipelineRunStatus{
+					Status: tektonPipelineV1.PipelineRunStatus{
 						Status:                  knative.Status{Conditions: knative.Conditions{{Reason: "Succeeded", Status: "True"}}},
-						PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 18, 0, 0, 0, time.UTC)}},
+						PipelineRunStatusFields: tektonPipelineV1.PipelineRunStatusFields{CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 18, 0, 0, 0, time.UTC)}},
 					},
 				},
 				{
@@ -327,9 +327,9 @@ func TestCleanupOldPipelineRuns(t *testing.T) {
 						Name: "pipelinerun-succeeded2", Namespace: "dummy-namespace",
 						CreationTimestamp: v1.Time{Time: time.Date(2023, 6, 8, 17, 0, 0, 0, time.UTC)},
 						Labels:            map[string]string{"user": "test-user"}},
-					Status: v1beta1.PipelineRunStatus{
+					Status: tektonPipelineV1.PipelineRunStatus{
 						Status:                  knative.Status{Conditions: knative.Conditions{{Reason: "Succeeded", Status: "True"}}},
-						PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)}},
+						PipelineRunStatusFields: tektonPipelineV1.PipelineRunStatusFields{CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)}},
 					},
 				},
 				{
@@ -337,9 +337,9 @@ func TestCleanupOldPipelineRuns(t *testing.T) {
 						Name: "pipelinerun-timedout", Namespace: "dummy-namespace",
 						CreationTimestamp: v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)},
 						Labels:            map[string]string{"user": "test-user"}},
-					Status: v1beta1.PipelineRunStatus{
+					Status: tektonPipelineV1.PipelineRunStatus{
 						Status:                  knative.Status{Conditions: knative.Conditions{{Reason: "PipelineRunTimeout", Status: "False"}}},
-						PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)}},
+						PipelineRunStatusFields: tektonPipelineV1.PipelineRunStatusFields{CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)}},
 					},
 				},
 			},
@@ -368,7 +368,7 @@ func TestCleanupOldPipelineRuns(t *testing.T) {
 
 	cleanupOldPipelineRuns(&api.Clients, "dummy-namespace", "test-user", api.Config.OkToKeep, api.Config.FailedToKeep)
 
-	pipelineRuns, err := api.Clients.Tekton.TektonV1beta1().PipelineRuns("dummy-namespace").List(
+	pipelineRuns, err := api.Clients.Tekton.TektonV1().PipelineRuns("dummy-namespace").List(
 		context.TODO(),
 		v1.ListOptions{},
 	)
@@ -468,7 +468,8 @@ func TestStreamLogsForContainerForIncompleteLogLines(t *testing.T) {
 
 		e := echo.New()
 		rec := httptest.NewRecorder()
-		ctx := e.NewContext(nil, rec)
+		req := httptest.NewRequest("GET", "/fakeurl", nil)
+		ctx := e.NewContext(req, rec)
 
 		err := StreamLogsForContainer(ctx, container, logs, buffers)
 
@@ -511,14 +512,14 @@ func TestStreamAfterPipelineRunStartedDoesNotWaitIfFollowFalse(t *testing.T) {
 	buildId := fmt.Sprintf("dummy-tool%sbuild", BuildIdPrefix)
 
 	mockTekton := tektonFake.NewSimpleClientset(
-		&v1beta1.PipelineRunList{
-			Items: []v1beta1.PipelineRun{
+		&tektonPipelineV1.PipelineRunList{
+			Items: []tektonPipelineV1.PipelineRun{
 				{
 					ObjectMeta: v1.ObjectMeta{
 						Name: buildId, Namespace: BuildNamespace,
 					},
-					Status: v1beta1.PipelineRunStatus{
-						PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{
+					Status: tektonPipelineV1.PipelineRunStatus{
+						PipelineRunStatusFields: tektonPipelineV1.PipelineRunStatusFields{
 							StartTime: nil, // set "pipelineRun not yet started" error
 						},
 					},
@@ -553,32 +554,50 @@ func TestStreamAfterPipelineRunStartedDoesNotWaitIfNoError(t *testing.T) {
 	waitTimeout := 3 * time.Second
 	buildId := fmt.Sprintf("dummy-tool%sbuild", BuildIdPrefix)
 	podName := "dummy-pod"
+	taskName := "task-run-one"
 
-	mockTekton := tektonFake.NewSimpleClientset(
-		&v1beta1.PipelineRunList{
-			Items: []v1beta1.PipelineRun{
-				{
-					ObjectMeta: v1.ObjectMeta{
-						Name: buildId, Namespace: BuildNamespace,
-					},
-					Status: v1beta1.PipelineRunStatus{
-						PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{
-							StartTime: &v1.Time{Time: time.Now()}, // clear "pipelineRun not yet started" error
-							TaskRuns: map[string]*v1beta1.PipelineRunTaskRunStatus{
-								"task-run-one": {
-									Status: &v1beta1.TaskRunStatus{
-										TaskRunStatusFields: v1beta1.TaskRunStatusFields{
-											PodName: podName,
-										},
-									},
-								},
+	fakePipelineRuns := tektonPipelineV1.PipelineRunList{
+		Items: []tektonPipelineV1.PipelineRun{
+			{
+				ObjectMeta: v1.ObjectMeta{
+					Name: buildId, Namespace: BuildNamespace,
+				},
+				Status: tektonPipelineV1.PipelineRunStatus{
+					PipelineRunStatusFields: tektonPipelineV1.PipelineRunStatusFields{
+						StartTime: &v1.Time{Time: time.Now()}, // clear "pipelineRun not yet started" error
+						ChildReferences: []tektonPipelineV1.ChildStatusReference{
+							{
+								TypeMeta: k8sRuntime.TypeMeta{Kind: "TaskRun"},
+								Name:     taskName,
 							},
 						},
 					},
 				},
 			},
 		},
-	)
+	}
+	fakeTaskRuns := map[string]*tektonPipelineV1.TaskRun{
+		taskName: {
+			Status: tektonPipelineV1.TaskRunStatus{
+				TaskRunStatusFields: tektonPipelineV1.TaskRunStatusFields{
+					PodName: podName,
+				},
+			},
+		},
+	}
+	mockTekton := tektonFake.NewSimpleClientset()
+	mockTekton.PrependReactor("list", "pipelineruns", func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
+		return true, &fakePipelineRuns, nil
+	})
+	mockTekton.PrependReactor("get", "taskruns", func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
+		getAction := action.(k8sTesting.GetAction)
+		taskRun, ok := fakeTaskRuns[getAction.GetName()]
+		if !ok {
+			return true, nil, fmt.Errorf("Unable to find fake task-run %s, I only have %v", getAction.GetName(), fakeTaskRuns)
+		}
+		return true, taskRun, nil
+	})
+
 	dummyPod := k8sRuntime.Object(&corev1.Pod{
 		ObjectMeta: v1.ObjectMeta{
 			Name:      podName,
@@ -601,15 +620,17 @@ func TestStreamAfterPipelineRunStartedDoesNotWaitIfNoError(t *testing.T) {
 
 	e := echo.New()
 	rec := httptest.NewRecorder()
-	ctx := e.NewContext(nil, rec)
-	listoptions := v1.ListOptions{FieldSelector: fmt.Sprintf("metadata.name=%s", buildId)}
+	req := httptest.NewRequest("GET", "/fakeurl", nil)
+	ctx := e.NewContext(req, rec)
+	listOptions := v1.ListOptions{FieldSelector: fmt.Sprintf("metadata.name=%s", buildId)}
 	start := time.Now()
-	err := StreamAfterPipelineRunStarted(ctx, &api.Clients, BuildNamespace, follow, listoptions, waitTimeout)
-	elapsed := time.Since(start).Round(time.Second)
 
+	err := StreamAfterPipelineRunStarted(ctx, &api.Clients, BuildNamespace, follow, listOptions, waitTimeout)
 	if err != nil {
 		t.Fatalf("expected error to be nil, got: %s", err)
 	}
+
+	elapsed := time.Since(start).Round(time.Second)
 	// each loop in StreamAfterPipelineRunStarted has a 1s wait time so using seconds to measure elapsed time is fine
 	if elapsed > expectedDelay {
 		t.Fatalf("expected elapsed time to be less than 0s. got: %s", elapsed)
@@ -622,32 +643,50 @@ func TestStreamAfterPipelineRunStartedReturnsErrorIfNotHandledError(t *testing.T
 	waitTimeout := 3 * time.Second
 	buildId := fmt.Sprintf("dummy-tool%sbuild", BuildIdPrefix)
 	unhandledError := "unhandled error"
+	taskName := "task-run-one"
 
-	mockTekton := tektonFake.NewSimpleClientset(
-		&v1beta1.PipelineRunList{
-			Items: []v1beta1.PipelineRun{
-				{
-					ObjectMeta: v1.ObjectMeta{
-						Name: buildId, Namespace: BuildNamespace,
-					},
-					Status: v1beta1.PipelineRunStatus{
-						PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{
-							StartTime: &v1.Time{Time: time.Now()},
-							TaskRuns: map[string]*v1beta1.PipelineRunTaskRunStatus{
-								"task-run-one": {
-									Status: &v1beta1.TaskRunStatus{
-										TaskRunStatusFields: v1beta1.TaskRunStatusFields{
-											PodName: "",
-										},
-									},
-								},
+	fakePipelineRuns := tektonPipelineV1.PipelineRunList{
+		Items: []tektonPipelineV1.PipelineRun{
+			{
+				ObjectMeta: v1.ObjectMeta{
+					Name: buildId, Namespace: BuildNamespace,
+				},
+				Status: tektonPipelineV1.PipelineRunStatus{
+					PipelineRunStatusFields: tektonPipelineV1.PipelineRunStatusFields{
+						StartTime: &v1.Time{Time: time.Now()},
+						ChildReferences: []tektonPipelineV1.ChildStatusReference{
+							{
+								TypeMeta: k8sRuntime.TypeMeta{Kind: "TaskRun"},
+								Name:     taskName,
 							},
 						},
 					},
 				},
 			},
 		},
-	)
+	}
+	fakeTaskRuns := map[string]*tektonPipelineV1.TaskRun{
+		taskName: {
+			Status: tektonPipelineV1.TaskRunStatus{
+				TaskRunStatusFields: tektonPipelineV1.TaskRunStatusFields{
+					PodName: "",
+				},
+			},
+		},
+	}
+	mockTekton := tektonFake.NewSimpleClientset()
+	mockTekton.PrependReactor("list", "pipelineruns", func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
+		return true, &fakePipelineRuns, nil
+	})
+	mockTekton.PrependReactor("get", "taskruns", func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
+		getAction := action.(k8sTesting.GetAction)
+		taskRun, ok := fakeTaskRuns[getAction.GetName()]
+		if !ok {
+			return true, nil, fmt.Errorf("Unable to find fake task-run %s, I only have %v", getAction.GetName(), fakeTaskRuns)
+		}
+		return true, taskRun, nil
+	})
+
 	mockK8s := k8sFake.NewSimpleClientset()
 	// set unhandled error
 	mockK8s.PrependReactor("get", "pods", func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
@@ -658,7 +697,8 @@ func TestStreamAfterPipelineRunStartedReturnsErrorIfNotHandledError(t *testing.T
 
 	e := echo.New()
 	rec := httptest.NewRecorder()
-	ctx := e.NewContext(nil, rec)
+	req := httptest.NewRequest("GET", "/fakeurl", nil)
+	ctx := e.NewContext(req, rec)
 	listoptions := v1.ListOptions{FieldSelector: fmt.Sprintf("metadata.name=%s", buildId)}
 	start := time.Now()
 	err := StreamAfterPipelineRunStarted(ctx, &api.Clients, BuildNamespace, follow, listoptions, waitTimeout)
@@ -679,14 +719,14 @@ func TestStreamAfterPipelineRunStartedReturnErrorIfWaitTimeoutExceeded(t *testin
 	buildId := fmt.Sprintf("dummy-tool%sbuild", BuildIdPrefix)
 
 	mockTekton := tektonFake.NewSimpleClientset(
-		&v1beta1.PipelineRunList{
-			Items: []v1beta1.PipelineRun{
+		&tektonPipelineV1.PipelineRunList{
+			Items: []tektonPipelineV1.PipelineRun{
 				{
 					ObjectMeta: v1.ObjectMeta{
 						Name: buildId, Namespace: BuildNamespace,
 					},
-					Status: v1beta1.PipelineRunStatus{
-						PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{
+					Status: tektonPipelineV1.PipelineRunStatus{
+						PipelineRunStatusFields: tektonPipelineV1.PipelineRunStatusFields{
 							StartTime: nil, // set "pipelineRun not yet started" error
 						},
 					},
@@ -717,10 +757,28 @@ func TestStreamAfterPipelineRunStartedWaitsForTimeDelay(t *testing.T) {
 	podName := "dummy-pod"
 	buildId := fmt.Sprintf("dummy-tool%sbuild", BuildIdPrefix)
 
-	pipelineRun := &v1beta1.PipelineRun{
+	pipelineRun := &tektonPipelineV1.PipelineRun{
 		ObjectMeta: v1.ObjectMeta{
 			Name:      buildId,
 			Namespace: BuildNamespace,
+		},
+		Status: tektonPipelineV1.PipelineRunStatus{
+			PipelineRunStatusFields: tektonPipelineV1.PipelineRunStatusFields{
+				StartTime: &v1.Time{Time: time.Now()}, // clear "pipelineRun not yet started" error
+				ChildReferences: []tektonPipelineV1.ChildStatusReference{
+					{
+						TypeMeta: k8sRuntime.TypeMeta{Kind: "TaskRun"},
+						Name:     "silly-taskrun",
+					},
+				},
+			},
+		},
+	}
+	fakeTaskRun := tektonPipelineV1.TaskRun{
+		Status: tektonPipelineV1.TaskRunStatus{
+			TaskRunStatusFields: tektonPipelineV1.TaskRunStatusFields{
+				PodName: podName,
+			},
 		},
 	}
 	dummyPod := k8sRuntime.Object(&corev1.Pod{
@@ -735,10 +793,17 @@ func TestStreamAfterPipelineRunStartedWaitsForTimeDelay(t *testing.T) {
 
 	mockK8s := k8sFake.NewSimpleClientset()
 	mockTekton := tektonFake.NewSimpleClientset()
-	pipelineRun, err := mockTekton.TektonV1beta1().PipelineRuns(BuildNamespace).Create(context.Background(), pipelineRun, v1.CreateOptions{})
+	pipelineRun, err := mockTekton.TektonV1().PipelineRuns(BuildNamespace).Create(context.Background(), pipelineRun, v1.CreateOptions{})
 	if err != nil {
 		t.Fatalf("Unexpected error: %s", err)
 	}
+	mockTekton.PrependReactor("get", "taskruns", func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
+		getAction := action.(k8sTesting.GetAction)
+		if getAction.GetName() == "silly-taskrun" {
+			return true, &fakeTaskRun, nil
+		}
+		return false, nil, fmt.Errorf("Unexpected call to get taskruns with taskrun: %s", getAction.GetName())
+	})
 
 	// set all handled errors
 	pipelineRun.Status.PipelineRunStatusFields.StartTime = nil
@@ -753,7 +818,7 @@ func TestStreamAfterPipelineRunStartedWaitsForTimeDelay(t *testing.T) {
 		time.Sleep(waitDelay)
 
 		pipelineRun.Status.PipelineRunStatusFields.StartTime = &v1.Time{Time: time.Now()}
-		_, _ = mockTekton.TektonV1beta1().PipelineRuns(BuildNamespace).Update(context.Background(), pipelineRun, v1.UpdateOptions{})
+		_, _ = mockTekton.TektonV1().PipelineRuns(BuildNamespace).Update(context.Background(), pipelineRun, v1.UpdateOptions{})
 		mockK8s.PrependReactor("get", "pods", func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
 			return true, dummyPod, nil
 		})
@@ -764,7 +829,8 @@ func TestStreamAfterPipelineRunStartedWaitsForTimeDelay(t *testing.T) {
 
 	e := echo.New()
 	rec := httptest.NewRecorder()
-	ctx := e.NewContext(nil, rec)
+	req := httptest.NewRequest("GET", "/fakeurl", nil)
+	ctx := e.NewContext(req, rec)
 	api := BuildsApi{
 		Clients: Clients{
 			Tekton: mockTekton,
@@ -809,8 +875,8 @@ func TestLogsReturnsErrorIfNotAllowed(t *testing.T) {
 
 func TestLogsReturnsNotFoundIfNoBuildsThere(t *testing.T) {
 	mockTekton := tektonFake.NewSimpleClientset(
-		&v1beta1.PipelineRunList{
-			Items: make([]v1beta1.PipelineRun, 0),
+		&tektonPipelineV1.PipelineRunList{
+			Items: make([]tektonPipelineV1.PipelineRun, 0),
 		},
 	)
 	api := BuildsApi{
@@ -840,7 +906,7 @@ func TestLogsReturnsNotFoundIfNoBuildsThere(t *testing.T) {
 // This behavior happens when the cluster has no runs at all
 func TestLogsReturnsNotFoundIfApiReturnsError(t *testing.T) {
 	mockTekton := tektonFake.Clientset{}
-	mockTekton.AddReactor("list", "pipelineruns", func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
+	mockTekton.PrependReactor("list", "pipelineruns", func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
 		return true, nil, fmt.Errorf("Dummy error!")
 	})
 	api := BuildsApi{
@@ -869,8 +935,8 @@ func TestLogsReturnsNotFoundIfApiReturnsError(t *testing.T) {
 
 func TestLogsReturnsNotFoundIfApiReturnsMoreThanOneRun(t *testing.T) {
 	mockTekton := tektonFake.NewSimpleClientset(
-		&v1beta1.PipelineRunList{
-			Items: []v1beta1.PipelineRun{
+		&tektonPipelineV1.PipelineRunList{
+			Items: []tektonPipelineV1.PipelineRun{
 				{ObjectMeta: v1.ObjectMeta{Name: "one"}},
 				{ObjectMeta: v1.ObjectMeta{Name: "two"}},
 			},
@@ -942,24 +1008,29 @@ func TestLogsXAccelBufferHeaderValue(t *testing.T) {
 
 func TestLogsReturnsAllLogsConcatenated(t *testing.T) {
 	podName := "dummy-pod"
+	taskName := "task-run-one"
 	// avoid the object from being collected
-	fakePipelineRunList := v1beta1.PipelineRunList{
-		Items: []v1beta1.PipelineRun{
+	fakePipelineRunList := tektonPipelineV1.PipelineRunList{
+		Items: []tektonPipelineV1.PipelineRun{
 			{
-				Status: v1beta1.PipelineRunStatus{
-					PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{
+				Status: tektonPipelineV1.PipelineRunStatus{
+					PipelineRunStatusFields: tektonPipelineV1.PipelineRunStatusFields{
 						StartTime: &v1.Time{Time: time.Now()},
-						TaskRuns: map[string]*v1beta1.PipelineRunTaskRunStatus{
-							"task-run-one": {
-								Status: &v1beta1.TaskRunStatus{
-									TaskRunStatusFields: v1beta1.TaskRunStatusFields{
-										PodName: podName,
-									},
-								},
+						ChildReferences: []tektonPipelineV1.ChildStatusReference{
+							{
+								TypeMeta: k8sRuntime.TypeMeta{Kind: "TaskRun"},
+								Name:     taskName,
 							},
 						},
 					},
 				},
+			},
+		},
+	}
+	fakeTaskRun := tektonPipelineV1.TaskRun{
+		Status: tektonPipelineV1.TaskRunStatus{
+			TaskRunStatusFields: tektonPipelineV1.TaskRunStatusFields{
+				PodName: podName,
 			},
 		},
 	}
@@ -991,21 +1062,32 @@ func TestLogsReturnsAllLogsConcatenated(t *testing.T) {
 		}),
 	)
 
-	mockTekton.Fake.AddReactor(
+	mockTekton.Fake.PrependReactor(
 		"list",
 		"pipelineruns",
 		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
 			return true, &fakePipelineRunList, nil
 		},
 	)
+	mockTekton.Fake.PrependReactor(
+		"get",
+		"taskruns",
+		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
+			if action.(k8sTesting.GetAction).GetName() == taskName {
+				return true, &fakeTaskRun, nil
+			}
+			return false, nil, fmt.Errorf("Unexpected call to git taskruns with action: %v", action)
+		},
+	)
 	// The mocking of getLogs always returns one line "fake logs", it's hardcoded in the fake upstream
 	// that's why we return `nil` as the return value does not matter
-	mockK8s.AddReactor("get", "pods/logs", func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
+	mockK8s.PrependReactor("get", "pods/logs", func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
 		return true, nil, fmt.Errorf("no reaction implemented for verb:get resource:pods/log")
 	})
 	e := echo.New()
 	rec := httptest.NewRecorder()
-	ctx := e.NewContext(nil, rec)
+	req := httptest.NewRequest("GET", "/fakeurl", nil)
+	ctx := e.NewContext(req, rec)
 	api := BuildsApi{
 		Clients: Clients{
 			Tekton: &mockTekton,
@@ -1070,7 +1152,7 @@ func TestStartReturnsInternalServerErrorOnException(t *testing.T) {
 	testHarborClientSet, _ := harbor.NewClientSet(testConfig)
 
 	mockTekton := tektonFake.Clientset{}
-	mockTekton.Fake.AddReactor(
+	mockTekton.Fake.PrependReactor(
 		"create",
 		"pipelineruns",
 		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
@@ -1152,10 +1234,10 @@ func TestStartReturnsBadRequestErrorIfBadNamedEnvvarsPassed(t *testing.T) {
 
 	mockTekton := tektonFake.Clientset{}
 	expectedName := "new-pipelinerun"
-	fakePipelineRun := v1beta1.PipelineRun{
+	fakePipelineRun := tektonPipelineV1.PipelineRun{
 		ObjectMeta: v1.ObjectMeta{Name: expectedName},
 	}
-	mockTekton.Fake.AddReactor(
+	mockTekton.Fake.PrependReactor(
 		"create",
 		"pipelineruns",
 		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
@@ -1213,10 +1295,10 @@ func TestStartReturnsNewBuildName(t *testing.T) {
 		"GOOD_NAME1": "silly value 1",
 		"GOOD_NAME2": "silly value 2",
 	}
-	fakePipelineRun := v1beta1.PipelineRun{
+	fakePipelineRun := tektonPipelineV1.PipelineRun{
 		ObjectMeta: v1.ObjectMeta{Name: expectedName},
 	}
-	mockTekton.Fake.AddReactor(
+	mockTekton.Fake.PrependReactor(
 		"create",
 		"pipelineruns",
 		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
@@ -1302,10 +1384,10 @@ func TestStartReturnsWarningMessageIfQuotaIsAbove90(t *testing.T) {
 	expectedImageName := "dummy-image-name"
 	expectedSourceURL := "dummy-source-url"
 	expectedEnvvars := map[string]string{}
-	fakePipelineRun := v1beta1.PipelineRun{
+	fakePipelineRun := tektonPipelineV1.PipelineRun{
 		ObjectMeta: v1.ObjectMeta{Name: expectedName},
 	}
-	mockTekton.Fake.AddReactor(
+	mockTekton.Fake.PrependReactor(
 		"create",
 		"pipelineruns",
 		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
@@ -1369,8 +1451,8 @@ func TestDeleteReturnsErrorIfNotAllowed(t *testing.T) {
 
 func TestDeleteReturnsNotFoundIfNoBuildsThere(t *testing.T) {
 	mockTekton := tektonFake.NewSimpleClientset(
-		&v1beta1.PipelineRunList{
-			Items: make([]v1beta1.PipelineRun, 0),
+		&tektonPipelineV1.PipelineRunList{
+			Items: make([]tektonPipelineV1.PipelineRun, 0),
 		},
 	)
 	api := BuildsApi{
@@ -1397,7 +1479,7 @@ func TestDeleteReturnsNotFoundIfNoBuildsThere(t *testing.T) {
 
 func TestDeleteReturnsInternalServerErrorOnException(t *testing.T) {
 	mockTekton := tektonFake.Clientset{}
-	mockTekton.Fake.AddReactor(
+	mockTekton.Fake.PrependReactor(
 		"delete",
 		"pipelineruns",
 		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
@@ -1428,7 +1510,7 @@ func TestDeleteReturnsInternalServerErrorOnException(t *testing.T) {
 func TestDeleteReturnsDeletedBuildName(t *testing.T) {
 	mockTekton := tektonFake.Clientset{}
 	expectedId := fmt.Sprintf("dummy-tool%sbuild", BuildIdPrefix)
-	mockTekton.Fake.AddReactor(
+	mockTekton.Fake.PrependReactor(
 		"delete",
 		"pipelineruns",
 		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
@@ -1465,7 +1547,7 @@ func TestDeleteReturnsDeletedBuildName(t *testing.T) {
 
 func TestListReturnsInternalServerErrorOnException(t *testing.T) {
 	mockTekton := tektonFake.Clientset{}
-	mockTekton.Fake.AddReactor(
+	mockTekton.Fake.PrependReactor(
 		"list",
 		"pipelineruns",
 		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
@@ -1496,21 +1578,21 @@ func TestListReturnsBuilds(t *testing.T) {
 	toolName := "dummy-tool"
 	expectedBuildId := fmt.Sprintf("%s%sbuild", toolName, BuildIdPrefix)
 	mockTekton := tektonFake.NewSimpleClientset(
-		&v1beta1.PipelineRunList{
-			Items: []v1beta1.PipelineRun{
+		&tektonPipelineV1.PipelineRunList{
+			Items: []tektonPipelineV1.PipelineRun{
 				{
 					ObjectMeta: v1.ObjectMeta{Name: expectedBuildId, Namespace: BuildNamespace, Labels: map[string]string{"user": toolName}},
-					Spec: v1beta1.PipelineRunSpec{
-						Params: []v1beta1.Param{
-							{Name: "BUILDER_IMAGE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder:22"}},
-							{Name: "APP_IMAGE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "192.168.188.129/tool-minikube-user/tool-raymond:latest"}},
-							{Name: "SOURCE_URL", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "https://github.com/david-caro/wm-lol"}},
-							{Name: "SOURCE_REFERENCE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "value4"}},
+					Spec: tektonPipelineV1.PipelineRunSpec{
+						Params: []tektonPipelineV1.Param{
+							{Name: "BUILDER_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder:22"}},
+							{Name: "APP_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "192.168.188.129/tool-minikube-user/tool-raymond:latest"}},
+							{Name: "SOURCE_URL", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "https://github.com/david-caro/wm-lol"}},
+							{Name: "SOURCE_REFERENCE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "value4"}},
 						},
 					},
-					Status: v1beta1.PipelineRunStatus{
+					Status: tektonPipelineV1.PipelineRunStatus{
 						Status: knative.Status{Conditions: knative.Conditions{{Type: "Succeeded", Status: "True", Message: "All Tasks Succeeded", Reason: "Succeeded"}}},
-						PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{
+						PipelineRunStatusFields: tektonPipelineV1.PipelineRunStatusFields{
 							CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)},
 							StartTime:      &v1.Time{Time: time.Date(2023, 6, 8, 15, 0, 0, 0, time.UTC)},
 						},
@@ -1574,19 +1656,19 @@ func TestGetPipelineRunParam(t *testing.T) {
 		},
 	}
 
-	pipelinerun := v1beta1.PipelineRun{
+	pipelinerun := tektonPipelineV1.PipelineRun{
 		ObjectMeta: v1.ObjectMeta{Name: "test", Namespace: "test", Labels: map[string]string{"user": "test"}},
-		Spec: v1beta1.PipelineRunSpec{
-			Params: []v1beta1.Param{
-				{Name: data[0].name, Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: data[0].value}},
-				{Name: data[1].name, Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: data[1].value}},
-				{Name: data[2].name, Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: data[2].value}},
-				{Name: data[3].name, Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: data[3].value}},
+		Spec: tektonPipelineV1.PipelineRunSpec{
+			Params: []tektonPipelineV1.Param{
+				{Name: data[0].name, Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: data[0].value}},
+				{Name: data[1].name, Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: data[1].value}},
+				{Name: data[2].name, Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: data[2].value}},
+				{Name: data[3].name, Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: data[3].value}},
 			},
 		},
-		Status: v1beta1.PipelineRunStatus{
+		Status: tektonPipelineV1.PipelineRunStatus{
 			Status: knative.Status{Conditions: knative.Conditions{{Type: "Succeeded", Status: "True", Message: "All Tasks Succeeded", Reason: "Succeeded"}}},
-			PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{
+			PipelineRunStatusFields: tektonPipelineV1.PipelineRunStatusFields{
 				CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)},
 				StartTime:      &v1.Time{Time: time.Date(2023, 6, 8, 15, 0, 0, 0, time.UTC)},
 			},
@@ -1613,21 +1695,21 @@ func TestGetReturnsBuildsOk(t *testing.T) {
 	toolName := "dummy-tool"
 	buildId := fmt.Sprintf("%s%sbuild", toolName, BuildIdPrefix)
 	mockTekton := tektonFake.NewSimpleClientset(
-		&v1beta1.PipelineRunList{
-			Items: []v1beta1.PipelineRun{
+		&tektonPipelineV1.PipelineRunList{
+			Items: []tektonPipelineV1.PipelineRun{
 				{
 					ObjectMeta: v1.ObjectMeta{Name: buildId, Namespace: BuildNamespace, Labels: map[string]string{"user": toolName}},
-					Spec: v1beta1.PipelineRunSpec{
-						Params: []v1beta1.Param{
-							{Name: "BUILDER_IMAGE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder:22"}},
-							{Name: "APP_IMAGE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "192.168.188.129/tool-minikube-user/tool-raymond:latest"}},
-							{Name: "SOURCE_URL", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "https://github.com/david-caro/wm-lol"}},
-							{Name: "SOURCE_REFERENCE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "value4"}},
+					Spec: tektonPipelineV1.PipelineRunSpec{
+						Params: []tektonPipelineV1.Param{
+							{Name: "BUILDER_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder:22"}},
+							{Name: "APP_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "192.168.188.129/tool-minikube-user/tool-raymond:latest"}},
+							{Name: "SOURCE_URL", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "https://github.com/david-caro/wm-lol"}},
+							{Name: "SOURCE_REFERENCE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "value4"}},
 						},
 					},
-					Status: v1beta1.PipelineRunStatus{
+					Status: tektonPipelineV1.PipelineRunStatus{
 						Status: knative.Status{Conditions: knative.Conditions{{Type: "Succeeded", Status: "True", Message: "All Tasks Succeeded", Reason: "Succeeded"}}},
-						PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{
+						PipelineRunStatusFields: tektonPipelineV1.PipelineRunStatusFields{
 							CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)},
 							StartTime:      &v1.Time{Time: time.Date(2023, 6, 8, 15, 0, 0, 0, time.UTC)},
 						},
@@ -1735,7 +1817,7 @@ func TestGetReturnsAPIError(t *testing.T) {
 	buildId := fmt.Sprintf("%s%sbuild", toolName, BuildIdPrefix)
 
 	mockTekton := tektonFake.Clientset{}
-	mockTekton.AddReactor("list", "pipelineruns", func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
+	mockTekton.PrependReactor("list", "pipelineruns", func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
 		return true, nil, fmt.Errorf("Dummy error!")
 	})
 	api := BuildsApi{
@@ -1791,8 +1873,8 @@ func TestCancelReturnsNotFoundIfNoBuildsThere(t *testing.T) {
 	toolName := "dummy-tool"
 	buildId := fmt.Sprintf("%s%sbuild", toolName, BuildIdPrefix)
 	mockTekton := tektonFake.NewSimpleClientset(
-		&v1beta1.PipelineRunList{
-			Items: make([]v1beta1.PipelineRun, 0),
+		&tektonPipelineV1.PipelineRunList{
+			Items: make([]tektonPipelineV1.PipelineRun, 0),
 		},
 	)
 	api := BuildsApi{
@@ -1819,11 +1901,11 @@ func TestCancelReturnsInternalServerErrorOnException(t *testing.T) {
 	toolName := "dummy-tool"
 	buildId := fmt.Sprintf("%s%sbuild", toolName, BuildIdPrefix)
 	mockTekton := tektonFake.Clientset{}
-	fakePipelineRun := v1beta1.PipelineRun{
+	fakePipelineRun := tektonPipelineV1.PipelineRun{
 		ObjectMeta: v1.ObjectMeta{Name: buildId, Namespace: BuildNamespace, Labels: map[string]string{"user": toolName}},
 	}
 
-	mockTekton.Fake.AddReactor(
+	mockTekton.Fake.PrependReactor(
 		"get",
 		"pipelineruns",
 		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
@@ -1851,7 +1933,7 @@ func TestCancelReturnsInternalServerErrorOnException(t *testing.T) {
 			return true, &fakePipelineRun, nil
 		},
 	)
-	mockTekton.Fake.AddReactor(
+	mockTekton.Fake.PrependReactor(
 		"update",
 		"pipelineruns",
 		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
@@ -1868,15 +1950,15 @@ func TestCancelReturnsInternalServerErrorOnException(t *testing.T) {
 func TestCancelReturnsConflictIfBuildIsNotCancellable(t *testing.T) {
 	toolName := "dummy-tool"
 	mockTekton := tektonFake.Clientset{}
-	uncancellablePipelineRuns := []v1beta1.PipelineRun{
+	uncancellablePipelineRuns := []tektonPipelineV1.PipelineRun{
 		{
 			ObjectMeta: v1.ObjectMeta{
 				Name:      fmt.Sprintf("%s%s-successful-build", toolName, BuildIdPrefix),
 				Namespace: BuildNamespace, Labels: map[string]string{"user": toolName},
 			},
-			Status: v1beta1.PipelineRunStatus{
+			Status: tektonPipelineV1.PipelineRunStatus{
 				Status: knative.Status{Conditions: knative.Conditions{{Status: "True"}}},
-				PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{
+				PipelineRunStatusFields: tektonPipelineV1.PipelineRunStatusFields{
 					CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)},
 					StartTime:      &v1.Time{Time: time.Date(2023, 6, 8, 15, 0, 0, 0, time.UTC)},
 				},
@@ -1887,9 +1969,9 @@ func TestCancelReturnsConflictIfBuildIsNotCancellable(t *testing.T) {
 				Name:      fmt.Sprintf("%s%s-failed-build", toolName, BuildIdPrefix),
 				Namespace: BuildNamespace, Labels: map[string]string{"user": toolName},
 			},
-			Status: v1beta1.PipelineRunStatus{
+			Status: tektonPipelineV1.PipelineRunStatus{
 				Status: knative.Status{Conditions: knative.Conditions{{Status: "False"}}},
-				PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{
+				PipelineRunStatusFields: tektonPipelineV1.PipelineRunStatusFields{
 					CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)},
 					StartTime:      &v1.Time{Time: time.Date(2023, 6, 8, 15, 0, 0, 0, time.UTC)},
 				},
@@ -1900,9 +1982,9 @@ func TestCancelReturnsConflictIfBuildIsNotCancellable(t *testing.T) {
 				Name:      fmt.Sprintf("%s%s-timedout-build", toolName, BuildIdPrefix),
 				Namespace: BuildNamespace, Labels: map[string]string{"user": toolName},
 			},
-			Status: v1beta1.PipelineRunStatus{
+			Status: tektonPipelineV1.PipelineRunStatus{
 				Status: knative.Status{Conditions: knative.Conditions{{Status: "False", Reason: "PipelineRunTimeout"}}},
-				PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{
+				PipelineRunStatusFields: tektonPipelineV1.PipelineRunStatusFields{
 					CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)},
 					StartTime:      &v1.Time{Time: time.Date(2023, 6, 8, 15, 0, 0, 0, time.UTC)},
 				},
@@ -1913,9 +1995,9 @@ func TestCancelReturnsConflictIfBuildIsNotCancellable(t *testing.T) {
 				Name:      fmt.Sprintf("%s%s-cancelled-build", toolName, BuildIdPrefix),
 				Namespace: BuildNamespace, Labels: map[string]string{"user": toolName},
 			},
-			Status: v1beta1.PipelineRunStatus{
+			Status: tektonPipelineV1.PipelineRunStatus{
 				Status: knative.Status{Conditions: knative.Conditions{{Status: "False", Reason: "PipelineRunCancelled"}}},
-				PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{
+				PipelineRunStatusFields: tektonPipelineV1.PipelineRunStatusFields{
 					CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)},
 					StartTime:      &v1.Time{Time: time.Date(2023, 6, 8, 15, 0, 0, 0, time.UTC)},
 				},
@@ -1953,21 +2035,21 @@ func TestCancelReturnsCancelledBuild(t *testing.T) {
 	toolName := "dummy-tool"
 	buildId := fmt.Sprintf("%s%sbuild", toolName, BuildIdPrefix)
 	mockTekton := tektonFake.NewSimpleClientset(
-		&v1beta1.PipelineRunList{
-			Items: []v1beta1.PipelineRun{
+		&tektonPipelineV1.PipelineRunList{
+			Items: []tektonPipelineV1.PipelineRun{
 				{
 					ObjectMeta: v1.ObjectMeta{Name: buildId, Namespace: BuildNamespace, Labels: map[string]string{"user": toolName}},
-					Spec: v1beta1.PipelineRunSpec{
-						Params: []v1beta1.Param{
-							{Name: "BUILDER_IMAGE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder:22"}},
-							{Name: "APP_IMAGE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "192.168.188.129/tool-minikube-user/tool-raymond:latest"}},
-							{Name: "SOURCE_URL", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "https://github.com/david-caro/wm-lol"}},
-							{Name: "SOURCE_REFERENCE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "value4"}},
+					Spec: tektonPipelineV1.PipelineRunSpec{
+						Params: []tektonPipelineV1.Param{
+							{Name: "BUILDER_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder:22"}},
+							{Name: "APP_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "192.168.188.129/tool-minikube-user/tool-raymond:latest"}},
+							{Name: "SOURCE_URL", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "https://github.com/david-caro/wm-lol"}},
+							{Name: "SOURCE_REFERENCE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "value4"}},
 						},
 					},
-					Status: v1beta1.PipelineRunStatus{
+					Status: tektonPipelineV1.PipelineRunStatus{
 						Status: knative.Status{Conditions: knative.Conditions{{Reason: "Running", Status: "Unknown"}}},
-						PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{
+						PipelineRunStatusFields: tektonPipelineV1.PipelineRunStatusFields{
 							StartTime: &v1.Time{Time: time.Date(2023, 6, 8, 15, 0, 0, 0, time.UTC)},
 						},
 					},
@@ -2002,21 +2084,21 @@ func TestLatestReturnsBuildsOk(t *testing.T) {
 	baseBuildId := fmt.Sprintf("%s%sbuild", toolName, BuildIdPrefix)
 	latestBuildId := fmt.Sprintf("%s-some", baseBuildId)
 	mockTekton := tektonFake.NewSimpleClientset(
-		&v1beta1.PipelineRunList{
-			Items: []v1beta1.PipelineRun{
+		&tektonPipelineV1.PipelineRunList{
+			Items: []tektonPipelineV1.PipelineRun{
 				{
 					ObjectMeta: v1.ObjectMeta{Name: fmt.Sprintf("%s-2022", baseBuildId), Namespace: BuildNamespace, Labels: map[string]string{"user": toolName}},
-					Spec: v1beta1.PipelineRunSpec{
-						Params: []v1beta1.Param{
-							{Name: "BUILDER_IMAGE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder:22"}},
-							{Name: "APP_IMAGE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "192.168.188.129/tool-minikube-user/tool-raymond:latest"}},
-							{Name: "SOURCE_URL", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "https://github.com/david-caro/wm-lol"}},
-							{Name: "SOURCE_REFERENCE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "value4"}},
+					Spec: tektonPipelineV1.PipelineRunSpec{
+						Params: []tektonPipelineV1.Param{
+							{Name: "BUILDER_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder:22"}},
+							{Name: "APP_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "192.168.188.129/tool-minikube-user/tool-raymond:latest"}},
+							{Name: "SOURCE_URL", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "https://github.com/david-caro/wm-lol"}},
+							{Name: "SOURCE_REFERENCE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "value4"}},
 						},
 					},
-					Status: v1beta1.PipelineRunStatus{
+					Status: tektonPipelineV1.PipelineRunStatus{
 						Status: knative.Status{Conditions: knative.Conditions{{Type: "Succeeded", Status: "True", Message: "All Tasks Succeeded", Reason: "Succeeded"}}},
-						PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{
+						PipelineRunStatusFields: tektonPipelineV1.PipelineRunStatusFields{
 							CompletionTime: &v1.Time{Time: time.Date(2022, 6, 8, 16, 0, 0, 0, time.UTC)},
 							StartTime:      &v1.Time{Time: time.Date(2022, 6, 8, 15, 0, 0, 0, time.UTC)},
 						},
@@ -2024,17 +2106,17 @@ func TestLatestReturnsBuildsOk(t *testing.T) {
 				},
 				{
 					ObjectMeta: v1.ObjectMeta{Name: latestBuildId, Namespace: BuildNamespace, Labels: map[string]string{"user": toolName}},
-					Spec: v1beta1.PipelineRunSpec{
-						Params: []v1beta1.Param{
-							{Name: "BUILDER_IMAGE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder:22"}},
-							{Name: "APP_IMAGE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "192.168.188.129/tool-minikube-user/tool-raymond:latest"}},
-							{Name: "SOURCE_URL", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "https://github.com/david-caro/wm-lol"}},
-							{Name: "SOURCE_REFERENCE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "value4"}},
+					Spec: tektonPipelineV1.PipelineRunSpec{
+						Params: []tektonPipelineV1.Param{
+							{Name: "BUILDER_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder:22"}},
+							{Name: "APP_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "192.168.188.129/tool-minikube-user/tool-raymond:latest"}},
+							{Name: "SOURCE_URL", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "https://github.com/david-caro/wm-lol"}},
+							{Name: "SOURCE_REFERENCE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "value4"}},
 						},
 					},
-					Status: v1beta1.PipelineRunStatus{
+					Status: tektonPipelineV1.PipelineRunStatus{
 						Status: knative.Status{Conditions: knative.Conditions{{Type: "Succeeded", Status: "True", Message: "All Tasks Succeeded", Reason: "Succeeded"}}},
-						PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{
+						PipelineRunStatusFields: tektonPipelineV1.PipelineRunStatusFields{
 							CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)},
 							StartTime:      &v1.Time{Time: time.Date(2023, 6, 8, 15, 0, 0, 0, time.UTC)},
 						},
@@ -2042,17 +2124,17 @@ func TestLatestReturnsBuildsOk(t *testing.T) {
 				},
 				{
 					ObjectMeta: v1.ObjectMeta{Name: fmt.Sprintf("%s-2021", baseBuildId), Namespace: BuildNamespace, Labels: map[string]string{"user": toolName}},
-					Spec: v1beta1.PipelineRunSpec{
-						Params: []v1beta1.Param{
-							{Name: "BUILDER_IMAGE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder:22"}},
-							{Name: "APP_IMAGE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "192.168.188.129/tool-minikube-user/tool-raymond:latest"}},
-							{Name: "SOURCE_URL", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "https://github.com/david-caro/wm-lol"}},
-							{Name: "SOURCE_REFERENCE", Value: v1beta1.ArrayOrString{Type: v1beta1.ParamTypeString, StringVal: "value4"}},
+					Spec: tektonPipelineV1.PipelineRunSpec{
+						Params: []tektonPipelineV1.Param{
+							{Name: "BUILDER_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder:22"}},
+							{Name: "APP_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "192.168.188.129/tool-minikube-user/tool-raymond:latest"}},
+							{Name: "SOURCE_URL", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "https://github.com/david-caro/wm-lol"}},
+							{Name: "SOURCE_REFERENCE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "value4"}},
 						},
 					},
-					Status: v1beta1.PipelineRunStatus{
+					Status: tektonPipelineV1.PipelineRunStatus{
 						Status: knative.Status{Conditions: knative.Conditions{{Type: "Succeeded", Status: "True", Message: "All Tasks Succeeded", Reason: "Succeeded"}}},
-						PipelineRunStatusFields: v1beta1.PipelineRunStatusFields{
+						PipelineRunStatusFields: tektonPipelineV1.PipelineRunStatusFields{
 							CompletionTime: &v1.Time{Time: time.Date(2021, 6, 8, 16, 0, 0, 0, time.UTC)},
 							StartTime:      &v1.Time{Time: time.Date(2021, 6, 8, 15, 0, 0, 0, time.UTC)},
 						},
@@ -2092,7 +2174,7 @@ func TestLatestReturnsAPIError(t *testing.T) {
 	toolName := "dummy-tool"
 
 	mockTekton := tektonFake.Clientset{}
-	mockTekton.AddReactor("list", "pipelineruns", func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
+	mockTekton.PrependReactor("list", "pipelineruns", func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
 		return true, nil, fmt.Errorf("Dummy error!")
 	})
 	api := BuildsApi{

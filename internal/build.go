@@ -702,7 +702,7 @@ func Start(
 	if imageNameToUse == "" {
 		imageNameToUse = fmt.Sprintf("tool-%s", toolName)
 	}
-	var envvarsArray []string
+	envvarsArray := make([]string, len(envvars))
 	for varname, value := range envvars {
 		envvarsArray = append(envvarsArray, fmt.Sprintf("%s=%s", varname, value))
 	}

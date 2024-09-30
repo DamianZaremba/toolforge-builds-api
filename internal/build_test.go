@@ -24,12 +24,14 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/goharbor/go-client/pkg/harbor"
 	"github.com/labstack/echo/v4"
+	log "github.com/sirupsen/logrus"
 	tektonPipelineV1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	tektonFake "github.com/tektoncd/pipeline/pkg/client/clientset/versioned/fake"
 	"gitlab.wikimedia.org/repos/toolforge/builds-api/gen"
@@ -40,6 +42,12 @@ import (
 	k8sTesting "k8s.io/client-go/testing"
 	knative "knative.dev/pkg/apis/duck/v1"
 )
+
+func TestMain(m *testing.M) {
+	log.SetLevel(log.DebugLevel)
+	code := m.Run()
+	os.Exit(code)
+}
 
 func TestToolNameToHarborProjectNameReturnsErrorIfNameIsInvalidToolforgeToolName(t *testing.T) {
 	invalidToolNames := []string{

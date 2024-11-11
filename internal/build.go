@@ -391,26 +391,10 @@ func streamAllContainerLogs(ctx echo.Context, clients *Clients, containers []str
 	return nil
 }
 
-// This is to have backwards compatibility with old v1beta1 taskRuns, once we migrate all of them (as they get
-// recycled), we can remove this chunk of code
-func getPodsRunsV1beta1(clients *Clients, namespace string, pipelineRun *tektonPipelineV1.PipelineRun) (error, []string) {
-	pipelineRunv1beta1, err := clients.Tekton.TektonV1beta1().PipelineRuns(namespace).Get(context.TODO(), pipelineRun.Name, metav1.GetOptions{})
-	if err != nil {
-		return err, nil
-	}
-
-	pods := make([]string, 0, len(pipelineRunv1beta1.Status.TaskRuns))
-	for _, taskRun := range pipelineRunv1beta1.Status.TaskRuns {
-		pods = append(pods, taskRun.Status.PodName)
-	}
-
-	return nil, pods
-}
-
 func streamPipelineRunLogs(ctx echo.Context, clients *Clients, namespace string, pipelineRun *tektonPipelineV1.PipelineRun, follow bool) error {
 	// TODO: retrieve also logs from pods that failed to start
 	if !pipelineRun.HasStarted() {
-		return fmt.Errorf(PipelineRunNotStartedErrorStr)
+		return fmt.Errorf("%s", PipelineRunNotStartedErrorStr)
 	}
 
 	taskRunStatuses, _, err := status.GetPipelineTaskStatuses(ctx.Request().Context(), clients.Tekton, namespace, pipelineRun)
@@ -418,26 +402,13 @@ func streamPipelineRunLogs(ctx echo.Context, clients *Clients, namespace string,
 		log.Debugf("Got error when getting task statuses for the pipeline %v: %s", pipelineRun, err)
 		return err
 	}
+	if len(taskRunStatuses) == 0 {
+		log.Debugf("Got no taskRunStatus for the pipeline %v", pipelineRun)
+	}
 
 	pods := make([]string, 0, len(taskRunStatuses))
-	if len(taskRunStatuses) == 0 {
-		// We might be dealing with an old taskRun v1beta1, instead of v1
-		// this can be removed once we know all the pipelineRuns are on the v1 version
-		log.Debug("Got no taskRunStatuses, trying with v1beta1")
-		err, pods = getPodsRunsV1beta1(clients, namespace, pipelineRun)
-		if err != nil {
-			log.Debugf("Got error when getting task statuses for the pipeline %v: %s", pipelineRun, err)
-			return err
-		}
-
-		if len(pods) == 0 {
-			return fmt.Errorf("got no taskruns for this pipeline, something weird is going on: %v", pipelineRun)
-		}
-		log.Debugf("Got no taskrun for the pipeline %v", pipelineRun)
-	} else {
-		for _, taskRun := range taskRunStatuses {
-			pods = append(pods, taskRun.Status.PodName)
-		}
+	for _, taskRun := range taskRunStatuses {
+		pods = append(pods, taskRun.Status.PodName)
 	}
 
 	log.Debugf("Got %d pods for the pipeline %v: %v", len(pods), pipelineRun, pods)

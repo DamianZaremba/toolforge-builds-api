@@ -708,7 +708,7 @@ func GetHarborQuota(api *BuildsApi, toolName string) (gen.Quota, error) {
 }
 
 func ValidateEnvvars(envvars map[string]string) error {
-	varnameRegex := "^[A-z_][A-z_0-9]{2,}$"
+	varnameRegex := "^[A-Z_][A-Z_0-9]{2,}$"
 	varnameRegexCompiled, err := regexp.Compile(varnameRegex)
 	if err != nil {
 		return err

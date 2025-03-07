@@ -2,8 +2,6 @@ module gitlab.wikimedia.org/repos/toolforge/builds-api
 
 go 1.21
 
-toolchain go1.22.6
-
 require (
 	github.com/getkin/kin-openapi v0.118.0
 	github.com/goharbor/go-client v0.28.2
@@ -14,9 +12,9 @@ require (
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/viper v1.16.0
 	github.com/tektoncd/pipeline v0.59.3
-	k8s.io/api v0.29.6
-	k8s.io/apimachinery v0.29.6
-	k8s.io/client-go v0.29.6
+	k8s.io/api v0.29.14
+	k8s.io/apimachinery v0.29.14
+	k8s.io/client-go v0.29.14
 	knative.dev/pkg v0.0.0-20240416145024-0f34a8815650
 )
 

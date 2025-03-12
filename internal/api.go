@@ -37,11 +37,14 @@ type UserContext struct {
 }
 
 type Config struct {
-	HarborRepository  string
-	HarborUsername    string
-	HarborPassword    string
-	Builder           string
-	Runner            string
+	HarborRepository string
+	HarborUsername   string
+	HarborPassword   string
+	Builder          string
+	Runner           string
+	// the Latest* fields are the ones used when useLatestBuilder is passed
+	LatestBuilder     string
+	LatestRunner      string
 	OkToKeep          int
 	FailedToKeep      int
 	BuildNamespace    string
@@ -127,6 +130,7 @@ func (api BuildsApi) Start(ctx echo.Context, toolnameFromRequest string) error {
 		safeDeref[string](buildParameters.ImageName),
 		toolnameFromContext,
 		safeDeref[map[string]string](buildParameters.Envvars),
+		safeDeref[bool](buildParameters.UseLatestVersions),
 	)
 	return ctx.JSON(code, response)
 }

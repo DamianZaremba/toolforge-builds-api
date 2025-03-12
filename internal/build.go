@@ -226,7 +226,7 @@ func getpipelineRunArrayParam(pipelineRun tektonPipelineV1.PipelineRun, name str
 	return nil
 }
 
-func getBuild(run tektonPipelineV1.PipelineRun) *gen.Build {
+func getBuild(run tektonPipelineV1.PipelineRun, latestBuilder string) *gen.Build {
 	var startTime string
 	var endTime string
 	buildCondition := getBuildConditionFromPipelineRun(&run)
@@ -250,6 +250,12 @@ func getBuild(run tektonPipelineV1.PipelineRun) *gen.Build {
 			envvars[parts[0]] = parts[1]
 		}
 	}
+	// We might want to start creating our own datastructure instead of
+	// using the tekton pipeline run as the storage for
+	// the build info, this is a not always correct way to get
+	// the useLatestVersions, but it's the best we can do for now
+	builder := getpipelineRunStringParam(run, "BUILDER_IMAGE")
+	useLatestVersions := builder == latestBuilder
 
 	return &gen.Build{
 		BuildId:   &run.Name,
@@ -258,9 +264,10 @@ func getBuild(run tektonPipelineV1.PipelineRun) *gen.Build {
 		Status:    buildCondition.Status,
 		Message:   buildCondition.Message,
 		Parameters: &gen.BuildParameters{
-			SourceUrl: sourceurl,
-			Ref:       &ref,
-			Envvars:   &envvars,
+			SourceUrl:         sourceurl,
+			Ref:               &ref,
+			Envvars:           &envvars,
+			UseLatestVersions: &useLatestVersions,
 		},
 		DestinationImage: &destinationimage,
 	}
@@ -759,6 +766,7 @@ func Start(
 	imageName string,
 	toolName string,
 	envvars map[string]string,
+	useLatestVersions bool,
 ) (int, interface{}) {
 	err := ValidateEnvvars(envvars)
 	if err != nil {
@@ -791,7 +799,16 @@ func Start(
 	for varname, value := range envvars {
 		envvarsArray = append(envvarsArray, fmt.Sprintf("%s=%s", varname, value))
 	}
-	log.Debugf("Starting a new build: ref=%s, imageName=%s, toolName=%s, harborRepository=%s, builder=%s, runner=%s", ref, imageName, toolName, api.Config.HarborRepository, api.Config.Builder, api.Config.Runner)
+	runner := api.Config.Runner
+	builder := api.Config.Builder
+	if useLatestVersions {
+		runner = api.Config.LatestRunner
+		builder = api.Config.LatestBuilder
+	}
+	log.Debugf(
+		"Starting a new build: ref=%s, imageName=%s, toolName=%s, harborRepository=%s, builder=%s, runner=%s, useLatestVersions=%v",
+		ref, imageName, toolName, api.Config.HarborRepository, api.Config.Builder, api.Config.Runner, useLatestVersions,
+	)
 	newRun := tektonPipelineV1.PipelineRun{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: fmt.Sprintf("%s%s", toolName, api.Config.BuildIdPrefix),
@@ -814,14 +831,14 @@ func Start(
 				{
 					Name: "BUILDER_IMAGE",
 					Value: tektonPipelineV1.ParamValue{
-						StringVal: api.Config.Builder,
+						StringVal: builder,
 						Type:      tektonPipelineV1.ParamTypeString,
 					},
 				},
 				{
 					Name: "RUN_IMAGE",
 					Value: tektonPipelineV1.ParamValue{
-						StringVal: api.Config.Runner,
+						StringVal: runner,
 						Type:      tektonPipelineV1.ParamTypeString,
 					},
 				},
@@ -895,9 +912,10 @@ func Start(
 	}
 
 	buildParams := gen.BuildParameters{
-		SourceUrl: sourceURL,
-		Ref:       &ref,
-		Envvars:   &envvars,
+		SourceUrl:         sourceURL,
+		Ref:               &ref,
+		Envvars:           &envvars,
+		UseLatestVersions: &useLatestVersions,
 	}
 	newBuild := gen.NewBuild{
 		Name:       &pipelineRun.Name,
@@ -970,7 +988,7 @@ func Get(
 	// NOTE: we assume here the first pipelineRun from the search is what we are looking for.
 	// In k8s/tekton two objects cannot share metadata.name in the same namespace anyway
 
-	build := getBuild(pipelineRuns[0])
+	build := getBuild(pipelineRuns[0], api.Config.LatestBuilder)
 	return http.StatusOK, gen.GetResponse{Build: build, Messages: &gen.ResponseMessages{}}
 }
 
@@ -988,7 +1006,7 @@ func List(
 
 	builds := make([]gen.Build, len(pipelineRuns))
 	for i, run := range pipelineRuns {
-		builds[i] = *getBuild(run)
+		builds[i] = *getBuild(run, api.Config.LatestBuilder)
 	}
 	return http.StatusOK, gen.ListResponse{Builds: &builds, Messages: &gen.ResponseMessages{}}
 }
@@ -1014,7 +1032,7 @@ func Latest(
 	}
 
 	// getPipelineRuns returns a sorted array per creationTimestamp
-	build := getBuild(pipelineRuns[0])
+	build := getBuild(pipelineRuns[0], api.Config.LatestBuilder)
 	return http.StatusOK, gen.LatestResponse{Build: build, Messages: &gen.ResponseMessages{}}
 }
 

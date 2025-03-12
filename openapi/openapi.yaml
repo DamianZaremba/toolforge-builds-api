@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Toolforge builds API
-  version: 2.1.0
+  version: 2.2.0
 servers:
   - url: "http://127.0.0.1:8000"
     description: "Local direct development server."
@@ -471,6 +471,12 @@ components:
         image_name:
           type: string
           description: The name of the image to be built
+        use_latest_versions:
+          type: boolean
+          default: false
+          description: <-
+            If set, it will use the latest available versions of the builder+runner images, recommended if you want
+            to be able to have some buffer before the old versions are removed
     BuildCondition:
       type: object
       properties:

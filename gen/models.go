@@ -60,6 +60,9 @@ type BuildParameters struct {
 	// SourceUrl URL to the public git repository that contains the source code
 	// to build
 	SourceUrl string `json:"source_url"`
+
+	// UseLatestVersions <- If set, it will use the latest available versions of the builder+runner images, recommended if you want to be able to have some buffer before the old versions are removed
+	UseLatestVersions *bool `json:"use_latest_versions,omitempty"`
 }
 
 // BuildStatus defines model for BuildStatus.

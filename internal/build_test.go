@@ -1210,6 +1210,7 @@ func TestStartReturnsInternalServerErrorOnException(t *testing.T) {
 		"dummy-image-name",
 		"dummy-tool",
 		nil,
+		false,
 	)
 
 	if code != 500 {
@@ -1245,6 +1246,7 @@ func TestStartReturnsInternalServerErrorIfCreateHarborProjectForToolReturnsError
 		"dummy-image-name",
 		"dummy-tool",
 		nil,
+		false,
 	)
 
 	if code != 503 {
@@ -1301,6 +1303,7 @@ func TestStartReturnsBadRequestErrorIfBadNamedEnvvarsPassed(t *testing.T) {
 		"dummy-image-name",
 		"dummy-tool",
 		envvars,
+		false,
 	)
 
 	if code != 400 {
@@ -1361,6 +1364,7 @@ func TestStartReturnsNewBuildName(t *testing.T) {
 		expectedImageName,
 		"dummy-tool",
 		expectedEnvvars,
+		false,
 	)
 
 	if code != 200 {
@@ -1387,6 +1391,72 @@ func TestStartReturnsNewBuildName(t *testing.T) {
 			t.Fatalf("Got an unexpected envvars for the new build, got '%v', expected '%v'", *gottenNewBuild.Parameters.Envvars, expectedEnvvars)
 		}
 	}
+
+	if *gottenNewBuild.Parameters.UseLatestVersions != false {
+		t.Fatalf("Got an unexpected use-latest-versions for the new build, got '%v', expected '%v'", *gottenNewBuild.Parameters.UseLatestVersions, false)
+	}
+}
+
+func TestStartUsesLatestBuilderAndRunnerVersionsIfPassed(t *testing.T) {
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer testServer.Close()
+	testConfig := &harbor.ClientSetConfig{
+		URL: testServer.URL,
+	}
+	testHarborClientSet, _ := harbor.NewClientSet(testConfig)
+
+	mockTekton := tektonFake.Clientset{}
+	name := "new-pipelinerun"
+	fakePipelineRun := tektonPipelineV1.PipelineRun{
+		ObjectMeta: v1.ObjectMeta{Name: name},
+	}
+	mockTekton.Fake.PrependReactor(
+		"create",
+		"pipelineruns",
+		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
+			return true, &fakePipelineRun, nil
+		},
+	)
+	api := BuildsApi{
+		Clients: Clients{
+			Tekton: &mockTekton,
+			Harbor: testHarborClientSet,
+		},
+		Config: Config{
+			HarborRepository:  testServer.URL,
+			Builder:           "dummy-builder",
+			Runner:            "dummy-runner",
+			LatestBuilder:     "latest-dummy-builder",
+			LatestRunner:      "latest-dummy-runner",
+			OkToKeep:          1,
+			FailedToKeep:      2,
+			BuildIdPrefix:     BuildIdPrefix,
+			BuildNamespace:    BuildNamespace,
+			MaxParallelBuilds: 1,
+		},
+	}
+
+	code, response := Start(
+		&api,
+		"dummy-source-url",
+		"dummy-ref",
+		"dummy-image-name",
+		"dummy-tool",
+		nil,
+		true,
+	)
+
+	if code != 200 {
+		t.Fatalf("I was expecting a 200 response, got: %d", code)
+	}
+
+	gottenNewBuild := response.(gen.StartResponse).NewBuild
+	if *gottenNewBuild.Parameters.UseLatestVersions != true {
+		t.Fatalf("Got an unexpected use-latest-versions for the new build, got '%v', expected '%v'", *gottenNewBuild.Parameters.UseLatestVersions, true)
+	}
+
 }
 
 func TestStartReturnsWarningMessageIfQuotaIsAbove90(t *testing.T) {
@@ -1452,6 +1522,7 @@ func TestStartReturnsWarningMessageIfQuotaIsAbove90(t *testing.T) {
 		expectedImageName,
 		"dummy-tool",
 		expectedEnvvars,
+		false,
 	)
 
 	if code != 200 {

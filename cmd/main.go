@@ -49,8 +49,10 @@ func main() {
 	viper.SetDefault("port", 8000)
 	viper.SetDefault("address", "127.0.0.1")
 	// note that the builder is the full ref for the image
-	viper.SetDefault("builder", "tools-harbor.wmcloud.org/toolforge/heroku-builder:22-cnb")
+	viper.SetDefault("builder", "tools-harbor.wmcloud.org/toolforge/heroku-builder:22")
 	viper.SetDefault("runner", "tools-harbor.wmcloud.org/toolforge/heroku-runner:22-cnb")
+	viper.SetDefault("latest_builder", "tools-harbor.wmcloud.org/toolforge/heroku-builder:24_0.20.7")
+	viper.SetDefault("latest_runner", "tools-harbor.wmcloud.org/toolforge/heroku-runner:24")
 	viper.SetDefault("ok_builds_to_keep", 1)
 	viper.SetDefault("failed_builds_to_keep", 2)
 	viper.SetDefault("build_namespace", internal.BuildNamespace)
@@ -87,6 +89,8 @@ func main() {
 		HarborPassword:    harborPassword,
 		Builder:           viper.GetString("builder"),
 		Runner:            viper.GetString("runner"),
+		LatestBuilder:     viper.GetString("latest_builder"),
+		LatestRunner:      viper.GetString("latest_runner"),
 		OkToKeep:          viper.GetInt("ok_builds_to_keep"),
 		FailedToKeep:      viper.GetInt("failed_builds_to_keep"),
 		BuildNamespace:    viper.GetString("build_namespace"),

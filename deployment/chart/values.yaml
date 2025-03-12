@@ -43,3 +43,5 @@ config:
   maxParallelBuilds: 4
   builder: toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder:22
   runner: toolsbeta-harbor.wmcloud.org/toolforge/heroku-runner:22-cnb
+  latestBuilder: toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder:22
+  latestRunner: toolsbeta-harbor.wmcloud.org/toolforge/heroku-runner:22-cnb

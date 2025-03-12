@@ -41,3 +41,5 @@ config:
   okBuildsToKeep: 1
   failedBuildsToKeep: 2
   maxParallelBuilds: 4
+  builder: toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder:22
+  runner: toolsbeta-harbor.wmcloud.org/toolforge/heroku-runner:22-cnb

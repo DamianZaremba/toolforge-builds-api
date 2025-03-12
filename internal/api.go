@@ -41,6 +41,7 @@ type Config struct {
 	HarborUsername    string
 	HarborPassword    string
 	Builder           string
+	Runner            string
 	OkToKeep          int
 	FailedToKeep      int
 	BuildNamespace    string

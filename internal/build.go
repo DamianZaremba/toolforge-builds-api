@@ -791,7 +791,7 @@ func Start(
 	for varname, value := range envvars {
 		envvarsArray = append(envvarsArray, fmt.Sprintf("%s=%s", varname, value))
 	}
-	log.Debugf("Starting a new build: ref=%s, imageName=%s, toolName=%s, harborRepository=%s, builder=%s", ref, imageName, toolName, api.Config.HarborRepository, api.Config.Builder)
+	log.Debugf("Starting a new build: ref=%s, imageName=%s, toolName=%s, harborRepository=%s, builder=%s, runner=%s", ref, imageName, toolName, api.Config.HarborRepository, api.Config.Builder, api.Config.Runner)
 	newRun := tektonPipelineV1.PipelineRun{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: fmt.Sprintf("%s%s", toolName, api.Config.BuildIdPrefix),
@@ -815,6 +815,13 @@ func Start(
 					Name: "BUILDER_IMAGE",
 					Value: tektonPipelineV1.ParamValue{
 						StringVal: api.Config.Builder,
+						Type:      tektonPipelineV1.ParamTypeString,
+					},
+				},
+				{
+					Name: "RUN_IMAGE",
+					Value: tektonPipelineV1.ParamValue{
+						StringVal: api.Config.Runner,
 						Type:      tektonPipelineV1.ParamTypeString,
 					},
 				},

@@ -1194,6 +1194,7 @@ func TestStartReturnsInternalServerErrorOnException(t *testing.T) {
 		Config: Config{
 			HarborRepository:  testServer.URL,
 			Builder:           "dummy-builder",
+			Runner:            "dummy-runner",
 			OkToKeep:          1,
 			FailedToKeep:      2,
 			BuildIdPrefix:     BuildIdPrefix,
@@ -1281,6 +1282,7 @@ func TestStartReturnsBadRequestErrorIfBadNamedEnvvarsPassed(t *testing.T) {
 		Config: Config{
 			HarborRepository:  testServer.URL,
 			Builder:           "dummy-builder",
+			Runner:            "dummy-runner",
 			OkToKeep:          1,
 			FailedToKeep:      2,
 			BuildIdPrefix:     BuildIdPrefix,
@@ -1343,6 +1345,7 @@ func TestStartReturnsNewBuildName(t *testing.T) {
 		Config: Config{
 			HarborRepository:  testServer.URL,
 			Builder:           "dummy-builder",
+			Runner:            "dummy-runner",
 			OkToKeep:          1,
 			FailedToKeep:      2,
 			BuildIdPrefix:     BuildIdPrefix,
@@ -1433,6 +1436,7 @@ func TestStartReturnsWarningMessageIfQuotaIsAbove90(t *testing.T) {
 		Config: Config{
 			HarborRepository:  testServer.URL,
 			Builder:           "dummy-builder",
+			Runner:            "dummy-runner",
 			OkToKeep:          1,
 			FailedToKeep:      2,
 			BuildIdPrefix:     BuildIdPrefix,
@@ -1621,7 +1625,8 @@ func TestListReturnsBuilds(t *testing.T) {
 					ObjectMeta: v1.ObjectMeta{Name: expectedBuildId, Namespace: BuildNamespace, Labels: map[string]string{"user": toolName}},
 					Spec: tektonPipelineV1.PipelineRunSpec{
 						Params: []tektonPipelineV1.Param{
-							{Name: "BUILDER_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder:22"}},
+							{Name: "BUILDER_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder:22-cnb"}},
+							{Name: "RUN_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-runner:22-cnb"}},
 							{Name: "APP_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "192.168.188.129/tool-minikube-user/tool-raymond:latest"}},
 							{Name: "SOURCE_URL", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "https://github.com/david-caro/wm-lol"}},
 							{Name: "SOURCE_REFERENCE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "value4"}},
@@ -1675,10 +1680,14 @@ func TestGetPipelineRunParam(t *testing.T) {
 		value string
 	}
 
-	data := [4]param{
+	data := [5]param{
 		{
 			name:  "BUILDER_IMAGE",
-			value: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder:22",
+			value: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder:22-cnb",
+		},
+		{
+			name:  "RUN_IMAGE",
+			value: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-runner:22-cnb",
 		},
 		{
 			name:  "APP_IMAGE",
@@ -1702,6 +1711,7 @@ func TestGetPipelineRunParam(t *testing.T) {
 				{Name: data[1].name, Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: data[1].value}},
 				{Name: data[2].name, Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: data[2].value}},
 				{Name: data[3].name, Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: data[3].value}},
+				{Name: data[4].name, Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: data[4].value}},
 			},
 		},
 		Status: tektonPipelineV1.PipelineRunStatus{
@@ -1739,7 +1749,8 @@ func TestGetReturnsBuildsOk(t *testing.T) {
 					ObjectMeta: v1.ObjectMeta{Name: buildId, Namespace: BuildNamespace, Labels: map[string]string{"user": toolName}},
 					Spec: tektonPipelineV1.PipelineRunSpec{
 						Params: []tektonPipelineV1.Param{
-							{Name: "BUILDER_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder:22"}},
+							{Name: "BUILDER_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder:22-cnb"}},
+							{Name: "RUN_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-runner:22-cnb"}},
 							{Name: "APP_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "192.168.188.129/tool-minikube-user/tool-raymond:latest"}},
 							{Name: "SOURCE_URL", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "https://github.com/david-caro/wm-lol"}},
 							{Name: "SOURCE_REFERENCE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "value4"}},
@@ -2087,7 +2098,7 @@ func TestCancelReturnsCancelledBuild(t *testing.T) {
 					ObjectMeta: v1.ObjectMeta{Name: buildId, Namespace: BuildNamespace, Labels: map[string]string{"user": toolName}},
 					Spec: tektonPipelineV1.PipelineRunSpec{
 						Params: []tektonPipelineV1.Param{
-							{Name: "BUILDER_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder:22"}},
+							{Name: "RUN_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-runner:22-cnb"}},
 							{Name: "APP_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "192.168.188.129/tool-minikube-user/tool-raymond:latest"}},
 							{Name: "SOURCE_URL", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "https://github.com/david-caro/wm-lol"}},
 							{Name: "SOURCE_REFERENCE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "value4"}},
@@ -2137,7 +2148,7 @@ func TestLatestReturnsBuildsOk(t *testing.T) {
 					ObjectMeta: v1.ObjectMeta{Name: fmt.Sprintf("%s-2022", baseBuildId), Namespace: BuildNamespace, Labels: map[string]string{"user": toolName}},
 					Spec: tektonPipelineV1.PipelineRunSpec{
 						Params: []tektonPipelineV1.Param{
-							{Name: "BUILDER_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder:22"}},
+							{Name: "RUN_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-runner:22-cnb"}},
 							{Name: "APP_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "192.168.188.129/tool-minikube-user/tool-raymond:latest"}},
 							{Name: "SOURCE_URL", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "https://github.com/david-caro/wm-lol"}},
 							{Name: "SOURCE_REFERENCE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "value4"}},
@@ -2155,7 +2166,7 @@ func TestLatestReturnsBuildsOk(t *testing.T) {
 					ObjectMeta: v1.ObjectMeta{Name: latestBuildId, Namespace: BuildNamespace, Labels: map[string]string{"user": toolName}},
 					Spec: tektonPipelineV1.PipelineRunSpec{
 						Params: []tektonPipelineV1.Param{
-							{Name: "BUILDER_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder:22"}},
+							{Name: "RUN_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-runner:22-cnb"}},
 							{Name: "APP_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "192.168.188.129/tool-minikube-user/tool-raymond:latest"}},
 							{Name: "SOURCE_URL", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "https://github.com/david-caro/wm-lol"}},
 							{Name: "SOURCE_REFERENCE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "value4"}},
@@ -2173,7 +2184,7 @@ func TestLatestReturnsBuildsOk(t *testing.T) {
 					ObjectMeta: v1.ObjectMeta{Name: fmt.Sprintf("%s-2021", baseBuildId), Namespace: BuildNamespace, Labels: map[string]string{"user": toolName}},
 					Spec: tektonPipelineV1.PipelineRunSpec{
 						Params: []tektonPipelineV1.Param{
-							{Name: "BUILDER_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder:22"}},
+							{Name: "RUN_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-runner:22-cnb"}},
 							{Name: "APP_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "192.168.188.129/tool-minikube-user/tool-raymond:latest"}},
 							{Name: "SOURCE_URL", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "https://github.com/david-caro/wm-lol"}},
 							{Name: "SOURCE_REFERENCE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "value4"}},

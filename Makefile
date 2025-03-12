@@ -52,7 +52,7 @@ else
 	KEEP_ID=
 endif
 
-.PHONY: help run image gen-api build-api rollout build-and-deploy-local check_requirements unit-tests static-tests test
+.PHONY: help run image gen-api build-api rollout build-and-deploy-local check_genapi_requirements check_build_requirements unit-tests static-tests test
 
 help:
 	@echo "Make targets:"
@@ -60,7 +60,9 @@ help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
 		awk 'BEGIN {FS = ":.*?## "}; {printf "%-20s\t%s\n", $$1, $$2}'
 
-check_requirements: ## Check if required tools are installed
+
+
+check_genapi_requirements: ## Check if required tools are installed
 ifdef PODMAN
 	@echo "Using podman ($(PODMAN)) to build the images"
 else
@@ -71,6 +73,13 @@ else
 	exit 1
 endif
 endif
+ifndef OAPI
+	@echo "You need oapi-codegen installed. Run 'make install-oapi-codegen' to install it"
+	exit 1
+endif
+
+
+check_build_requirements: ## Check if required tools are installed
 ifdef MINIKUBE
 	@echo "Using minikube ($(MINIKUBE)) to run the application"
 else
@@ -81,15 +90,11 @@ else
 	exit 1
 endif
 endif
-ifndef OAPI
-	@echo "You need oapi-codegen installed. Run 'make install-oapi-codegen' to install it"
-	exit 1
-endif
 
 install-oapi-codegen: ## Install oapi-codegen
 	go install github.com/deepmap/oapi-codegen/v2/cmd/oapi-codegen@$(OAPI_CODEGEN_VERSION)
 
-gen-api: check_requirements ## Generate API code from OpenAPI specification
+gen-api: check_genapi_requirements ## Generate API code from OpenAPI specification
 	@if [ "$$(oapi-codegen -version 2>/dev/null | grep $(OAPI_CODEGEN_VERSION))" = "" ]; then \
 		echo "Warning: Your oapi-codegen version does not match $(OAPI_CODEGEN_VERSION). Please run 'make install-oapi-codegen'"; \
 		exit 1; \
@@ -101,7 +106,7 @@ gen-api: check_requirements ## Generate API code from OpenAPI specification
 build-api: ## Build the API
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -buildvcs=false -a -installsuffix cgo -ldflags="-w -s" -o $(PROJECT_SLUG)-api ./cmd/main.go
 
-image: check_requirements ## Build the Docker image
+image: check_build_requirements ## Build the Docker image
 ifdef MINIKUBE
 ifdef PODMAN
 	# minikube + podman
@@ -124,7 +129,7 @@ endif
 	kind load docker-image $(IMAGE_NAME) --name toolforge
 endif
 
-rollout: check_requirements ## Rollout updates to the deployment
+rollout: check_build_requirements ## Rollout updates to the deployment
 	bash -c "if kubectl get namespace $(PROJECT_SLUG)-api >/dev/null 2>&1; then kubectl rollout restart -n $(PROJECT_SLUG)-api deployment $(PROJECT_SLUG)-api; else :; fi"
 
 build-and-deploy-local: image ## Build and deploy locally

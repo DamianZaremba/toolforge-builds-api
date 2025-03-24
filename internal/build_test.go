@@ -358,10 +358,11 @@ func TestCleanupOldPipelineRuns(t *testing.T) {
 			Tekton: mockTekton,
 		},
 		Config: Config{
-			OkToKeep:       1,
-			FailedToKeep:   2,
-			BuildIdPrefix:  BuildIdPrefix,
-			BuildNamespace: BuildNamespace,
+			OkToKeep:          1,
+			FailedToKeep:      2,
+			BuildIdPrefix:     BuildIdPrefix,
+			BuildNamespace:    BuildNamespace,
+			MaxParallelBuilds: 1,
 		},
 	}
 
@@ -698,7 +699,7 @@ func TestStreamAfterPipelineRunStartedReturnsErrorIfNotHandledError(t *testing.T
 	mockK8s := k8sFake.NewSimpleClientset()
 	// set unhandled error
 	mockK8s.PrependReactor("get", "pods", func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
-		return true, nil, fmt.Errorf(unhandledError)
+		return true, nil, fmt.Errorf("%s", unhandledError)
 	})
 
 	api := BuildsApi{Clients: Clients{Tekton: mockTekton, K8s: mockK8s}}
@@ -845,8 +846,9 @@ func TestStreamAfterPipelineRunStartedWaitsForTimeDelay(t *testing.T) {
 			K8s:    mockK8s,
 		},
 		Config: Config{
-			BuildIdPrefix:  BuildIdPrefix,
-			BuildNamespace: BuildNamespace,
+			BuildIdPrefix:     BuildIdPrefix,
+			BuildNamespace:    BuildNamespace,
+			MaxParallelBuilds: 1,
 		},
 	}
 
@@ -892,8 +894,9 @@ func TestLogsReturnsNotFoundIfNoBuildsThere(t *testing.T) {
 			Tekton: mockTekton,
 		},
 		Config: Config{
-			BuildIdPrefix:  BuildIdPrefix,
-			BuildNamespace: BuildNamespace,
+			BuildIdPrefix:     BuildIdPrefix,
+			BuildNamespace:    BuildNamespace,
+			MaxParallelBuilds: 1,
 		},
 	}
 
@@ -922,8 +925,9 @@ func TestLogsReturnsNotFoundIfApiReturnsError(t *testing.T) {
 			Tekton: &mockTekton,
 		},
 		Config: Config{
-			BuildIdPrefix:  BuildIdPrefix,
-			BuildNamespace: BuildNamespace,
+			BuildIdPrefix:     BuildIdPrefix,
+			BuildNamespace:    BuildNamespace,
+			MaxParallelBuilds: 1,
 		},
 	}
 
@@ -955,8 +959,9 @@ func TestLogsReturnsNotFoundIfApiReturnsMoreThanOneRun(t *testing.T) {
 			Tekton: mockTekton,
 		},
 		Config: Config{
-			BuildIdPrefix:  BuildIdPrefix,
-			BuildNamespace: BuildNamespace,
+			BuildIdPrefix:     BuildIdPrefix,
+			BuildNamespace:    BuildNamespace,
+			MaxParallelBuilds: 1,
 		},
 	}
 
@@ -998,8 +1003,9 @@ func TestLogsXAccelBufferHeaderValue(t *testing.T) {
 					K8s:    mockK8s,
 				},
 				Config: Config{
-					BuildIdPrefix:  BuildIdPrefix,
-					BuildNamespace: BuildNamespace,
+					BuildIdPrefix:     BuildIdPrefix,
+					BuildNamespace:    BuildNamespace,
+					MaxParallelBuilds: 1,
 				},
 			}
 			_ = api.Logs(ctx, ctx.User, buildName, params)
@@ -1102,8 +1108,9 @@ func TestLogsReturnsAllLogsConcatenated(t *testing.T) {
 			K8s:    &mockK8s,
 		},
 		Config: Config{
-			BuildIdPrefix:  BuildIdPrefix,
-			BuildNamespace: BuildNamespace,
+			BuildIdPrefix:     BuildIdPrefix,
+			BuildNamespace:    BuildNamespace,
+			MaxParallelBuilds: 1,
 		},
 	}
 
@@ -1159,7 +1166,19 @@ func TestStartReturnsInternalServerErrorOnException(t *testing.T) {
 	}
 	testHarborClientSet, _ := harbor.NewClientSet(testConfig)
 
+	fakeEmptyPipelineRuns := tektonPipelineV1.PipelineRunList{
+		Items:    []tektonPipelineV1.PipelineRun{},
+		TypeMeta: v1.TypeMeta{},
+		ListMeta: v1.ListMeta{},
+	}
 	mockTekton := tektonFake.Clientset{}
+	mockTekton.Fake.PrependReactor(
+		"list",
+		"pipelineruns",
+		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
+			return true, &fakeEmptyPipelineRuns, nil
+		},
+	)
 	mockTekton.Fake.PrependReactor(
 		"create",
 		"pipelineruns",
@@ -1173,12 +1192,13 @@ func TestStartReturnsInternalServerErrorOnException(t *testing.T) {
 			Harbor: testHarborClientSet,
 		},
 		Config: Config{
-			HarborRepository: testServer.URL,
-			Builder:          "dummy-builder",
-			OkToKeep:         1,
-			FailedToKeep:     2,
-			BuildIdPrefix:    BuildIdPrefix,
-			BuildNamespace:   BuildNamespace,
+			HarborRepository:  testServer.URL,
+			Builder:           "dummy-builder",
+			OkToKeep:          1,
+			FailedToKeep:      2,
+			BuildIdPrefix:     BuildIdPrefix,
+			BuildNamespace:    BuildNamespace,
+			MaxParallelBuilds: 1,
 		},
 	}
 
@@ -1212,7 +1232,8 @@ func TestStartReturnsInternalServerErrorIfCreateHarborProjectForToolReturnsError
 			Harbor: testHarborClientSet,
 		},
 		Config: Config{
-			HarborRepository: testServer.URL,
+			HarborRepository:  testServer.URL,
+			MaxParallelBuilds: 1,
 		},
 	}
 
@@ -1258,12 +1279,13 @@ func TestStartReturnsBadRequestErrorIfBadNamedEnvvarsPassed(t *testing.T) {
 			Harbor: testHarborClientSet,
 		},
 		Config: Config{
-			HarborRepository: testServer.URL,
-			Builder:          "dummy-builder",
-			OkToKeep:         1,
-			FailedToKeep:     2,
-			BuildIdPrefix:    BuildIdPrefix,
-			BuildNamespace:   BuildNamespace,
+			HarborRepository:  testServer.URL,
+			Builder:           "dummy-builder",
+			OkToKeep:          1,
+			FailedToKeep:      2,
+			BuildIdPrefix:     BuildIdPrefix,
+			BuildNamespace:    BuildNamespace,
+			MaxParallelBuilds: 1,
 		},
 	}
 	envvars := map[string]string{
@@ -1319,12 +1341,13 @@ func TestStartReturnsNewBuildName(t *testing.T) {
 			Harbor: testHarborClientSet,
 		},
 		Config: Config{
-			HarborRepository: testServer.URL,
-			Builder:          "dummy-builder",
-			OkToKeep:         1,
-			FailedToKeep:     2,
-			BuildIdPrefix:    BuildIdPrefix,
-			BuildNamespace:   BuildNamespace,
+			HarborRepository:  testServer.URL,
+			Builder:           "dummy-builder",
+			OkToKeep:          1,
+			FailedToKeep:      2,
+			BuildIdPrefix:     BuildIdPrefix,
+			BuildNamespace:    BuildNamespace,
+			MaxParallelBuilds: 1,
 		},
 	}
 
@@ -1408,12 +1431,13 @@ func TestStartReturnsWarningMessageIfQuotaIsAbove90(t *testing.T) {
 			Harbor: testHarborClientSet,
 		},
 		Config: Config{
-			HarborRepository: testServer.URL,
-			Builder:          "dummy-builder",
-			OkToKeep:         1,
-			FailedToKeep:     2,
-			BuildIdPrefix:    BuildIdPrefix,
-			BuildNamespace:   BuildNamespace,
+			HarborRepository:  testServer.URL,
+			Builder:           "dummy-builder",
+			OkToKeep:          1,
+			FailedToKeep:      2,
+			BuildIdPrefix:     BuildIdPrefix,
+			BuildNamespace:    BuildNamespace,
+			MaxParallelBuilds: 1,
 		},
 	}
 
@@ -1440,8 +1464,9 @@ func TestDeleteReturnsErrorIfNotAllowed(t *testing.T) {
 	api := BuildsApi{
 		Clients: Clients{},
 		Config: Config{
-			BuildIdPrefix:  BuildIdPrefix,
-			BuildNamespace: BuildNamespace,
+			BuildIdPrefix:     BuildIdPrefix,
+			BuildNamespace:    BuildNamespace,
+			MaxParallelBuilds: 1,
 		},
 	}
 
@@ -1468,8 +1493,9 @@ func TestDeleteReturnsNotFoundIfNoBuildsThere(t *testing.T) {
 			Tekton: mockTekton,
 		},
 		Config: Config{
-			BuildIdPrefix:  BuildIdPrefix,
-			BuildNamespace: BuildNamespace,
+			BuildIdPrefix:     BuildIdPrefix,
+			BuildNamespace:    BuildNamespace,
+			MaxParallelBuilds: 1,
 		},
 	}
 
@@ -1499,8 +1525,9 @@ func TestDeleteReturnsInternalServerErrorOnException(t *testing.T) {
 			Tekton: &mockTekton,
 		},
 		Config: Config{
-			BuildIdPrefix:  BuildIdPrefix,
-			BuildNamespace: BuildNamespace,
+			BuildIdPrefix:     BuildIdPrefix,
+			BuildNamespace:    BuildNamespace,
+			MaxParallelBuilds: 1,
 		},
 	}
 
@@ -1530,8 +1557,9 @@ func TestDeleteReturnsDeletedBuildName(t *testing.T) {
 			Tekton: &mockTekton,
 		},
 		Config: Config{
-			BuildIdPrefix:  BuildIdPrefix,
-			BuildNamespace: BuildNamespace,
+			BuildIdPrefix:     BuildIdPrefix,
+			BuildNamespace:    BuildNamespace,
+			MaxParallelBuilds: 1,
 		},
 	}
 
@@ -1567,8 +1595,9 @@ func TestListReturnsInternalServerErrorOnException(t *testing.T) {
 			Tekton: &mockTekton,
 		},
 		Config: Config{
-			BuildIdPrefix:  BuildIdPrefix,
-			BuildNamespace: BuildNamespace,
+			BuildIdPrefix:     BuildIdPrefix,
+			BuildNamespace:    BuildNamespace,
+			MaxParallelBuilds: 1,
 		},
 	}
 
@@ -1614,8 +1643,9 @@ func TestListReturnsBuilds(t *testing.T) {
 			Tekton: mockTekton,
 		},
 		Config: Config{
-			BuildIdPrefix:  BuildIdPrefix,
-			BuildNamespace: BuildNamespace,
+			BuildIdPrefix:     BuildIdPrefix,
+			BuildNamespace:    BuildNamespace,
+			MaxParallelBuilds: 1,
 		},
 	}
 
@@ -1731,8 +1761,9 @@ func TestGetReturnsBuildsOk(t *testing.T) {
 			Tekton: mockTekton,
 		},
 		Config: Config{
-			BuildIdPrefix:  BuildIdPrefix,
-			BuildNamespace: BuildNamespace,
+			BuildIdPrefix:     BuildIdPrefix,
+			BuildNamespace:    BuildNamespace,
+			MaxParallelBuilds: 1,
 		},
 	}
 
@@ -1763,8 +1794,9 @@ func TestGetReturnsBuildsNotAuth(t *testing.T) {
 			Tekton: mockTekton,
 		},
 		Config: Config{
-			BuildIdPrefix:  BuildIdPrefix,
-			BuildNamespace: BuildNamespace,
+			BuildIdPrefix:     BuildIdPrefix,
+			BuildNamespace:    BuildNamespace,
+			MaxParallelBuilds: 1,
 		},
 	}
 
@@ -1796,8 +1828,9 @@ func TestGetReturnsBuildsNotFound(t *testing.T) {
 			Tekton: mockTekton,
 		},
 		Config: Config{
-			BuildIdPrefix:  BuildIdPrefix,
-			BuildNamespace: BuildNamespace,
+			BuildIdPrefix:     BuildIdPrefix,
+			BuildNamespace:    BuildNamespace,
+			MaxParallelBuilds: 1,
 		},
 	}
 
@@ -1833,8 +1866,9 @@ func TestGetReturnsAPIError(t *testing.T) {
 			Tekton: &mockTekton,
 		},
 		Config: Config{
-			BuildIdPrefix:  BuildIdPrefix,
-			BuildNamespace: BuildNamespace,
+			BuildIdPrefix:     BuildIdPrefix,
+			BuildNamespace:    BuildNamespace,
+			MaxParallelBuilds: 1,
 		},
 	}
 
@@ -1861,8 +1895,9 @@ func TestCancelReturnsErrorIfNotAllowed(t *testing.T) {
 	api := BuildsApi{
 		Clients: Clients{},
 		Config: Config{
-			BuildIdPrefix:  BuildIdPrefix,
-			BuildNamespace: BuildNamespace,
+			BuildIdPrefix:     BuildIdPrefix,
+			BuildNamespace:    BuildNamespace,
+			MaxParallelBuilds: 1,
 		},
 	}
 
@@ -1890,8 +1925,9 @@ func TestCancelReturnsNotFoundIfNoBuildsThere(t *testing.T) {
 			Tekton: mockTekton,
 		},
 		Config: Config{
-			BuildIdPrefix:  BuildIdPrefix,
-			BuildNamespace: BuildNamespace,
+			BuildIdPrefix:     BuildIdPrefix,
+			BuildNamespace:    BuildNamespace,
+			MaxParallelBuilds: 1,
 		},
 	}
 	code, _ := Cancel(
@@ -1925,8 +1961,9 @@ func TestCancelReturnsInternalServerErrorOnException(t *testing.T) {
 			Tekton: &mockTekton,
 		},
 		Config: Config{
-			BuildIdPrefix:  BuildIdPrefix,
-			BuildNamespace: BuildNamespace,
+			BuildIdPrefix:     BuildIdPrefix,
+			BuildNamespace:    BuildNamespace,
+			MaxParallelBuilds: 1,
 		},
 	}
 	code, _ := Cancel(&api, buildId, toolName)
@@ -2026,10 +2063,11 @@ func TestCancelReturnsConflictIfBuildIsNotCancellable(t *testing.T) {
 				Tekton: &mockTekton,
 			},
 			Config: Config{
-				OkToKeep:       1,
-				FailedToKeep:   2,
-				BuildIdPrefix:  BuildIdPrefix,
-				BuildNamespace: BuildNamespace,
+				OkToKeep:          1,
+				FailedToKeep:      2,
+				BuildIdPrefix:     BuildIdPrefix,
+				BuildNamespace:    BuildNamespace,
+				MaxParallelBuilds: 1,
 			},
 		}
 		code, _ := Cancel(&api, pipelineRun.Name, toolName)
@@ -2071,8 +2109,9 @@ func TestCancelReturnsCancelledBuild(t *testing.T) {
 			Tekton: mockTekton,
 		},
 		Config: Config{
-			BuildIdPrefix:  BuildIdPrefix,
-			BuildNamespace: BuildNamespace,
+			BuildIdPrefix:     BuildIdPrefix,
+			BuildNamespace:    BuildNamespace,
+			MaxParallelBuilds: 1,
 		},
 	}
 
@@ -2156,8 +2195,9 @@ func TestLatestReturnsBuildsOk(t *testing.T) {
 			Tekton: mockTekton,
 		},
 		Config: Config{
-			BuildIdPrefix:  BuildIdPrefix,
-			BuildNamespace: BuildNamespace,
+			BuildIdPrefix:     BuildIdPrefix,
+			BuildNamespace:    BuildNamespace,
+			MaxParallelBuilds: 1,
 		},
 	}
 
@@ -2190,8 +2230,9 @@ func TestLatestReturnsAPIError(t *testing.T) {
 			Tekton: &mockTekton,
 		},
 		Config: Config{
-			BuildIdPrefix:  BuildIdPrefix,
-			BuildNamespace: BuildNamespace,
+			BuildIdPrefix:     BuildIdPrefix,
+			BuildNamespace:    BuildNamespace,
+			MaxParallelBuilds: 1,
 		},
 	}
 
@@ -2221,8 +2262,9 @@ func TestLatestReturnsBuildsNotFound(t *testing.T) {
 			Tekton: mockTekton,
 		},
 		Config: Config{
-			BuildIdPrefix:  BuildIdPrefix,
-			BuildNamespace: BuildNamespace,
+			BuildIdPrefix:     BuildIdPrefix,
+			BuildNamespace:    BuildNamespace,
+			MaxParallelBuilds: 1,
 		},
 	}
 

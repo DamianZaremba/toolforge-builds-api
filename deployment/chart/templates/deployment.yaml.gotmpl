@@ -43,6 +43,8 @@ spec:
               value: "{{ .Values.config.okBuildsToKeep }}"
             - name: "FAILED_BUILDS_TO_KEEP"
               value: "{{ .Values.config.failedBuildsToKeep }}"
+            - name: "MAX_PARALLEL_BUILDS"
+              value: "{{ .Values.config.maxParallelBuilds }}"
           envFrom:
             - secretRef:
                 name: "{{ .Values.api.passwordSecretName }}"

@@ -40,3 +40,4 @@ config:
   harborPassword: "PLACEHOLDER"
   okBuildsToKeep: 1
   failedBuildsToKeep: 2
+  maxParallelBuilds: 4

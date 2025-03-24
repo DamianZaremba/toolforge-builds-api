@@ -81,14 +81,15 @@ func main() {
 	outOfK8sRun := viper.GetBool("out_of_k8s_run")
 
 	internalConfig := &internal.Config{
-		HarborRepository: harborRepository,
-		HarborUsername:   harborUsername,
-		HarborPassword:   harborPassword,
-		Builder:          viper.GetString("builder"),
-		OkToKeep:         viper.GetInt("ok_builds_to_keep"),
-		FailedToKeep:     viper.GetInt("failed_builds_to_keep"),
-		BuildNamespace:   viper.GetString("build_namespace"),
-		BuildIdPrefix:    viper.GetString("build_id_prefix"),
+		HarborRepository:  harborRepository,
+		HarborUsername:    harborUsername,
+		HarborPassword:    harborPassword,
+		Builder:           viper.GetString("builder"),
+		OkToKeep:          viper.GetInt("ok_builds_to_keep"),
+		FailedToKeep:      viper.GetInt("failed_builds_to_keep"),
+		BuildNamespace:    viper.GetString("build_namespace"),
+		BuildIdPrefix:     viper.GetString("build_id_prefix"),
+		MaxParallelBuilds: viper.GetInt("max_parallel_builds"),
 	}
 
 	clients, err := getApiClients(outOfK8sRun, kubeconfig, internalConfig)

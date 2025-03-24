@@ -37,14 +37,15 @@ type UserContext struct {
 }
 
 type Config struct {
-	HarborRepository string
-	HarborUsername   string
-	HarborPassword   string
-	Builder          string
-	OkToKeep         int
-	FailedToKeep     int
-	BuildNamespace   string
-	BuildIdPrefix    string
+	HarborRepository  string
+	HarborUsername    string
+	HarborPassword    string
+	Builder           string
+	OkToKeep          int
+	FailedToKeep      int
+	BuildNamespace    string
+	BuildIdPrefix     string
+	MaxParallelBuilds int
 }
 
 type Clients struct {

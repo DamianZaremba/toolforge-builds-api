@@ -736,6 +736,30 @@ func ValidateEnvvars(envvars map[string]string) error {
 	return nil
 }
 
+func checkParallelBuilds(api *BuildsApi, toolName string) error {
+	pipelineRuns, err := getPipelineRuns(&api.Clients, api.Config.BuildNamespace, metav1.ListOptions{LabelSelector: fmt.Sprintf("user=%s", toolName)})
+	if err != nil {
+		message := fmt.Sprintf("Got error when listing %s's pipelineruns on namespace %s: %s", toolName, api.Config.BuildNamespace, err)
+		return fmt.Errorf("%s", message)
+	}
+	log.Debugf("Found %d pipelineruns for %s", len(pipelineRuns), toolName)
+	parallelBuildsCount := 0
+	for _, pipelineRun := range pipelineRuns {
+		if pipelineRun.Status.CompletionTime == nil {
+			parallelBuildsCount += 1
+		}
+	}
+
+	if parallelBuildsCount >= api.Config.MaxParallelBuilds {
+		message := fmt.Sprintf("Got too many builds running (%d out of %d max), cancel some or wait for them to finish", parallelBuildsCount, api.Config.MaxParallelBuilds)
+		log.Debug(message)
+		return fmt.Errorf("%s", message)
+	}
+
+	log.Debugf("Have not reached the max parallel build limit (%d out of %d max)", parallelBuildsCount, api.Config.MaxParallelBuilds)
+	return nil
+}
+
 // Handler functions
 func Start(
 	api *BuildsApi,
@@ -760,10 +784,18 @@ func Start(
 	for _, err := range cleanup_err {
 		log.Warnf("Got error when cleaning up old pipeline runs: %s", err)
 	}
+
+	err = checkParallelBuilds(api, toolName)
+	if err != nil {
+		message := fmt.Sprintf("%s", err)
+		return http.StatusConflict, gen.ResponseMessages{Error: &[]string{message}}
+	}
+
 	imageNameToUse := imageName
 	if imageNameToUse == "" {
 		imageNameToUse = fmt.Sprintf("tool-%s", toolName)
 	}
+
 	envvarsArray := make([]string, 0, len(envvars))
 	for varname, value := range envvars {
 		envvarsArray = append(envvarsArray, fmt.Sprintf("%s=%s", varname, value))

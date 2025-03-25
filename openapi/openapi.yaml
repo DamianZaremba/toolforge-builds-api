@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Toolforge builds API
-  version: 2.0.0
+  version: 2.1.0
 servers:
   - url: "http://127.0.0.1:8000"
     description: "Local direct development server."
@@ -481,6 +481,7 @@ components:
     BuildStatus:
       type: string
       enum:
+        - BUILD_PENDING
         - BUILD_RUNNING
         - BUILD_SUCCESS
         - BUILD_FAILURE

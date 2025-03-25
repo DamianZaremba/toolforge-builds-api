@@ -24,6 +24,7 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -156,8 +157,11 @@ func getPipelineRuns(clients *Clients, namespace string, listoptions metav1.List
 }
 
 func getBuildConditionFromPipelineRun(run *tektonPipelineV1.PipelineRun) gen.BuildCondition {
-	status := gen.BUILDUNKNOWN
-	message := fmt.Sprintf("build status is unknown. Check the logs with `toolforge build logs %s`", run.Name)
+	status := gen.BUILDPENDING
+	message := fmt.Sprintf(
+		"build status is pending and it might not have started running yet. Check the logs with `toolforge build logs %s`",
+		run.Name,
+	)
 	buildCondition := &gen.BuildCondition{
 		Status:  &status,
 		Message: &message,
@@ -167,6 +171,9 @@ func getBuildConditionFromPipelineRun(run *tektonPipelineV1.PipelineRun) gen.Bui
 		return *buildCondition
 	}
 
+	// default to unknown
+	status = gen.BUILDUNKNOWN
+	message = fmt.Sprintf("build status is unknown. Check the logs with `toolforge build logs %s`", run.Name)
 	for _, condition := range run.Status.Conditions {
 		message = condition.Message
 
@@ -259,25 +266,31 @@ func getBuild(run tektonPipelineV1.PipelineRun) *gen.Build {
 	}
 }
 
-func filterPipelineRunsByStatus(pipelineRuns []tektonPipelineV1.PipelineRun, filter gen.BuildStatus) []tektonPipelineV1.PipelineRun {
+func filterPipelineRunsByStatus(pipelineRuns []tektonPipelineV1.PipelineRun, filter []gen.BuildStatus) []tektonPipelineV1.PipelineRun {
 	var filteredPipelineRuns []tektonPipelineV1.PipelineRun
 	for _, pipelineRun := range pipelineRuns {
-		if *getBuildConditionFromPipelineRun(&pipelineRun).Status == filter {
+		if slices.Contains(filter, *getBuildConditionFromPipelineRun(&pipelineRun).Status) {
 			filteredPipelineRuns = append(filteredPipelineRuns, pipelineRun)
 		}
 	}
 	return filteredPipelineRuns
 }
 
+// This should cleanup some builds, this means:
+//   - leave all the running/pending ones as is (don't clean them up)
+//   - leave only the configured amount of successful finished builds
+//   - leave only the configured amount of combined failed, unknown, cancelled and timed out builds
+//   - remove everything else (that should not be there)
 func cleanupOldPipelineRuns(clients *Clients, namespace string, toolName string, okToKeep int, failedToKeep int) []error {
 	pipelineRuns, err := getPipelineRuns(clients, namespace, metav1.ListOptions{LabelSelector: fmt.Sprintf("user=%s", toolName)})
 	if err != nil {
 		return []error{err}
 	}
 	log.Debugf("Found %d pipelineruns. Cleaning up old runs...", len(pipelineRuns))
-	runningPipelineRuns := filterPipelineRunsByStatus(pipelineRuns, gen.BUILDRUNNING)
-	successfulPipelineRuns := filterPipelineRunsByStatus(pipelineRuns, gen.BUILDSUCCESS)
-	failedPipelineRuns := filterPipelineRunsByStatus(pipelineRuns, gen.BUILDFAILURE)
+	log.Debugf("%v", pipelineRuns)
+	runningPipelineRuns := filterPipelineRunsByStatus(pipelineRuns, []gen.BuildStatus{gen.BUILDRUNNING, gen.BUILDPENDING})
+	successfulPipelineRuns := filterPipelineRunsByStatus(pipelineRuns, []gen.BuildStatus{gen.BUILDSUCCESS})
+	failedPipelineRuns := filterPipelineRunsByStatus(pipelineRuns, []gen.BuildStatus{gen.BUILDFAILURE, gen.BUILDTIMEOUT, gen.BUILDCANCELLED, gen.BUILDUNKNOWN})
 	pipelineRunsToKeep := map[string]tektonPipelineV1.PipelineRun{}
 	for _, pipelineRun := range runningPipelineRuns {
 		pipelineRunsToKeep[pipelineRun.Name] = pipelineRun
@@ -297,7 +310,7 @@ func cleanupOldPipelineRuns(clients *Clients, namespace string, toolName string,
 	var deleteErrors []error
 	for _, pipelineRun := range pipelineRuns {
 		if _, found := pipelineRunsToKeep[pipelineRun.Name]; !found {
-			log.Debugf("Deleting old pipelinerun %s", pipelineRun.Name)
+			log.Debugf("Deleting old pipelinerun %s: %v", pipelineRun.Name, pipelineRun)
 			err := clients.Tekton.TektonV1().PipelineRuns(namespace).Delete(
 				context.TODO(),
 				pipelineRun.Name,
@@ -1018,7 +1031,13 @@ func Cancel(
 
 	pipelineRun.Spec.Status = "Cancelled"
 
-	log.Debugf("Updating build: buildId=%s, namespace=%s, toolName=%s", buildId, api.Config.BuildNamespace, toolName)
+	log.Debugf(
+		"Cancelling build: buildId=%s, namespace=%s, toolName=%s, buildCondition=%s",
+		buildId,
+		api.Config.BuildNamespace,
+		toolName,
+		*buildCondition.Status,
+	)
 	_, err = api.Clients.Tekton.TektonV1().PipelineRuns(api.Config.BuildNamespace).Update(
 		context.TODO(),
 		pipelineRun,

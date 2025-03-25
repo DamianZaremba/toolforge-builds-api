@@ -367,8 +367,8 @@ func TestCleanupOldPipelineRuns(t *testing.T) {
 
 	expectedPipelineRunNames := map[string]bool{
 		"pipelinerun-succeeded1": true,
-		"pipelinerun-failed1":    true,
 		"pipelinerun-failed2":    true,
+		"pipelinerun-cancelled":  true,
 		"pipelinerun-running1":   true,
 		"pipelinerun-running2":   true,
 		"pipelinerun-running3":   true,
@@ -395,7 +395,7 @@ func TestCleanupOldPipelineRuns(t *testing.T) {
 
 	for _, pipelineRun := range pipelineRuns.Items {
 		if _, found := expectedPipelineRunNames[pipelineRun.Name]; !found {
-			t.Fatalf("I was not expecting pipeline run %s", pipelineRun.Name)
+			t.Fatalf("Pipeline run %s should have been cleaned up but it was not", pipelineRun.Name)
 		}
 	}
 

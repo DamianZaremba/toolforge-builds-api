@@ -12,7 +12,7 @@ repos:
       - id: check-merge-conflict
 
   - repo: https://github.com/golangci/golangci-lint
-    rev: v1.64.5
+    rev: v2.0.2
     hooks:
       - id: golangci-lint
         args: ["--timeout=10m"]

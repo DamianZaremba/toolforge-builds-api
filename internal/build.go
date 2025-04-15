@@ -664,15 +664,6 @@ func GetHarborQuota(api *BuildsApi, toolName string) (gen.Quota, error) {
 		return gen.Quota{}, err
 	}
 
-	projectExists, err := checkIfHarborProjectExists(api, harborProjectName)
-	if err != nil {
-		return gen.Quota{}, err
-	}
-
-	if !projectExists {
-		return gen.Quota{}, fmt.Errorf("Quota cannot be displayed because no builds have run yet")
-	}
-
 	response, err := api.Clients.Harbor.V2().Project.GetProjectSummary(
 		context.TODO(),
 		&harborProject.GetProjectSummaryParams{ProjectNameOrID: harborProjectName},
@@ -1087,6 +1078,11 @@ func Cancel(
 }
 
 func Quota(api *BuildsApi, toolName string) (int, interface{}) {
+	err := CreateHarborProjectForTool(api, toolName)
+	if err != nil {
+		message := fmt.Sprintf("Failed to create harbor project for tool %s: %s", toolName, err)
+		return http.StatusServiceUnavailable, gen.ResponseMessages{Error: &[]string{message}}
+	}
 	quota, err := GetHarborQuota(api, toolName)
 	if err != nil {
 		log.Error(err)

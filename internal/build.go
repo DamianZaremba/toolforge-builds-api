@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os/exec"
 	"regexp"
 	"slices"
 	"sort"
@@ -44,6 +45,17 @@ import (
 )
 
 // Helper functions
+
+// For easy mocking
+var gitLsRemote = func(sourceURL string) (string, error) {
+	cmd := exec.Command("git", "ls-remote", sourceURL)
+	output, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return string(output), err
+}
+
 func getContainersFromPod(client *Clients, podName string, namespace string) ([]string, error) {
 	pod, err := client.K8s.CoreV1().Pods(namespace).Get(
 		context.TODO(),
@@ -239,6 +251,16 @@ func getBuild(run tektonPipelineV1.PipelineRun, latestBuilder string) *gen.Build
 
 	sourceurl := getpipelineRunStringParam(run, "SOURCE_URL")
 	ref := getpipelineRunStringParam(run, "SOURCE_REFERENCE")
+	resolvedRef := ""
+	if ref == "" {
+		// for backwards compatibility, remove when we don't have any pipelineruns without UNRESOLVED_SOURCE_REFERENCE
+		ref = getpipelineRunStringParam(run, "SOURCE_REFERENCE")
+		resolvedRef = ""
+	} else {
+		ref = getpipelineRunStringParam(run, "UNRESOLVED_SOURCE_REFERENCE")
+		resolvedRef = getpipelineRunStringParam(run, "SOURCE_REFERENCE")
+	}
+
 	destinationimage := getpipelineRunStringParam(run, "APP_IMAGE")
 	envvarsStr := getpipelineRunArrayParam(run, "ENV_VARS")
 	envvars := make(map[string]string)
@@ -270,6 +292,7 @@ func getBuild(run tektonPipelineV1.PipelineRun, latestBuilder string) *gen.Build
 			UseLatestVersions: &useLatestVersions,
 		},
 		DestinationImage: &destinationimage,
+		ResolvedRef:      &resolvedRef,
 	}
 }
 
@@ -758,6 +781,26 @@ func checkParallelBuilds(api *BuildsApi, toolName string) error {
 	return nil
 }
 
+func resolveRef(sourceURL, ref string) (string, error) {
+	if ref == "" {
+		ref = "HEAD"
+	}
+
+	output, err := gitLsRemote(sourceURL)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve ref: %s", err)
+	}
+	lines := strings.Split(output, "\n")
+	if len(lines) > 0 {
+		// the expected output is something like:
+		// 1234567890abcdef1234567890abcdef12345678\tHEAD
+		// splitting space and tabs just in case
+		ref = strings.Split(strings.Split(lines[0], "\t")[0], " ")[0]
+		return ref, nil
+	}
+	return "", fmt.Errorf("failed to resolve ref, output from ls-remote: %v", lines)
+}
+
 // Handler functions
 func Start(
 	api *BuildsApi,
@@ -790,6 +833,12 @@ func Start(
 		return http.StatusConflict, gen.ResponseMessages{Error: &[]string{message}}
 	}
 
+	resolvedRef, err := resolveRef(sourceURL, ref)
+	if err != nil {
+		message := fmt.Sprintf("Failed to resolve ref %s, maybe the repository %s is not public? Error: %s", ref, sourceURL, err)
+		return http.StatusBadRequest, gen.ResponseMessages{Error: &[]string{message}}
+	}
+
 	imageNameToUse := imageName
 	if imageNameToUse == "" {
 		imageNameToUse = fmt.Sprintf("tool-%s", toolName)
@@ -806,8 +855,8 @@ func Start(
 		builder = api.Config.LatestBuilder
 	}
 	log.Debugf(
-		"Starting a new build: ref=%s, imageName=%s, toolName=%s, harborRepository=%s, builder=%s, runner=%s, useLatestVersions=%v",
-		ref, imageName, toolName, api.Config.HarborRepository, api.Config.Builder, api.Config.Runner, useLatestVersions,
+		"Starting a new build: ref=%s, resolvedRef=%s, imageName=%s, toolName=%s, harborRepository=%s, builder=%s, runner=%s, useLatestVersions=%v",
+		ref, resolvedRef, imageName, toolName, api.Config.HarborRepository, api.Config.Builder, api.Config.Runner, useLatestVersions,
 	)
 	newRun := tektonPipelineV1.PipelineRun{
 		ObjectMeta: metav1.ObjectMeta{
@@ -855,6 +904,10 @@ func Start(
 				},
 				{
 					Name:  "SOURCE_REFERENCE",
+					Value: tektonPipelineV1.ParamValue{StringVal: resolvedRef, Type: tektonPipelineV1.ParamTypeString},
+				},
+				{
+					Name:  "UNRESOLVED_SOURCE_REFERENCE",
 					Value: tektonPipelineV1.ParamValue{StringVal: ref, Type: tektonPipelineV1.ParamTypeString},
 				},
 				{
@@ -918,8 +971,9 @@ func Start(
 		UseLatestVersions: &useLatestVersions,
 	}
 	newBuild := gen.NewBuild{
-		Name:       &pipelineRun.Name,
-		Parameters: &buildParams,
+		Name:        &pipelineRun.Name,
+		ResolvedRef: &resolvedRef,
+		Parameters:  &buildParams,
 	}
 	return http.StatusOK, gen.StartResponse{
 		NewBuild: &newBuild,

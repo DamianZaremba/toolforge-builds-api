@@ -1202,6 +1202,11 @@ func TestStartReturnsInternalServerErrorOnException(t *testing.T) {
 			MaxParallelBuilds: 1,
 		},
 	}
+	origRunCommand := gitLsRemote
+	defer func() { gitLsRemote = origRunCommand }()
+	gitLsRemote = func(sourceURL string) (string, error) {
+		return "1234567890abcdef1234567890abcdef12345678\tHEAD", nil
+	}
 
 	code, _ := Start(
 		&api,
@@ -1237,6 +1242,11 @@ func TestStartReturnsInternalServerErrorIfCreateHarborProjectForToolReturnsError
 			HarborRepository:  testServer.URL,
 			MaxParallelBuilds: 1,
 		},
+	}
+	origRunCommand := gitLsRemote
+	defer func() { gitLsRemote = origRunCommand }()
+	gitLsRemote = func(sourceURL string) (string, error) {
+		return "1234567890abcdef1234567890abcdef12345678\tHEAD", nil
 	}
 
 	code, _ := Start(
@@ -1295,6 +1305,11 @@ func TestStartReturnsBadRequestErrorIfBadNamedEnvvarsPassed(t *testing.T) {
 	envvars := map[string]string{
 		"12_bad_name": "silly value",
 	}
+	origRunCommand := gitLsRemote
+	defer func() { gitLsRemote = origRunCommand }()
+	gitLsRemote = func(sourceURL string) (string, error) {
+		return "1234567890abcdef1234567890abcdef12345678\tHEAD", nil
+	}
 
 	code, _ := Start(
 		&api,
@@ -1330,6 +1345,7 @@ func TestStartReturnsNewBuildName(t *testing.T) {
 		"GOOD_NAME1": "silly value 1",
 		"GOOD_NAME2": "silly value 2",
 	}
+	expectedResolvedRef := "1234567890abcdef1234567890abcdef12345678"
 	fakePipelineRun := tektonPipelineV1.PipelineRun{
 		ObjectMeta: v1.ObjectMeta{Name: expectedName},
 	}
@@ -1355,6 +1371,11 @@ func TestStartReturnsNewBuildName(t *testing.T) {
 			BuildNamespace:    BuildNamespace,
 			MaxParallelBuilds: 1,
 		},
+	}
+	origRunCommand := gitLsRemote
+	defer func() { gitLsRemote = origRunCommand }()
+	gitLsRemote = func(sourceURL string) (string, error) {
+		return fmt.Sprintf("%s\tHEAD", expectedResolvedRef), nil
 	}
 
 	code, response := Start(
@@ -1392,6 +1413,10 @@ func TestStartReturnsNewBuildName(t *testing.T) {
 		}
 	}
 
+	if *gottenNewBuild.ResolvedRef != expectedResolvedRef {
+		t.Fatalf("Got an unexpected resolved ref for the new build, got '%s', expected '%s'", *gottenNewBuild.ResolvedRef, expectedResolvedRef)
+	}
+
 	if *gottenNewBuild.Parameters.UseLatestVersions != false {
 		t.Fatalf("Got an unexpected use-latest-versions for the new build, got '%v', expected '%v'", *gottenNewBuild.Parameters.UseLatestVersions, false)
 	}
@@ -1419,6 +1444,11 @@ func TestStartUsesLatestBuilderAndRunnerVersionsIfPassed(t *testing.T) {
 			return true, &fakePipelineRun, nil
 		},
 	)
+	origRunCommand := gitLsRemote
+	defer func() { gitLsRemote = origRunCommand }()
+	gitLsRemote = func(sourceURL string) (string, error) {
+		return fmt.Sprintf("%s\tHEAD", "resolvedref"), nil
+	}
 	api := BuildsApi{
 		Clients: Clients{
 			Tekton: &mockTekton,
@@ -1513,6 +1543,11 @@ func TestStartReturnsWarningMessageIfQuotaIsAbove90(t *testing.T) {
 			BuildNamespace:    BuildNamespace,
 			MaxParallelBuilds: 1,
 		},
+	}
+	origRunCommand := gitLsRemote
+	defer func() { gitLsRemote = origRunCommand }()
+	gitLsRemote = func(sourceURL string) (string, error) {
+		return "1234567890abcdef1234567890abcdef12345678\tHEAD", nil
 	}
 
 	code, response := Start(
@@ -1700,7 +1735,8 @@ func TestListReturnsBuilds(t *testing.T) {
 							{Name: "RUN_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-runner:22-cnb"}},
 							{Name: "APP_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "192.168.188.129/tool-minikube-user/tool-raymond:latest"}},
 							{Name: "SOURCE_URL", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "https://github.com/david-caro/wm-lol"}},
-							{Name: "SOURCE_REFERENCE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "value4"}},
+							{Name: "SOURCE_REFERENCE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "resolvedreferencevalue"}},
+							{Name: "UNRESOLVED_SOURCE_REFERENCE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "unresolvedreferencevalue"}},
 						},
 					},
 					Status: tektonPipelineV1.PipelineRunStatus{

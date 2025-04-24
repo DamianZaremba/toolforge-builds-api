@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Toolforge builds API
-  version: 2.2.0
+  version: 2.3.0
 servers:
   - url: "http://127.0.0.1:8000"
     description: "Local direct development server."
@@ -427,6 +427,8 @@ components:
       properties:
         name:
           type: string
+        resolved_ref:
+          type: string
         parameters:
           $ref: "#/components/schemas/BuildParameters"
     # TODO: remove this as it doesn't seem to be used
@@ -449,6 +451,8 @@ components:
             parameters:
               $ref: "#/components/schemas/BuildParameters"
             destination_image:
+              type: string
+            resolved_ref:
               type: string
     BuildParameters:
       required:

@@ -31,6 +31,7 @@ type Build struct {
 	EndTime          *string          `json:"end_time,omitempty"`
 	Message          *string          `json:"message,omitempty"`
 	Parameters       *BuildParameters `json:"parameters,omitempty"`
+	ResolvedRef      *string          `json:"resolved_ref,omitempty"`
 	StartTime        *string          `json:"start_time,omitempty"`
 	Status           *BuildStatus     `json:"status,omitempty"`
 }
@@ -135,8 +136,9 @@ type ListResponse struct {
 
 // NewBuild defines model for NewBuild.
 type NewBuild struct {
-	Name       *string          `json:"name,omitempty"`
-	Parameters *BuildParameters `json:"parameters,omitempty"`
+	Name        *string          `json:"name,omitempty"`
+	Parameters  *BuildParameters `json:"parameters,omitempty"`
+	ResolvedRef *string          `json:"resolved_ref,omitempty"`
 }
 
 // Quota defines model for Quota.

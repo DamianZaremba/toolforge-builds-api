@@ -12,7 +12,7 @@ repos:
       - id: check-merge-conflict
 
   - repo: https://github.com/golangci/golangci-lint
-    rev: v2.1.5
+    rev: v2.1.6
     hooks:
       - id: golangci-lint
         args: ["--timeout=10m"]
@@ -28,6 +28,6 @@ repos:
       - id: openapi-spec-validator
         exclude: .*_config.yaml
   - repo: https://gitlab.wikimedia.org/repos/cloud/cicd/gitlab-ci
-    rev: 303a5b5e6486785d43cff8036eb2785ee15cce9f
+    rev: 39b14b9c7d6803d95cd6c753cb3546910d118e78
     hooks:
       - id: check-openapi-version-bump

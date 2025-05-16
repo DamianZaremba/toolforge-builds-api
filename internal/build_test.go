@@ -1204,7 +1204,7 @@ func TestStartReturnsInternalServerErrorOnException(t *testing.T) {
 	}
 	origRunCommand := gitLsRemote
 	defer func() { gitLsRemote = origRunCommand }()
-	gitLsRemote = func(sourceURL string) (string, error) {
+	gitLsRemote = func(sourceURL string, ref string) (string, error) {
 		return "1234567890abcdef1234567890abcdef12345678\tHEAD", nil
 	}
 
@@ -1245,7 +1245,7 @@ func TestStartReturnsInternalServerErrorIfCreateHarborProjectForToolReturnsError
 	}
 	origRunCommand := gitLsRemote
 	defer func() { gitLsRemote = origRunCommand }()
-	gitLsRemote = func(sourceURL string) (string, error) {
+	gitLsRemote = func(sourceURL string, ref string) (string, error) {
 		return "1234567890abcdef1234567890abcdef12345678\tHEAD", nil
 	}
 
@@ -1307,7 +1307,7 @@ func TestStartReturnsBadRequestErrorIfBadNamedEnvvarsPassed(t *testing.T) {
 	}
 	origRunCommand := gitLsRemote
 	defer func() { gitLsRemote = origRunCommand }()
-	gitLsRemote = func(sourceURL string) (string, error) {
+	gitLsRemote = func(sourceURL string, ref string) (string, error) {
 		return "1234567890abcdef1234567890abcdef12345678\tHEAD", nil
 	}
 
@@ -1374,7 +1374,7 @@ func TestStartReturnsNewBuildName(t *testing.T) {
 	}
 	origRunCommand := gitLsRemote
 	defer func() { gitLsRemote = origRunCommand }()
-	gitLsRemote = func(sourceURL string) (string, error) {
+	gitLsRemote = func(sourceURL string, ref string) (string, error) {
 		return fmt.Sprintf("%s\tHEAD", expectedResolvedRef), nil
 	}
 
@@ -1446,7 +1446,7 @@ func TestStartUsesLatestBuilderAndRunnerVersionsIfPassed(t *testing.T) {
 	)
 	origRunCommand := gitLsRemote
 	defer func() { gitLsRemote = origRunCommand }()
-	gitLsRemote = func(sourceURL string) (string, error) {
+	gitLsRemote = func(sourceURL string, ref string) (string, error) {
 		return fmt.Sprintf("%s\tHEAD", "resolvedref"), nil
 	}
 	api := BuildsApi{
@@ -1546,7 +1546,7 @@ func TestStartReturnsWarningMessageIfQuotaIsAbove90(t *testing.T) {
 	}
 	origRunCommand := gitLsRemote
 	defer func() { gitLsRemote = origRunCommand }()
-	gitLsRemote = func(sourceURL string) (string, error) {
+	gitLsRemote = func(sourceURL string, ref string) (string, error) {
 		return "1234567890abcdef1234567890abcdef12345678\tHEAD", nil
 	}
 

@@ -47,13 +47,13 @@ import (
 // Helper functions
 
 // For easy mocking
-var gitLsRemote = func(sourceURL string) (string, error) {
-	cmd := exec.Command("git", "ls-remote", sourceURL)
+var gitLsRemote = func(sourceURL string, ref string) (string, error) {
+	cmd := exec.Command("git", "ls-remote", sourceURL, ref)
 	output, err := cmd.Output()
 	if err != nil {
 		return "", err
 	}
-	return string(output), err
+	return string(output), nil
 }
 
 func getContainersFromPod(client *Clients, podName string, namespace string) ([]string, error) {
@@ -786,7 +786,7 @@ func resolveRef(sourceURL, ref string) (string, error) {
 		ref = "HEAD"
 	}
 
-	output, err := gitLsRemote(sourceURL)
+	output, err := gitLsRemote(sourceURL, ref)
 	if err != nil {
 		return "", fmt.Errorf("failed to resolve ref: %s", err)
 	}

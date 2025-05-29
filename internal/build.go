@@ -272,6 +272,9 @@ func getBuild(run tektonPipelineV1.PipelineRun, latestBuilder string) *gen.Build
 			envvars[parts[0]] = parts[1]
 		}
 	}
+	// destinationImage is in the format "tools-harbor.wmcloud.org/tool-toolname/imagename:latest"
+	imageReference := strings.Split(destinationimage, "/")[len(strings.Split(destinationimage, "/"))-1]
+	imageName := strings.Split(imageReference, ":")[0]
 	// We might want to start creating our own datastructure instead of
 	// using the tekton pipeline run as the storage for
 	// the build info, this is a not always correct way to get
@@ -290,6 +293,7 @@ func getBuild(run tektonPipelineV1.PipelineRun, latestBuilder string) *gen.Build
 			Ref:               &ref,
 			Envvars:           &envvars,
 			UseLatestVersions: &useLatestVersions,
+			ImageName:         &imageName,
 		},
 		DestinationImage: &destinationimage,
 		ResolvedRef:      &resolvedRef,

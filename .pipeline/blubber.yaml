@@ -1,7 +1,7 @@
 # syntax=docker-registry.wikimedia.org/repos/releng/blubber/buildkit:v0.19.0
 version: v4
 # We depend on this image having git installed
-base: docker-registry.wikimedia.org/golang1.22
+base: docker-registry.wikimedia.org/golang1.24
 variants:
   download-deps:
     lives:

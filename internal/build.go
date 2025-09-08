@@ -80,7 +80,7 @@ func ToolNameToHarborProjectName(toolName string) (string, error) {
 	if !ToolforgeNameRegex.MatchString(toolName) {
 		message := fmt.Sprintf("Name %s is not a valid toolforge tool name.", toolName)
 		log.Error(message)
-		return "", fmt.Errorf(message)
+		return "", fmt.Errorf("%s", message)
 	}
 
 	toolName = fmt.Sprintf("%s%s", HarborProjectPrefix, toolName)
@@ -97,7 +97,7 @@ func ToolNameToHarborProjectName(toolName string) (string, error) {
 	if !HarborNameRegex.MatchString(formattedName) {
 		message := fmt.Sprintf("Formatted name %s is not a valid harbor project name.", formattedName)
 		log.Error(message)
-		return "", fmt.Errorf(message)
+		return "", fmt.Errorf("%s", message)
 	}
 	return formattedName, nil
 }
@@ -116,7 +116,7 @@ func getNiceHarborError(err error) error {
 		for _, err := range harborError.GetPayload().Errors {
 			message += fmt.Sprintf("%v - %v\n", err.Code, err.Message)
 		}
-		return fmt.Errorf(message)
+		return fmt.Errorf("%s", message)
 	}
 	return fmt.Errorf("an unknown error occured")
 }
@@ -457,7 +457,7 @@ func getPodsRunsV1beta1(clients *Clients, namespace string, pipelineRun *tektonP
 func streamPipelineRunLogs(ctx echo.Context, clients *Clients, namespace string, pipelineRun *tektonPipelineV1.PipelineRun, follow bool) error {
 	// TODO: retrieve also logs from pods that failed to start
 	if !pipelineRun.HasStarted() {
-		return fmt.Errorf(PipelineRunNotStartedErrorStr)
+		return fmt.Errorf("%s", PipelineRunNotStartedErrorStr)
 	}
 
 	taskRunStatuses, _, err := status.GetPipelineTaskStatuses(ctx.Request().Context(), clients.Tekton, namespace, pipelineRun)
@@ -566,7 +566,7 @@ func Logs(ctx echo.Context, api *BuildsApi, buildId string, toolName string, fol
 	err = StreamAfterPipelineRunStarted(ctx, &api.Clients, api.Config.BuildNamespace, follow, listoptions, waitTimeout)
 	if err != nil {
 		message := fmt.Sprintf("Error getting the logs for %s: %s", buildId, err)
-		log.Errorf(message)
+		log.Errorf("%s", message)
 		// Note that when streaming, once the first line is sent, you can't really change the http error code,
 		// so this internal server error is only effective if we did not yet send any data.
 		return http.StatusInternalServerError, gen.ResponseMessages{Error: &[]string{message}}
@@ -1127,11 +1127,11 @@ func Cancel(
 	switch *buildCondition.Status {
 	case gen.BUILDSUCCESS, gen.BUILDFAILURE, gen.BUILDTIMEOUT:
 		message := fmt.Sprintf("Build %s cannot be cancelled because it has already completed", buildId)
-		log.Warnf(message)
+		log.Warnf("%s", message)
 		return http.StatusConflict, gen.ResponseMessages{Error: &[]string{message}}
 	case gen.BUILDCANCELLED:
 		message := fmt.Sprintf("Build %s cannot be cancelled again. It has already been cancelled", buildId)
-		log.Warnf(message)
+		log.Warnf("%s", message)
 		return http.StatusConflict, gen.ResponseMessages{Error: &[]string{message}}
 	}
 

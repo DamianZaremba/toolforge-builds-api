@@ -263,93 +263,275 @@ func TestCleanupOldPipelineRuns(t *testing.T) {
 	mockTekton := tektonFake.NewSimpleClientset(
 		&tektonPipelineV1.PipelineRunList{
 			Items: []tektonPipelineV1.PipelineRun{
+				// ######################## imagename1 pipelines ########################################
 				{
 					ObjectMeta: v1.ObjectMeta{
-						Name: "pipelinerun-cancelled", Namespace: "dummy-namespace",
+						Name: "imagename1-pipelinerun-cancelled", Namespace: "dummy-namespace",
 						CreationTimestamp: v1.Time{Time: time.Date(2023, 6, 8, 23, 0, 0, 0, time.UTC)},
 						Labels:            map[string]string{"user": "test-user"}},
 					Status: tektonPipelineV1.PipelineRunStatus{
 						Status:                  knative.Status{Conditions: knative.Conditions{{Reason: "Cancelled", Status: "False"}}},
 						PipelineRunStatusFields: tektonPipelineV1.PipelineRunStatusFields{CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)}},
 					},
+					Spec: tektonPipelineV1.PipelineRunSpec{
+						Params: []tektonPipelineV1.Param{
+							{Name: "APP_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "192.168.188.129/tool-minikube-user/imagename1:latest"}},
+						},
+					},
 				},
 				{
 					ObjectMeta: v1.ObjectMeta{
-						Name: "pipelinerun-failed1", Namespace: "dummy-namespace",
-						CreationTimestamp: v1.Time{Time: time.Date(2023, 6, 8, 22, 0, 0, 0, time.UTC)},
+						Name: "imagename1-pipelinerun-failed1", Namespace: "dummy-namespace",
+						CreationTimestamp: v1.Time{Time: time.Date(2023, 6, 8, 20, 0, 0, 0, time.UTC)},
 						Labels:            map[string]string{"user": "test-user"}},
 					Status: tektonPipelineV1.PipelineRunStatus{
 						Status:                  knative.Status{Conditions: knative.Conditions{{Reason: "Failed", Status: "False"}}},
 						PipelineRunStatusFields: tektonPipelineV1.PipelineRunStatusFields{CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 15, 0, 0, 0, time.UTC)}},
 					},
+					Spec: tektonPipelineV1.PipelineRunSpec{
+						Params: []tektonPipelineV1.Param{
+							{Name: "APP_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "192.168.188.129/tool-minikube-user/imagename1:latest"}},
+						},
+					},
 				},
 				{
 					ObjectMeta: v1.ObjectMeta{
-						Name: "pipelinerun-failed2", Namespace: "dummy-namespace",
+						Name: "imagename1-pipelinerun-failed2", Namespace: "dummy-namespace",
 						CreationTimestamp: v1.Time{Time: time.Date(2023, 6, 8, 22, 0, 0, 0, time.UTC)},
 						Labels:            map[string]string{"user": "test-user"}},
 					Status: tektonPipelineV1.PipelineRunStatus{
 						Status:                  knative.Status{Conditions: knative.Conditions{{Reason: "CreateRunFailed", Status: "False"}}},
 						PipelineRunStatusFields: tektonPipelineV1.PipelineRunStatusFields{CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)}},
 					},
+					Spec: tektonPipelineV1.PipelineRunSpec{
+						Params: []tektonPipelineV1.Param{
+							{Name: "APP_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "192.168.188.129/tool-minikube-user/imagename1:latest"}},
+						},
+					},
 				},
 				{
 					ObjectMeta: v1.ObjectMeta{
-						Name: "pipelinerun-running1", Namespace: "dummy-namespace",
+						Name: "imagename1-pipelinerun-running1", Namespace: "dummy-namespace",
 						CreationTimestamp: v1.Time{Time: time.Date(2023, 6, 8, 21, 0, 0, 0, time.UTC)},
 						Labels:            map[string]string{"user": "test-user"}},
 					Status: tektonPipelineV1.PipelineRunStatus{
 						Status: knative.Status{Conditions: knative.Conditions{{Reason: "Running", Status: "Unknown"}}},
 					},
+					Spec: tektonPipelineV1.PipelineRunSpec{
+						Params: []tektonPipelineV1.Param{
+							{Name: "APP_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "192.168.188.129/tool-minikube-user/imagename1:latest"}},
+						},
+					},
 				},
 				{
 					ObjectMeta: v1.ObjectMeta{
-						Name: "pipelinerun-running2", Namespace: "dummy-namespace",
+						Name: "imagename1-pipelinerun-running2", Namespace: "dummy-namespace",
 						CreationTimestamp: v1.Time{Time: time.Date(2023, 6, 8, 20, 0, 0, 0, time.UTC)},
 						Labels:            map[string]string{"user": "test-user"}},
 					Status: tektonPipelineV1.PipelineRunStatus{
 						Status: knative.Status{Conditions: knative.Conditions{{Reason: "Running", Status: "Unknown"}}},
 					},
+					Spec: tektonPipelineV1.PipelineRunSpec{
+						Params: []tektonPipelineV1.Param{
+							{Name: "APP_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "192.168.188.129/tool-minikube-user/imagename1:latest"}},
+						},
+					},
 				},
 				{
 					ObjectMeta: v1.ObjectMeta{
-						Name: "pipelinerun-running3", Namespace: "dummy-namespace",
+						Name: "imagename1-pipelinerun-running3", Namespace: "dummy-namespace",
 						CreationTimestamp: v1.Time{Time: time.Date(2023, 6, 8, 19, 0, 0, 0, time.UTC)},
 						Labels:            map[string]string{"user": "test-user"}},
 					Status: tektonPipelineV1.PipelineRunStatus{
 						Status: knative.Status{Conditions: knative.Conditions{{Reason: "Running", Status: "Unknown"}}},
 					},
+					Spec: tektonPipelineV1.PipelineRunSpec{
+						Params: []tektonPipelineV1.Param{
+							{Name: "APP_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "192.168.188.129/tool-minikube-user/imagename1:latest"}},
+						},
+					},
 				},
 				{
 					ObjectMeta: v1.ObjectMeta{
-						Name: "pipelinerun-succeeded1", Namespace: "dummy-namespace",
+						Name: "imagename1-pipelinerun-succeeded1", Namespace: "dummy-namespace",
 						CreationTimestamp: v1.Time{Time: time.Date(2023, 6, 8, 18, 0, 0, 0, time.UTC)},
 						Labels:            map[string]string{"user": "test-user"}},
 					Status: tektonPipelineV1.PipelineRunStatus{
 						Status:                  knative.Status{Conditions: knative.Conditions{{Reason: "Succeeded", Status: "True"}}},
 						PipelineRunStatusFields: tektonPipelineV1.PipelineRunStatusFields{CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 18, 0, 0, 0, time.UTC)}},
 					},
+					Spec: tektonPipelineV1.PipelineRunSpec{
+						Params: []tektonPipelineV1.Param{
+							{Name: "APP_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "192.168.188.129/tool-minikube-user/imagename1:latest"}},
+						},
+					},
 				},
 				{
 					ObjectMeta: v1.ObjectMeta{
-						Name: "pipelinerun-succeeded2", Namespace: "dummy-namespace",
+						Name: "imagename1-pipelinerun-succeeded2", Namespace: "dummy-namespace",
 						CreationTimestamp: v1.Time{Time: time.Date(2023, 6, 8, 17, 0, 0, 0, time.UTC)},
 						Labels:            map[string]string{"user": "test-user"}},
 					Status: tektonPipelineV1.PipelineRunStatus{
 						Status:                  knative.Status{Conditions: knative.Conditions{{Reason: "Succeeded", Status: "True"}}},
 						PipelineRunStatusFields: tektonPipelineV1.PipelineRunStatusFields{CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)}},
 					},
+					Spec: tektonPipelineV1.PipelineRunSpec{
+						Params: []tektonPipelineV1.Param{
+							{Name: "APP_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "192.168.188.129/tool-minikube-user/imagename1:latest"}},
+						},
+					},
 				},
 				{
 					ObjectMeta: v1.ObjectMeta{
-						Name: "pipelinerun-timedout", Namespace: "dummy-namespace",
+						Name: "imagename1-pipelinerun-timedout", Namespace: "dummy-namespace",
 						CreationTimestamp: v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)},
 						Labels:            map[string]string{"user": "test-user"}},
 					Status: tektonPipelineV1.PipelineRunStatus{
 						Status:                  knative.Status{Conditions: knative.Conditions{{Reason: "PipelineRunTimeout", Status: "False"}}},
 						PipelineRunStatusFields: tektonPipelineV1.PipelineRunStatusFields{CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)}},
 					},
+					Spec: tektonPipelineV1.PipelineRunSpec{
+						Params: []tektonPipelineV1.Param{
+							{Name: "APP_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "192.168.188.129/tool-minikube-user/imagename1:latest"}},
+						},
+					},
 				},
+				// ##########################################################################
+
+				// ######################## imagename2 pipelines ############################
+				{
+					ObjectMeta: v1.ObjectMeta{
+						Name: "imagename2-pipelinerun-cancelled", Namespace: "dummy-namespace",
+						CreationTimestamp: v1.Time{Time: time.Date(2023, 6, 8, 23, 0, 0, 0, time.UTC)},
+						Labels:            map[string]string{"user": "test-user"}},
+					Status: tektonPipelineV1.PipelineRunStatus{
+						Status:                  knative.Status{Conditions: knative.Conditions{{Reason: "Cancelled", Status: "False"}}},
+						PipelineRunStatusFields: tektonPipelineV1.PipelineRunStatusFields{CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)}},
+					},
+					Spec: tektonPipelineV1.PipelineRunSpec{
+						Params: []tektonPipelineV1.Param{
+							{Name: "APP_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "192.168.188.129/tool-minikube-user/imagename2:latest"}},
+						},
+					},
+				},
+				{
+					ObjectMeta: v1.ObjectMeta{
+						Name: "imagename2-pipelinerun-failed1", Namespace: "dummy-namespace",
+						CreationTimestamp: v1.Time{Time: time.Date(2023, 6, 8, 20, 0, 0, 0, time.UTC)},
+						Labels:            map[string]string{"user": "test-user"}},
+					Status: tektonPipelineV1.PipelineRunStatus{
+						Status:                  knative.Status{Conditions: knative.Conditions{{Reason: "Failed", Status: "False"}}},
+						PipelineRunStatusFields: tektonPipelineV1.PipelineRunStatusFields{CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 15, 0, 0, 0, time.UTC)}},
+					},
+					Spec: tektonPipelineV1.PipelineRunSpec{
+						Params: []tektonPipelineV1.Param{
+							{Name: "APP_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "192.168.188.129/tool-minikube-user/imagename2:latest"}},
+						},
+					},
+				},
+				{
+					ObjectMeta: v1.ObjectMeta{
+						Name: "imagename2-pipelinerun-failed2", Namespace: "dummy-namespace",
+						CreationTimestamp: v1.Time{Time: time.Date(2023, 6, 8, 22, 0, 0, 0, time.UTC)},
+						Labels:            map[string]string{"user": "test-user"}},
+					Status: tektonPipelineV1.PipelineRunStatus{
+						Status:                  knative.Status{Conditions: knative.Conditions{{Reason: "CreateRunFailed", Status: "False"}}},
+						PipelineRunStatusFields: tektonPipelineV1.PipelineRunStatusFields{CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)}},
+					},
+					Spec: tektonPipelineV1.PipelineRunSpec{
+						Params: []tektonPipelineV1.Param{
+							{Name: "APP_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "192.168.188.129/tool-minikube-user/imagename2:latest"}},
+						},
+					},
+				},
+				{
+					ObjectMeta: v1.ObjectMeta{
+						Name: "imagename2-pipelinerun-running1", Namespace: "dummy-namespace",
+						CreationTimestamp: v1.Time{Time: time.Date(2023, 6, 8, 21, 0, 0, 0, time.UTC)},
+						Labels:            map[string]string{"user": "test-user"}},
+					Status: tektonPipelineV1.PipelineRunStatus{
+						Status: knative.Status{Conditions: knative.Conditions{{Reason: "Running", Status: "Unknown"}}},
+					},
+					Spec: tektonPipelineV1.PipelineRunSpec{
+						Params: []tektonPipelineV1.Param{
+							{Name: "APP_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "192.168.188.129/tool-minikube-user/imagename2:latest"}},
+						},
+					},
+				},
+				{
+					ObjectMeta: v1.ObjectMeta{
+						Name: "imagename2-pipelinerun-running2", Namespace: "dummy-namespace",
+						CreationTimestamp: v1.Time{Time: time.Date(2023, 6, 8, 20, 0, 0, 0, time.UTC)},
+						Labels:            map[string]string{"user": "test-user"}},
+					Status: tektonPipelineV1.PipelineRunStatus{
+						Status: knative.Status{Conditions: knative.Conditions{{Reason: "Running", Status: "Unknown"}}},
+					},
+					Spec: tektonPipelineV1.PipelineRunSpec{
+						Params: []tektonPipelineV1.Param{
+							{Name: "APP_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "192.168.188.129/tool-minikube-user/imagename2:latest"}},
+						},
+					},
+				},
+				{
+					ObjectMeta: v1.ObjectMeta{
+						Name: "imagename2-pipelinerun-running3", Namespace: "dummy-namespace",
+						CreationTimestamp: v1.Time{Time: time.Date(2023, 6, 8, 19, 0, 0, 0, time.UTC)},
+						Labels:            map[string]string{"user": "test-user"}},
+					Status: tektonPipelineV1.PipelineRunStatus{
+						Status: knative.Status{Conditions: knative.Conditions{{Reason: "Running", Status: "Unknown"}}},
+					},
+					Spec: tektonPipelineV1.PipelineRunSpec{
+						Params: []tektonPipelineV1.Param{
+							{Name: "APP_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "192.168.188.129/tool-minikube-user/imagename2:latest"}},
+						},
+					},
+				},
+				{
+					ObjectMeta: v1.ObjectMeta{
+						Name: "imagename2-pipelinerun-succeeded1", Namespace: "dummy-namespace",
+						CreationTimestamp: v1.Time{Time: time.Date(2023, 6, 8, 18, 0, 0, 0, time.UTC)},
+						Labels:            map[string]string{"user": "test-user"}},
+					Status: tektonPipelineV1.PipelineRunStatus{
+						Status:                  knative.Status{Conditions: knative.Conditions{{Reason: "Succeeded", Status: "True"}}},
+						PipelineRunStatusFields: tektonPipelineV1.PipelineRunStatusFields{CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 18, 0, 0, 0, time.UTC)}},
+					},
+					Spec: tektonPipelineV1.PipelineRunSpec{
+						Params: []tektonPipelineV1.Param{
+							{Name: "APP_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "192.168.188.129/tool-minikube-user/imagename2:latest"}},
+						},
+					},
+				},
+				{
+					ObjectMeta: v1.ObjectMeta{
+						Name: "imagename2-pipelinerun-succeeded2", Namespace: "dummy-namespace",
+						CreationTimestamp: v1.Time{Time: time.Date(2023, 6, 8, 17, 0, 0, 0, time.UTC)},
+						Labels:            map[string]string{"user": "test-user"}},
+					Status: tektonPipelineV1.PipelineRunStatus{
+						Status:                  knative.Status{Conditions: knative.Conditions{{Reason: "Succeeded", Status: "True"}}},
+						PipelineRunStatusFields: tektonPipelineV1.PipelineRunStatusFields{CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)}},
+					},
+					Spec: tektonPipelineV1.PipelineRunSpec{
+						Params: []tektonPipelineV1.Param{
+							{Name: "APP_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "192.168.188.129/tool-minikube-user/imagename2:latest"}},
+						},
+					},
+				},
+				{
+					ObjectMeta: v1.ObjectMeta{
+						Name: "imagename2-pipelinerun-timedout", Namespace: "dummy-namespace",
+						CreationTimestamp: v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)},
+						Labels:            map[string]string{"user": "test-user"}},
+					Status: tektonPipelineV1.PipelineRunStatus{
+						Status:                  knative.Status{Conditions: knative.Conditions{{Reason: "PipelineRunTimeout", Status: "False"}}},
+						PipelineRunStatusFields: tektonPipelineV1.PipelineRunStatusFields{CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)}},
+					},
+					Spec: tektonPipelineV1.PipelineRunSpec{
+						Params: []tektonPipelineV1.Param{
+							{Name: "APP_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "192.168.188.129/tool-minikube-user/imagename2:latest"}},
+						},
+					},
+				},
+				// ##########################################################################
 			},
 		},
 	)
@@ -367,12 +549,21 @@ func TestCleanupOldPipelineRuns(t *testing.T) {
 	}
 
 	expectedPipelineRunNames := map[string]bool{
-		"pipelinerun-succeeded1": true,
-		"pipelinerun-failed2":    true,
-		"pipelinerun-cancelled":  true,
-		"pipelinerun-running1":   true,
-		"pipelinerun-running2":   true,
-		"pipelinerun-running3":   true,
+		// OkToKeep is 1, so we keep 1 successful build, for every repo in the tool
+		"imagename1-pipelinerun-succeeded1": true,
+		"imagename2-pipelinerun-succeeded1": true,
+		// FailedToKeep is 2, so we keep 2 failed builds, for every repo in the tool
+		"imagename1-pipelinerun-failed2":   true,
+		"imagename2-pipelinerun-failed2":   true,
+		"imagename1-pipelinerun-cancelled": true,
+		"imagename2-pipelinerun-cancelled": true,
+		// all running builds are kept
+		"imagename1-pipelinerun-running1": true,
+		"imagename2-pipelinerun-running1": true,
+		"imagename1-pipelinerun-running2": true,
+		"imagename2-pipelinerun-running2": true,
+		"imagename1-pipelinerun-running3": true,
+		"imagename2-pipelinerun-running3": true,
 	}
 
 	cleanupOldPipelineRuns(&api.Clients, "dummy-namespace", "test-user", api.Config.OkToKeep, api.Config.FailedToKeep)

@@ -311,10 +311,12 @@ func filterPipelineRunsByStatus(pipelineRuns []tektonPipelineV1.PipelineRun, fil
 }
 
 // This should cleanup some builds, this means:
-//   - leave all the running/pending ones as is (don't clean them up)
-//   - leave only the configured amount of successful finished builds
-//   - leave only the configured amount of combined failed, unknown, cancelled and timed out builds
-//   - remove everything else (that should not be there)
+//   - group builds by destinationImage and for each destinationImage builds:
+//
+// //   - leave all the running/pending ones as is (don't clean them up)
+// //   - leave only the configured amount of successful finished builds
+// //   - leave only the configured amount of combined failed, unknown, cancelled and timed out builds
+// //   - remove everything else (that should not be there)
 func cleanupOldPipelineRuns(clients *Clients, namespace string, toolName string, okToKeep int, failedToKeep int) []error {
 	pipelineRuns, err := getPipelineRuns(clients, namespace, metav1.ListOptions{LabelSelector: fmt.Sprintf("user=%s", toolName)})
 	if err != nil {
@@ -322,37 +324,47 @@ func cleanupOldPipelineRuns(clients *Clients, namespace string, toolName string,
 	}
 	log.Debugf("Found %d pipelineruns. Cleaning up old runs...", len(pipelineRuns))
 	log.Debugf("%v", pipelineRuns)
-	runningPipelineRuns := filterPipelineRunsByStatus(pipelineRuns, []gen.BuildStatus{gen.BUILDRUNNING, gen.BUILDPENDING})
-	successfulPipelineRuns := filterPipelineRunsByStatus(pipelineRuns, []gen.BuildStatus{gen.BUILDSUCCESS})
-	failedPipelineRuns := filterPipelineRunsByStatus(pipelineRuns, []gen.BuildStatus{gen.BUILDFAILURE, gen.BUILDTIMEOUT, gen.BUILDCANCELLED, gen.BUILDUNKNOWN})
-	pipelineRunsToKeep := map[string]tektonPipelineV1.PipelineRun{}
-	for _, pipelineRun := range runningPipelineRuns {
-		pipelineRunsToKeep[pipelineRun.Name] = pipelineRun
-	}
-	for idx, pipelineRun := range successfulPipelineRuns {
-		if idx >= okToKeep {
-			break
-		}
-		pipelineRunsToKeep[pipelineRun.Name] = pipelineRun
-	}
-	for idx, pipelineRun := range failedPipelineRuns {
-		if idx >= failedToKeep {
-			break
-		}
-		pipelineRunsToKeep[pipelineRun.Name] = pipelineRun
-	}
+	imagePipelineRuns := map[string][]tektonPipelineV1.PipelineRun{}
 	var deleteErrors []error
 	for _, pipelineRun := range pipelineRuns {
-		if _, found := pipelineRunsToKeep[pipelineRun.Name]; !found {
-			log.Debugf("Deleting old pipelinerun %s: %v", pipelineRun.Name, pipelineRun)
-			err := clients.Tekton.TektonV1().PipelineRuns(namespace).Delete(
-				context.TODO(),
-				pipelineRun.Name,
-				metav1.DeleteOptions{},
-			)
-			if err != nil {
-				log.Warnf("Got error when deleting pipelinerun %s: %s", pipelineRun.Name, err)
-				deleteErrors = append(deleteErrors, err)
+		build := getBuild(pipelineRun, "")
+		destinationImage := *build.DestinationImage
+		imagePipelineRuns[destinationImage] = append(imagePipelineRuns[destinationImage], pipelineRun)
+	}
+
+	for destinationImage, runs := range imagePipelineRuns {
+		log.Debugf(" cleaning up %s %d pipelineruns", destinationImage, len(runs))
+		runningPipelineRuns := filterPipelineRunsByStatus(runs, []gen.BuildStatus{gen.BUILDRUNNING, gen.BUILDPENDING})
+		successfulPipelineRuns := filterPipelineRunsByStatus(runs, []gen.BuildStatus{gen.BUILDSUCCESS})
+		failedPipelineRuns := filterPipelineRunsByStatus(runs, []gen.BuildStatus{gen.BUILDFAILURE, gen.BUILDTIMEOUT, gen.BUILDCANCELLED, gen.BUILDUNKNOWN})
+		pipelineRunsToKeep := map[string]tektonPipelineV1.PipelineRun{}
+		for _, pipelineRun := range runningPipelineRuns {
+			pipelineRunsToKeep[pipelineRun.Name] = pipelineRun
+		}
+		for idx, pipelineRun := range successfulPipelineRuns {
+			if idx >= okToKeep {
+				break
+			}
+			pipelineRunsToKeep[pipelineRun.Name] = pipelineRun
+		}
+		for idx, pipelineRun := range failedPipelineRuns {
+			if idx >= failedToKeep {
+				break
+			}
+			pipelineRunsToKeep[pipelineRun.Name] = pipelineRun
+		}
+		for _, pipelineRun := range runs {
+			if _, found := pipelineRunsToKeep[pipelineRun.Name]; !found {
+				log.Debugf("Deleting old pipelinerun %s: %v", pipelineRun.Name, pipelineRun)
+				err := clients.Tekton.TektonV1().PipelineRuns(namespace).Delete(
+					context.TODO(),
+					pipelineRun.Name,
+					metav1.DeleteOptions{},
+				)
+				if err != nil {
+					log.Warnf("Got error when deleting pipelinerun %s: %s", pipelineRun.Name, err)
+					deleteErrors = append(deleteErrors, err)
+				}
 			}
 		}
 	}
@@ -640,6 +652,8 @@ func cleanHarbor(api *BuildsApi, toolName string) (gen.CleanResponse, error) {
 		}
 
 		artifacts := response.Payload
+		// TODO: perhaps clean should not delete the latest image?
+		// the idea is some manual command to attempt to free up some space, not to flush all images
 		for _, artifact := range artifacts {
 			// this is neccessary because our harbor-client returns [<object with empty fields>]
 			// when harbor server returns empty array ([])
@@ -675,21 +689,6 @@ func cleanHarbor(api *BuildsApi, toolName string) (gen.CleanResponse, error) {
 			Info: &[]string{message},
 		},
 	}, nil
-}
-
-func checkIfHarborProjectExists(api *BuildsApi, projectName string) (bool, error) {
-	_, err := api.Clients.Harbor.V2().Project.HeadProject(
-		context.TODO(),
-		&harborProject.HeadProjectParams{ProjectName: projectName},
-	)
-
-	if err != nil {
-		if _, ok := err.(*harborProject.HeadProjectNotFound); ok {
-			return false, nil
-		}
-		return false, err
-	}
-	return true, nil
 }
 
 func GetHarborQuota(api *BuildsApi, toolName string) (gen.Quota, error) {

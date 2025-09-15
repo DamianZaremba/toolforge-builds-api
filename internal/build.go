@@ -42,6 +42,9 @@ import (
 	gen "gitlab.wikimedia.org/repos/toolforge/builds-api/gen"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/rand"
 )
 
 // Helper functions
@@ -150,7 +153,46 @@ func CreateHarborProjectForTool(api *BuildsApi, toolName string) error {
 	return nil
 }
 
-func getPipelineRuns(clients *Clients, namespace string, listoptions metav1.ListOptions) ([]tektonPipelineV1.PipelineRun, error) {
+func GetScheduledBuilds(clients *Clients, namespace string, listoptions metav1.ListOptions) ([]tektonPipelineV1.PipelineRun, error) {
+	list, err := clients.K8sCustom.Resource(ScheduledBuildResource).Namespace(namespace).List(
+		context.TODO(),
+		listoptions,
+	)
+	if err != nil {
+		log.Warnf(
+			"Got error when listing scheduled builds on namespace %s (%v), maybe new cluster with no runs yet?: %s", namespace, listoptions, err,
+		)
+		return nil, err
+	}
+	sort.Slice(list.Items, func(i, j int) bool {
+		timeI := list.Items[i].GetCreationTimestamp()
+		timeJ := list.Items[j].GetCreationTimestamp()
+		return !timeI.Before(&timeJ)
+	})
+	var pipelineRuns []tektonPipelineV1.PipelineRun
+	for _, item := range list.Items {
+		pipelineRunSpec, found, err := unstructured.NestedMap(item.Object, "spec")
+		if err != nil || !found {
+			log.Warnf("Could not extract scheduled build spec %s: %v", item.GetName(), err)
+			continue
+		}
+		pipelineRun := &tektonPipelineV1.PipelineRun{}
+		specBytes, err := json.Marshal(pipelineRunSpec)
+		if err != nil {
+			log.Warnf("Failed to marshal scheduled build spec %s: %v", item.GetName(), err)
+			continue
+		}
+		err = json.Unmarshal(specBytes, pipelineRun)
+		if err != nil {
+			log.Warnf("Failed to unmarshal scheduled build spec %s: %v", item.GetName(), err)
+			continue
+		}
+		pipelineRuns = append(pipelineRuns, *pipelineRun)
+	}
+	return pipelineRuns, nil
+}
+
+func GetTektonPipelineRuns(clients *Clients, namespace string, listoptions metav1.ListOptions) ([]tektonPipelineV1.PipelineRun, error) {
 
 	pipelineRuns, err := clients.Tekton.TektonV1().PipelineRuns(namespace).List(
 		context.TODO(),
@@ -166,6 +208,46 @@ func getPipelineRuns(clients *Clients, namespace string, listoptions metav1.List
 		return !pipelineRuns.Items[i].CreationTimestamp.Before(&pipelineRuns.Items[j].CreationTimestamp)
 	})
 	return pipelineRuns.Items, nil
+}
+
+func GetPipelineRuns(clients *Clients, namespace string, listoptions metav1.ListOptions) ([]tektonPipelineV1.PipelineRun, error) {
+	log.Debugf(" getting pipeline runs from namespace %s matching %v", namespace, listoptions)
+	pipelineRuns, err := GetTektonPipelineRuns(clients, namespace, listoptions)
+	if err != nil {
+		log.Warnf(
+			"Got error when getting tekton pipelineruns on namespace %s: %s", namespace, err,
+		)
+		// this is a list response and in normal operation should return empty list if no pipelinerun was found.
+		// if it errors out, something is wrong with tekton deployment. return err and don't bother proceeding
+		return nil, err
+	}
+	scheduledPipelineRuns, err := GetScheduledBuilds(clients, namespace, listoptions)
+	if err != nil {
+		log.Warnf(
+			"Got error when getting scheduled builds on namespace %s: %s", namespace, err,
+		)
+		// this is a list response and in normal operation should return empty list if no pipelinerun was found.
+		// if it errors out, something is wrong with scheduledbuild crd. return err and don't bother proceeding
+		return nil, err
+	}
+	return append(scheduledPipelineRuns, pipelineRuns...), nil
+}
+
+func deleteBuild(clients *Clients, namespace string, buildId string) error {
+	// TODO: Delete also the associated image on harbor
+	err := clients.Tekton.TektonV1().PipelineRuns(namespace).Delete(
+		context.TODO(),
+		buildId,
+		metav1.DeleteOptions{},
+	)
+	if err != nil {
+		err = clients.K8sCustom.Resource(ScheduledBuildResource).Namespace(namespace).Delete(
+			context.TODO(),
+			buildId,
+			metav1.DeleteOptions{},
+		)
+	}
+	return err
 }
 
 func getBuildConditionFromPipelineRun(run *tektonPipelineV1.PipelineRun) gen.BuildCondition {
@@ -238,7 +320,7 @@ func getpipelineRunArrayParam(pipelineRun tektonPipelineV1.PipelineRun, name str
 	return nil
 }
 
-func getBuild(run tektonPipelineV1.PipelineRun, latestBuilder string) *gen.Build {
+func getBuildFromPipelineRun(run tektonPipelineV1.PipelineRun, latestBuilder string) *gen.Build {
 	var startTime string
 	var endTime string
 	buildCondition := getBuildConditionFromPipelineRun(&run)
@@ -300,7 +382,7 @@ func getBuild(run tektonPipelineV1.PipelineRun, latestBuilder string) *gen.Build
 	}
 }
 
-func filterPipelineRunsByStatus(pipelineRuns []tektonPipelineV1.PipelineRun, filter []gen.BuildStatus) []tektonPipelineV1.PipelineRun {
+func FilterPipelineRunsByStatus(pipelineRuns []tektonPipelineV1.PipelineRun, filter []gen.BuildStatus) []tektonPipelineV1.PipelineRun {
 	var filteredPipelineRuns []tektonPipelineV1.PipelineRun
 	for _, pipelineRun := range pipelineRuns {
 		if slices.Contains(filter, *getBuildConditionFromPipelineRun(&pipelineRun).Status) {
@@ -318,7 +400,7 @@ func filterPipelineRunsByStatus(pipelineRuns []tektonPipelineV1.PipelineRun, fil
 // //   - leave only the configured amount of combined failed, unknown, cancelled and timed out builds
 // //   - remove everything else (that should not be there)
 func cleanupOldPipelineRuns(clients *Clients, namespace string, toolName string, okToKeep int, failedToKeep int) []error {
-	pipelineRuns, err := getPipelineRuns(clients, namespace, metav1.ListOptions{LabelSelector: fmt.Sprintf("user=%s", toolName)})
+	pipelineRuns, err := GetTektonPipelineRuns(clients, namespace, metav1.ListOptions{LabelSelector: fmt.Sprintf("user=%s", toolName)})
 	if err != nil {
 		return []error{err}
 	}
@@ -327,16 +409,16 @@ func cleanupOldPipelineRuns(clients *Clients, namespace string, toolName string,
 	imagePipelineRuns := map[string][]tektonPipelineV1.PipelineRun{}
 	var deleteErrors []error
 	for _, pipelineRun := range pipelineRuns {
-		build := getBuild(pipelineRun, "")
+		build := getBuildFromPipelineRun(pipelineRun, "")
 		destinationImage := *build.DestinationImage
 		imagePipelineRuns[destinationImage] = append(imagePipelineRuns[destinationImage], pipelineRun)
 	}
 
 	for destinationImage, runs := range imagePipelineRuns {
 		log.Debugf(" cleaning up %s %d pipelineruns", destinationImage, len(runs))
-		runningPipelineRuns := filterPipelineRunsByStatus(runs, []gen.BuildStatus{gen.BUILDRUNNING, gen.BUILDPENDING})
-		successfulPipelineRuns := filterPipelineRunsByStatus(runs, []gen.BuildStatus{gen.BUILDSUCCESS})
-		failedPipelineRuns := filterPipelineRunsByStatus(runs, []gen.BuildStatus{gen.BUILDFAILURE, gen.BUILDTIMEOUT, gen.BUILDCANCELLED, gen.BUILDUNKNOWN})
+		runningPipelineRuns := FilterPipelineRunsByStatus(runs, []gen.BuildStatus{gen.BUILDRUNNING, gen.BUILDPENDING})
+		successfulPipelineRuns := FilterPipelineRunsByStatus(runs, []gen.BuildStatus{gen.BUILDSUCCESS})
+		failedPipelineRuns := FilterPipelineRunsByStatus(runs, []gen.BuildStatus{gen.BUILDFAILURE, gen.BUILDTIMEOUT, gen.BUILDCANCELLED, gen.BUILDUNKNOWN})
 		pipelineRunsToKeep := map[string]tektonPipelineV1.PipelineRun{}
 		for _, pipelineRun := range runningPipelineRuns {
 			pipelineRunsToKeep[pipelineRun.Name] = pipelineRun
@@ -527,7 +609,7 @@ func StreamAfterPipelineRunStarted(ctx echo.Context, clients *Clients, namespace
 
 	for current_time.Sub(start_time) < timeout {
 		// we need get the pipelinerun in each loop or we will get a stale object
-		pipelineRun, err := getPipelineRuns(clients, namespace, listoptions)
+		pipelineRun, err := GetTektonPipelineRuns(clients, namespace, listoptions)
 		if err != nil || len(pipelineRun) < 1 {
 			message := "unable to find any pipelineruns! New installation?: %v"
 			return fmt.Errorf(message, pipelineRun)
@@ -559,14 +641,14 @@ func Logs(ctx echo.Context, api *BuildsApi, buildId string, toolName string, fol
 	}
 
 	listoptions := metav1.ListOptions{FieldSelector: fmt.Sprintf("metadata.name=%s", buildId)}
-	pipelineRuns, err := getPipelineRuns(&api.Clients, api.Config.BuildNamespace, listoptions)
+	pipelineRuns, err := GetTektonPipelineRuns(&api.Clients, api.Config.BuildNamespace, listoptions)
 	if err != nil {
 		message := "Unable to find any pipelineruns! New installation?"
 		return http.StatusNotFound, gen.ResponseMessages{Error: &[]string{message}}
 	}
 
 	if len(pipelineRuns) == 0 {
-		message := fmt.Sprintf("Unable to find build with id '%s'", buildId)
+		message := fmt.Sprintf("Unable to find running build with id '%s'. Your build may not exist or not started yet.", buildId)
 		return http.StatusNotFound, gen.ResponseMessages{Error: &[]string{message}}
 
 	} else if len(pipelineRuns) > 1 {
@@ -760,8 +842,9 @@ func ValidateEnvvars(envvars map[string]string) error {
 	return nil
 }
 
+// TODO: maybe use this to place a limit on how many builds can be queued instead using GetScheduledBuilds instead of GetTektonPipelineRuns?
 func checkParallelBuilds(api *BuildsApi, toolName string) error {
-	pipelineRuns, err := getPipelineRuns(&api.Clients, api.Config.BuildNamespace, metav1.ListOptions{LabelSelector: fmt.Sprintf("user=%s", toolName)})
+	pipelineRuns, err := GetTektonPipelineRuns(&api.Clients, api.Config.BuildNamespace, metav1.ListOptions{LabelSelector: fmt.Sprintf("user=%s", toolName)})
 	if err != nil {
 		message := fmt.Sprintf("Got error when listing %s's pipelineruns on namespace %s: %s", toolName, api.Config.BuildNamespace, err)
 		return fmt.Errorf("%s", message)
@@ -830,11 +913,11 @@ func Start(
 		log.Warnf("Got error when cleaning up old pipeline runs: %s", err)
 	}
 
-	err = checkParallelBuilds(api, toolName)
-	if err != nil {
-		message := fmt.Sprintf("%s", err)
-		return http.StatusConflict, gen.ResponseMessages{Error: &[]string{message}}
-	}
+	// err = checkParallelBuilds(api, toolName)
+	// if err != nil {
+	// 	message := fmt.Sprintf("%s", err)
+	// 	return http.StatusConflict, gen.ResponseMessages{Error: &[]string{message}}
+	// }
 
 	resolvedRef, err := resolveRef(sourceURL, ref)
 	if err != nil {
@@ -861,10 +944,11 @@ func Start(
 		"Starting a new build: ref=%s, resolvedRef=%s, imageName=%s, toolName=%s, harborRepository=%s, builder=%s, runner=%s, useLatestVersions=%v",
 		ref, resolvedRef, imageName, toolName, api.Config.HarborRepository, api.Config.Builder, api.Config.Runner, useLatestVersions,
 	)
+	name := fmt.Sprintf("%s%s%s", toolName, api.Config.BuildIdPrefix, rand.String(5))
 	newRun := tektonPipelineV1.PipelineRun{
 		ObjectMeta: metav1.ObjectMeta{
-			GenerateName: fmt.Sprintf("%s%s", toolName, api.Config.BuildIdPrefix),
-			Namespace:    api.Config.BuildNamespace,
+			Name:      name,
+			Namespace: api.Config.BuildNamespace,
 			Labels: map[string]string{
 				"user": toolName,
 			},
@@ -935,13 +1019,29 @@ func Start(
 		},
 	}
 
-	pipelineRun, err := api.Clients.Tekton.TektonV1().PipelineRuns(api.Config.BuildNamespace).Create(
-		context.TODO(),
-		&newRun,
-		metav1.CreateOptions{},
-	)
+	unstructuredNewRun, err := runtime.DefaultUnstructuredConverter.ToUnstructured(&newRun)
 	if err != nil {
-		message := fmt.Sprintf("Got error when creating a new pipelinerun on namespace %s: %s", api.Config.BuildNamespace, err)
+		message := fmt.Sprintf("Got error when scheduling a new pipelinerun on namespace %s: %s", api.Config.BuildNamespace, err)
+		log.Warn(message)
+		return http.StatusInternalServerError, gen.ResponseMessages{Error: &[]string{message}}
+	}
+	metadata, found, err := unstructured.NestedMap(unstructuredNewRun, "metadata")
+	if err != nil || !found {
+		message := fmt.Sprintf("Got error when scheduling a new pipelinerun on namespace %s: %s", api.Config.BuildNamespace, err)
+		log.Warn(message)
+		return http.StatusInternalServerError, gen.ResponseMessages{Error: &[]string{message}}
+	}
+	spec := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": fmt.Sprintf("%s/%s", ScheduledBuildResource.Group, ScheduledBuildResource.Version),
+			"kind":       ScheduledBuildKind,
+			"metadata":   metadata,
+			"spec":       unstructuredNewRun,
+		},
+	}
+	scheduledPipelineRun, err := api.Clients.K8sCustom.Resource(ScheduledBuildResource).Namespace(api.Config.BuildNamespace).Create(context.TODO(), spec, metav1.CreateOptions{})
+	if err != nil {
+		message := fmt.Sprintf("Got error when scheduling a new pipelinerun on namespace %s: %s", api.Config.BuildNamespace, err)
 		log.Warn(message)
 		return http.StatusInternalServerError, gen.ResponseMessages{Error: &[]string{message}}
 	}
@@ -973,8 +1073,9 @@ func Start(
 		Envvars:           &envvars,
 		UseLatestVersions: &useLatestVersions,
 	}
+	newBuildName := scheduledPipelineRun.GetName()
 	newBuild := gen.NewBuild{
-		Name:        &pipelineRun.Name,
+		Name:        &newBuildName,
 		ResolvedRef: &resolvedRef,
 		Parameters:  &buildParams,
 	}
@@ -993,13 +1094,8 @@ func Delete(
 		message := fmt.Sprintf("%s", err)
 		return http.StatusUnauthorized, gen.ResponseMessages{Error: &[]string{message}}
 	}
-	// TODO: Delete also the associated image on harbor
 	log.Debugf("Deleting build: buildId=%s, namespace=%s, toolName=%s", buildId, api.Config.BuildNamespace, toolName)
-	err := api.Clients.Tekton.TektonV1().PipelineRuns(api.Config.BuildNamespace).Delete(
-		context.TODO(),
-		buildId,
-		metav1.DeleteOptions{},
-	)
+	err := deleteBuild(&api.Clients, api.Config.BuildNamespace, buildId)
 	if err != nil {
 		// A bit flaky way of handling, maybe improve in the future
 		if strings.HasSuffix(err.Error(), "not found") {
@@ -1028,7 +1124,8 @@ func Get(
 	}
 	log.Debugf("Getting build: buildId=%s, namespace=%s, toolName=%s", id, api.Config.BuildNamespace, toolName)
 
-	pipelineRuns, err := getPipelineRuns(&api.Clients, api.Config.BuildNamespace, metav1.ListOptions{FieldSelector: fmt.Sprintf("metadata.name=%s", id)})
+	listoptions := metav1.ListOptions{FieldSelector: fmt.Sprintf("metadata.name=%s", id)}
+	pipelineRuns, err := GetPipelineRuns(&api.Clients, api.Config.BuildNamespace, listoptions)
 	if err != nil {
 		log.Warnf(
 			"Got error when getting pipelinerun %s on namespace %s: %s", id, api.Config.BuildNamespace, err,
@@ -1045,7 +1142,7 @@ func Get(
 	// NOTE: we assume here the first pipelineRun from the search is what we are looking for.
 	// In k8s/tekton two objects cannot share metadata.name in the same namespace anyway
 
-	build := getBuild(pipelineRuns[0], api.Config.LatestBuilder)
+	build := getBuildFromPipelineRun(pipelineRuns[0], api.Config.LatestBuilder)
 	return http.StatusOK, gen.GetResponse{Build: build, Messages: &gen.ResponseMessages{}}
 }
 
@@ -1054,16 +1151,19 @@ func List(
 	toolName string,
 ) (int, interface{}) {
 	log.Debugf("Listing builds: toolName=%s, namespace=%s", toolName, api.Config.BuildNamespace)
-	pipelineRuns, err := getPipelineRuns(&api.Clients, api.Config.BuildNamespace, metav1.ListOptions{LabelSelector: fmt.Sprintf("user=%s", toolName)})
+
+	listoptions := metav1.ListOptions{LabelSelector: fmt.Sprintf("user=%s", toolName)}
+	pipelineRuns, err := GetPipelineRuns(&api.Clients, api.Config.BuildNamespace, listoptions)
 	if err != nil {
 		message := fmt.Sprintf("Got error when listing %s's pipelineruns on namespace %s: %s", toolName, api.Config.BuildNamespace, err)
+		log.Warn(message)
 		return http.StatusInternalServerError, gen.ResponseMessages{Error: &[]string{message}}
 	}
-	log.Debugf("Found %d pipelineruns for %s", len(pipelineRuns), toolName)
 
+	log.Debugf("Found %d pipelineruns for %s", len(pipelineRuns), toolName)
 	builds := make([]gen.Build, len(pipelineRuns))
 	for i, run := range pipelineRuns {
-		builds[i] = *getBuild(run, api.Config.LatestBuilder)
+		builds[i] = *getBuildFromPipelineRun(run, api.Config.LatestBuilder)
 	}
 	return http.StatusOK, gen.ListResponse{Builds: &builds, Messages: &gen.ResponseMessages{}}
 }
@@ -1074,7 +1174,8 @@ func Latest(
 ) (int, interface{}) {
 	log.Debugf("Getting latest build: namespace=%s, toolName=%s", api.Config.BuildNamespace, toolName)
 
-	pipelineRuns, err := getPipelineRuns(&api.Clients, api.Config.BuildNamespace, metav1.ListOptions{LabelSelector: fmt.Sprintf("user=%s", toolName)})
+	listoptions := metav1.ListOptions{LabelSelector: fmt.Sprintf("user=%s", toolName)}
+	pipelineRuns, err := GetPipelineRuns(&api.Clients, api.Config.BuildNamespace, listoptions)
 	if err != nil {
 		log.Warnf(
 			"Got error when getting latest pipelineruns on namespace %s: %s", api.Config.BuildNamespace, err,
@@ -1088,8 +1189,8 @@ func Latest(
 		return http.StatusNotFound, gen.ResponseMessages{Error: &[]string{message}}
 	}
 
-	// getPipelineRuns returns a sorted array per creationTimestamp
-	build := getBuild(pipelineRuns[0], api.Config.LatestBuilder)
+	// getBuildFromPipelineRun returns a sorted array per creationTimestamp
+	build := getBuildFromPipelineRun(pipelineRuns[0], api.Config.LatestBuilder)
 	return http.StatusOK, gen.LatestResponse{Build: build, Messages: &gen.ResponseMessages{}}
 }
 
@@ -1103,27 +1204,40 @@ func Cancel(
 		return http.StatusUnauthorized, gen.ResponseMessages{Error: &[]string{message}}
 	}
 	log.Debugf("Getting build: buildId=%s, namespace=%s, toolName=%s", buildId, api.Config.BuildNamespace, toolName)
-	pipelineRun, err := api.Clients.Tekton.TektonV1().PipelineRuns(api.Config.BuildNamespace).Get(
-		context.TODO(),
-		buildId,
-		metav1.GetOptions{},
-	)
-	if err != nil {
-		if strings.HasSuffix(err.Error(), "not found") {
-			message := fmt.Sprintf("Build with id %s not found", buildId)
-			return http.StatusNotFound, gen.ResponseMessages{Error: &[]string{message}}
-		}
 
+	listoptions := metav1.ListOptions{FieldSelector: fmt.Sprintf("metadata.name=%s", buildId)}
+	pipelineRuns, err := GetPipelineRuns(&api.Clients, api.Config.BuildNamespace, listoptions)
+	if err != nil {
 		log.Warnf(
 			"Got error when getting pipelinerun %s on namespace %s: %s", buildId, api.Config.BuildNamespace, err,
 		)
 		message := "Error: Unable to cancel build!"
 		return http.StatusInternalServerError, gen.ResponseMessages{Error: &[]string{message}}
 	}
-
+	if len(pipelineRuns) == 0 {
+		message := fmt.Sprintf("Build with id %s not found.", buildId)
+		log.Warn(message)
+		return http.StatusNotFound, gen.ResponseMessages{Error: &[]string{message}}
+	}
+	pipelineRun := &pipelineRuns[0]
 	buildCondition := getBuildConditionFromPipelineRun(pipelineRun)
 
 	switch *buildCondition.Status {
+	case gen.BUILDPENDING:
+		// To cancel a scheduled build that is not yet submitted to tekton, we just delete them.
+		// That way they never get submitted to tekton. Disadvantage of this approach is they don't get marked as cancelled, they disappear.
+		//
+		// tekton pipelineruns statuses get updated to running almost immediately the run is submitted to tekton, so this doesn't affect these much.
+		log.Infof("deleting pending build %s to cancel", buildId)
+		err := deleteBuild(&api.Clients, api.Config.BuildNamespace, buildId)
+		if err != nil {
+			log.Warnf(
+				"Got error when deleting pipelinerun %s on namespace %s: %s", buildId, api.Config.BuildNamespace, err,
+			)
+			message := "Unable to cancel build!"
+			return http.StatusInternalServerError, gen.ResponseMessages{Error: &[]string{message}}
+		}
+		return http.StatusOK, gen.CancelResponse{Id: &buildId, Messages: &gen.ResponseMessages{}}
 	case gen.BUILDSUCCESS, gen.BUILDFAILURE, gen.BUILDTIMEOUT:
 		message := fmt.Sprintf("Build %s cannot be cancelled because it has already completed", buildId)
 		log.Warnf("%s", message)

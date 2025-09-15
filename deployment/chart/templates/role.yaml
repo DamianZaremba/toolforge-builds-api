@@ -15,3 +15,8 @@ rules:
       - tekton.dev
     resources: ["*"]
     verbs: ["*"]
+  - apiGroups:
+      - builds-api.toolforge.org
+    resources: ["*"]
+    verbs:
+      - "*"

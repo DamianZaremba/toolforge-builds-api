@@ -19,6 +19,8 @@ package internal
 
 import (
 	"regexp"
+
+	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 var BuildIdPrefix = "-buildpacks-pipelinerun-"
@@ -31,3 +33,9 @@ var HarborSpecialChars = "-_"
 var PipelineRunNotStartedErrorStr = "pipelineRun not yet started"
 var ResourceNameEmptyErrorStr = "resource name may not be empty"
 var PodInitializingErrorStr = "PodInitializing"
+var ScheduledBuildKind = "ScheduledBuild"
+var ScheduledBuildResource = schema.GroupVersionResource{
+	Group:    "builds-api.toolforge.org",
+	Version:  "v1",
+	Resource: "scheduledbuilds",
+}

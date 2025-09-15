@@ -35,6 +35,7 @@ import (
 	"github.com/tektoncd/pipeline/pkg/client/clientset/versioned"
 	gen "gitlab.wikimedia.org/repos/toolforge/builds-api/gen"
 	internal "gitlab.wikimedia.org/repos/toolforge/builds-api/internal"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -102,11 +103,17 @@ func main() {
 	if err != nil {
 		log.Fatalln(err.Error())
 	}
+
+	// start the loop that submits scheduled builds to tekton.
+	// This is decoupled from the build endpoint to support build scheduling
+	go internal.StartScheduledBuildsSubmissionToTekton(context.Background(), clients, internalConfig)
+
 	buildsApi := internal.BuildsApi{
 		Clients:        *clients,
 		Config:         *internalConfig,
 		MetricsHandler: prom.NewHandler(),
 	}
+	// TODO: we should probably remove this. it sends harbor auth details to the logs
 	log.Infof("Using config: %v", buildsApi.Config)
 
 	//strictHandler := gen.NewStrictHandler(buildsApi, nil)
@@ -149,6 +156,13 @@ func getApiClients(outOfK8sRun bool, kubeconfig string, internalConfig *internal
 	if err != nil {
 		return nil, err
 	}
+
+	// create custom k8s clientset for managing own crds
+	customk8sclientset, err := dynamic.NewForConfig(k8sConfig)
+	if err != nil {
+		return nil, err
+	}
+
 	// creates the tekton clientset
 	tektonClientset, err := versioned.NewForConfig(k8sConfig)
 	if err != nil {
@@ -170,10 +184,11 @@ func getApiClients(outOfK8sRun bool, kubeconfig string, internalConfig *internal
 	}
 
 	return &internal.Clients{
-		Tekton: tektonClientset,
-		K8s:    clientset,
-		Http:   http,
-		Harbor: harborClientset,
+		Tekton:    tektonClientset,
+		K8s:       clientset,
+		K8sCustom: customk8sclientset,
+		Http:      http,
+		Harbor:    harborClientset,
 	}, nil
 }
 

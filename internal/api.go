@@ -18,14 +18,21 @@
 package internal
 
 import (
+	"context"
 	"fmt"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/goharbor/go-client/pkg/harbor"
 	harborModels "github.com/goharbor/go-client/pkg/sdk/v2.0/models"
 	"github.com/labstack/echo/v4"
+	log "github.com/sirupsen/logrus"
+	tektonPipelineV1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"github.com/tektoncd/pipeline/pkg/client/clientset/versioned"
 	"gitlab.wikimedia.org/repos/toolforge/builds-api/gen"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -53,10 +60,11 @@ type Config struct {
 }
 
 type Clients struct {
-	Tekton versioned.Interface
-	K8s    kubernetes.Interface
-	Http   *http.Client
-	Harbor *harbor.ClientSet
+	Tekton    versioned.Interface
+	K8s       kubernetes.Interface
+	K8sCustom dynamic.Interface
+	Http      *http.Client
+	Harbor    *harbor.ClientSet
 }
 
 type BuildsApi struct {
@@ -220,4 +228,100 @@ func (api BuildsApi) Openapi(ctx echo.Context) error {
 
 func (api BuildsApi) Metrics(ctx echo.Context) error {
 	return api.MetricsHandler(ctx)
+}
+
+func submitScheduledBuildsToTekton(clients *Clients, config *Config) error {
+	log.Info("submitting scheduled builds to Tekton...")
+	scheduledPipelineRuns, err := GetScheduledBuilds(clients, config.BuildNamespace, metav1.ListOptions{})
+	if err != nil {
+		log.Errorf("Failed to get scheduled builds: %v", err)
+		return err
+	}
+	if len(scheduledPipelineRuns) == 0 {
+		log.Info("No scheduled builds found. returning...")
+		return nil
+	}
+	userscheduledPipelineRuns := make(map[string][]tektonPipelineV1.PipelineRun, len(scheduledPipelineRuns))
+	for _, run := range scheduledPipelineRuns {
+		user := run.Labels["user"]
+		userscheduledPipelineRuns[user] = append(userscheduledPipelineRuns[user], run)
+	}
+	users := make([]string, 0, len(userscheduledPipelineRuns))
+	for user := range userscheduledPipelineRuns {
+		users = append(users, user)
+	}
+	usersSelector := metav1.ListOptions{LabelSelector: fmt.Sprintf("user in (%s)", strings.Join(users, ","))}
+	tektonPipelineRuns, err := GetTektonPipelineRuns(clients, config.BuildNamespace, usersSelector)
+	if err != nil {
+		return fmt.Errorf("failed to get tekton pipeline runs for users (%s): %v", strings.Join(users, ","), err)
+	}
+
+	runningPipelineRuns := FilterPipelineRunsByStatus(tektonPipelineRuns, []gen.BuildStatus{gen.BUILDRUNNING, gen.BUILDPENDING})
+	log.Infof("Got %d running pipeline runs for users (%s)", len(runningPipelineRuns), strings.Join(users, ","))
+	userRunningPipelineRunsCount := make(map[string]int)
+	for _, run := range runningPipelineRuns {
+		userRunningPipelineRunsCount[run.Labels["user"]]++
+	}
+	for user, scheduledPipelineRuns := range userscheduledPipelineRuns {
+
+		availableSlots := config.MaxParallelBuilds - userRunningPipelineRunsCount[user]
+		if availableSlots <= 0 {
+			log.Infof("User %s has reached max parallel builds (%d), skipping...", user, config.MaxParallelBuilds)
+			continue
+		}
+		submittedCount := 0
+		for _, scheduledRun := range scheduledPipelineRuns {
+			if submittedCount >= availableSlots {
+				break
+			}
+			_, err := clients.Tekton.TektonV1().PipelineRuns(config.BuildNamespace).Create(context.TODO(), &scheduledRun, metav1.CreateOptions{})
+			if err != nil {
+				log.Errorf("failed to submit scheduled build %s for user %s to Tekton: %v", scheduledRun.Name, user, err)
+				continue
+			}
+			err = clients.K8sCustom.Resource(ScheduledBuildResource).Namespace(config.BuildNamespace).Delete(
+				context.TODO(),
+				scheduledRun.Name,
+				metav1.DeleteOptions{},
+			)
+			if err != nil {
+				log.Errorf("Failed to delete scheduled build %s: %v", scheduledRun.Name, err)
+				// we can ignore this error. Sure it will trigger re-run of this pipelinerun on tekton after a while,
+				// the k8s request that failed is most likely transient and probably won't happen again the next time the pipeline is run
+			}
+			submittedCount++
+			log.Infof("Submitted scheduled build %s for user %s (%d/%d slots used)",
+				scheduledRun.Name, user, submittedCount, availableSlots)
+		}
+		log.Infof("Processed %d scheduled builds for user %s, submitted %d",
+			len(scheduledPipelineRuns), user, submittedCount)
+	}
+	log.Info("Completed pipeline run submission process")
+	return nil
+}
+
+// StartPipelinerunSubmissionToTekton calls schedulePipelineRuns repeatedly after some time interval.
+func StartScheduledBuildsSubmissionToTekton(ctx context.Context, clients *Clients, config *Config) {
+	log.Info("Starting scheduled builds submission loop...")
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			log.Info("Stopping scheduled builds submission loop...")
+			return
+		case <-ticker.C:
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						log.Errorf("recovered from a panic while submitting scheduled builds to tekton: %v", r)
+					}
+				}()
+				err := submitScheduledBuildsToTekton(clients, config)
+				if err != nil {
+					log.Errorf("Error while submitting scheduled builds to tekton: %v", err)
+				}
+			}()
+		}
+	}
 }

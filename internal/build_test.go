@@ -37,11 +37,26 @@ import (
 	"gitlab.wikimedia.org/repos/toolforge/builds-api/gen"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	k8sRuntime "k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	dynamicFake "k8s.io/client-go/dynamic/fake"
 	k8sFake "k8s.io/client-go/kubernetes/fake"
 	k8sTesting "k8s.io/client-go/testing"
 	knative "knative.dev/pkg/apis/duck/v1"
 )
+
+var ScheduledBuildType = schema.GroupVersionKind{
+	Group:   "builds-api.toolforge.org",
+	Version: "v1",
+	Kind:    "ScheduledBuild",
+}
+var ScheduledBuildListType = schema.GroupVersionKind{
+	Group:   "builds-api.toolforge.org",
+	Version: "v1",
+	Kind:    "ScheduledBuildList",
+}
 
 func TestMain(m *testing.M) {
 	log.SetLevel(log.DebugLevel)
@@ -201,62 +216,285 @@ func TestCreateHarborProjectForToolReturnsNilIfProjectWasCreatedOrAlreadyExists(
 	}
 }
 
-func TestGetPipelineRunsReturnsErrorIfApiReturnsError(t *testing.T) {
+func TestGetPipelineRunsReturnsErrorIfTektonApiReturnsError(t *testing.T) {
 	mockTekton := tektonFake.Clientset{}
 	mockTekton.PrependReactor("list", "pipelineruns", func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
 		return true, nil, fmt.Errorf("Dummy error!")
 	})
-	clients := Clients{
+	clients := &Clients{
 		Tekton: &mockTekton,
 	}
-
-	_, err := getPipelineRuns(&clients, "dummy-namespace", v1.ListOptions{})
-
+	_, err := GetPipelineRuns(clients, "dummy-namespace", v1.ListOptions{})
 	if err == nil {
 		t.Fatalf("I was expecting an error, got: %s", err)
 	}
-
 }
 
-func TestGetPipelineRunsReturnsSortedArrayOfPipelineRuns(t *testing.T) {
+func TestGetPipelineRunsReturnsErrorIfK8sCustomApiReturnsError(t *testing.T) {
+
+	mockK8sScheme := k8sRuntime.NewScheme()
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildType, &unstructured.Unstructured{})
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildListType, &unstructured.UnstructuredList{})
+	mockK8sCustom := dynamicFake.NewSimpleDynamicClient(mockK8sScheme)
+	mockK8sCustom.PrependReactor("list", "scheduledbuilds", func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
+		return true, nil, fmt.Errorf("Dummy error!")
+	})
+	mockTekton := tektonFake.NewSimpleClientset()
+	clients := &Clients{
+		Tekton:    mockTekton,
+		K8sCustom: mockK8sCustom,
+	}
+	_, err := GetPipelineRuns(clients, "dummy-namespace", v1.ListOptions{})
+	if err == nil {
+		t.Fatalf("I was expecting an error, got: %s", err)
+	}
+}
+
+func TestGetPipelineRunsReturnsEmptyArrayWhenNoScheduledOrRunningPipelineRuns(t *testing.T) {
+	mockTekton := tektonFake.NewSimpleClientset()
+
+	mockK8sScheme := k8sRuntime.NewScheme()
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildType, &unstructured.Unstructured{})
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildListType, &unstructured.UnstructuredList{})
+	mockK8sCustom := dynamicFake.NewSimpleDynamicClient(mockK8sScheme)
+
+	clients := &Clients{
+		Tekton:    mockTekton,
+		K8sCustom: mockK8sCustom,
+	}
+	pipelineRuns, err := GetPipelineRuns(clients, "dummy-namespace", v1.ListOptions{LabelSelector: fmt.Sprintf("user=%s", "test-user")})
+	if err != nil {
+		t.Fatalf("I was not expecting an error, got: %s", err)
+	}
+	if len(pipelineRuns) != 0 {
+		t.Fatalf("I was expecting 0 pipeline runs, got: %d", len(pipelineRuns))
+	}
+}
+
+func TestGetPipelineRunsReturnsSortedPipelineRunsWhenScheduledBuilds(t *testing.T) {
+	userName := "test-user"
+	namespace := "test-namespace"
+	scheduledRuns := []tektonPipelineV1.PipelineRun{
+		{
+			ObjectMeta: v1.ObjectMeta{
+				Name:              "scheduled-run-1",
+				Namespace:         namespace,
+				Labels:            map[string]string{"user": userName},
+				CreationTimestamp: v1.Time{Time: time.Now()},
+			},
+			Spec: tektonPipelineV1.PipelineRunSpec{
+				PipelineRef: &tektonPipelineV1.PipelineRef{Name: "buildpacks"},
+			},
+		},
+		{
+			ObjectMeta: v1.ObjectMeta{
+				Name:              "scheduled-run-2",
+				Namespace:         namespace,
+				Labels:            map[string]string{"user": userName},
+				CreationTimestamp: v1.Time{Time: time.Now().Add(1 * time.Hour)},
+			},
+			Spec: tektonPipelineV1.PipelineRunSpec{
+				PipelineRef: &tektonPipelineV1.PipelineRef{Name: "buildpacks"},
+			},
+		},
+	}
+
+	scheduledUnstructuredObj := make([]runtime.Object, len(scheduledRuns))
+	for i, run := range scheduledRuns {
+		spec, err := runtime.DefaultUnstructuredConverter.ToUnstructured(&run)
+		if err != nil {
+			t.Fatalf("Expected no error, got: %v", err)
+		}
+		metadata, found, err := unstructured.NestedMap(spec, "metadata")
+		if err != nil {
+			t.Fatalf("Expected no error, got: %v", err)
+		}
+		if !found {
+			t.Fatalf("Expected metadata to be found")
+		}
+		obj := &unstructured.Unstructured{
+			Object: map[string]interface{}{
+				"apiVersion": fmt.Sprintf("%s/%s", ScheduledBuildResource.Group, ScheduledBuildResource.Version),
+				"kind":       ScheduledBuildKind,
+				"metadata":   metadata,
+				"spec":       spec,
+			},
+		}
+		scheduledUnstructuredObj[i] = obj
+	}
+
+	mockK8sScheme := k8sRuntime.NewScheme()
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildType, &unstructured.Unstructured{})
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildListType, &unstructured.UnstructuredList{})
+	mockK8sCustom := dynamicFake.NewSimpleDynamicClient(mockK8sScheme, scheduledUnstructuredObj...)
+	mockTekton := tektonFake.NewSimpleClientset()
+
+	clients := &Clients{
+		Tekton:    mockTekton,
+		K8sCustom: mockK8sCustom,
+	}
+
+	pipelineRuns, err := GetPipelineRuns(clients, namespace, v1.ListOptions{LabelSelector: fmt.Sprintf("user=%s", userName)})
+	if err != nil {
+		t.Fatalf("I was not expecting an error, got: %s", err)
+	}
+	if len(pipelineRuns) != 2 {
+		t.Fatalf("I was expecting 2 pipeline run, got: %d", len(pipelineRuns))
+	}
+	expectedOrder := []string{"scheduled-run-2", "scheduled-run-1"}
+	for i, expectedName := range expectedOrder {
+		if pipelineRuns[i].Name != expectedName {
+			t.Fatalf("I was expecting pipeline run at index %d to be '%s', got: %s", i, expectedName, pipelineRuns[i].Name)
+		}
+	}
+}
+
+func TestGetPipelineRunsReturnsSortedPipelineRunsWhenRunningPipelineRuns(t *testing.T) {
+	userName := "test-user"
+	namespace := "test-namespace"
 	mockTekton := tektonFake.NewSimpleClientset(
 		&tektonPipelineV1.PipelineRunList{
 			Items: []tektonPipelineV1.PipelineRun{
 				{
 					ObjectMeta: v1.ObjectMeta{
 						Name:              "one",
-						Namespace:         "dummy-namespace",
-						CreationTimestamp: v1.Time{Time: time.Now().Add(-1 * time.Hour)},
+						Namespace:         namespace,
+						Labels:            map[string]string{"user": userName},
+						CreationTimestamp: v1.Time{Time: time.Now()},
 					},
 				},
 				{
 					ObjectMeta: v1.ObjectMeta{
 						Name:              "two",
-						Namespace:         "dummy-namespace",
-						CreationTimestamp: v1.Time{Time: time.Now()},
+						Namespace:         namespace,
+						Labels:            map[string]string{"user": userName},
+						CreationTimestamp: v1.Time{Time: time.Now().Add(1 * time.Hour)},
 					},
 				},
 			},
 		},
 	)
-	clients := Clients{
-		Tekton: mockTekton,
+	mockK8sScheme := k8sRuntime.NewScheme()
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildType, &unstructured.Unstructured{})
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildListType, &unstructured.UnstructuredList{})
+	mockK8sCustom := dynamicFake.NewSimpleDynamicClient(mockK8sScheme)
+
+	clients := &Clients{
+		Tekton:    mockTekton,
+		K8sCustom: mockK8sCustom,
 	}
-
-	pipelineRuns, err := getPipelineRuns(&clients, "dummy-namespace", v1.ListOptions{})
-
+	pipelineRuns, err := GetPipelineRuns(clients, namespace, v1.ListOptions{LabelSelector: fmt.Sprintf("user=%s", userName)})
 	if err != nil {
 		t.Fatalf("I was not expecting an error, got: %s", err)
 	}
-
 	if len(pipelineRuns) != 2 {
 		t.Fatalf("I was expecting 2 pipeline run, got: %d", len(pipelineRuns))
 	}
 
-	if pipelineRuns[0].Name != "two" {
-		t.Fatalf("I was expecting the first pipeline run to be 'two', got: %s", pipelineRuns[0].Name)
+	expectedOrder := []string{"two", "one"}
+	for i, expectedName := range expectedOrder {
+		if pipelineRuns[i].Name != expectedName {
+			t.Fatalf("I was expecting pipeline run at index %d to be '%s', got: %s", i, expectedName, pipelineRuns[i].Name)
+		}
+	}
+}
+
+func TestGetPipelineRunsReturnsSortedPipelineRunsWhenScheduledAndRunningPipelineRuns(t *testing.T) {
+	userName := "test-user"
+	namespace := "test-namespace"
+	mockTekton := tektonFake.NewSimpleClientset(
+		&tektonPipelineV1.PipelineRunList{
+			Items: []tektonPipelineV1.PipelineRun{
+				{
+					ObjectMeta: v1.ObjectMeta{
+						Name:              "running-1",
+						Namespace:         namespace,
+						Labels:            map[string]string{"user": userName},
+						CreationTimestamp: v1.Time{Time: time.Now()},
+					},
+				},
+				{
+					ObjectMeta: v1.ObjectMeta{
+						Name:              "running-2",
+						Namespace:         namespace,
+						Labels:            map[string]string{"user": userName},
+						CreationTimestamp: v1.Time{Time: time.Now().Add(1 * time.Hour)},
+					},
+				},
+			},
+		},
+	)
+	scheduledRuns := []tektonPipelineV1.PipelineRun{
+		{
+			ObjectMeta: v1.ObjectMeta{
+				Name:              "scheduled-1",
+				Namespace:         namespace,
+				Labels:            map[string]string{"user": userName},
+				CreationTimestamp: v1.Time{Time: time.Now().Add(2 * time.Hour)},
+			},
+			Spec: tektonPipelineV1.PipelineRunSpec{
+				PipelineRef: &tektonPipelineV1.PipelineRef{Name: "buildpacks"},
+			},
+		},
+		{
+			ObjectMeta: v1.ObjectMeta{
+				Name:              "scheduled-2",
+				Namespace:         namespace,
+				Labels:            map[string]string{"user": userName},
+				CreationTimestamp: v1.Time{Time: time.Now().Add(3 * time.Hour)},
+			},
+			Spec: tektonPipelineV1.PipelineRunSpec{
+				PipelineRef: &tektonPipelineV1.PipelineRef{Name: "buildpacks"},
+			},
+		},
 	}
 
+	scheduledUnstructuredObj := make([]runtime.Object, len(scheduledRuns))
+	for i, run := range scheduledRuns {
+		spec, err := runtime.DefaultUnstructuredConverter.ToUnstructured(&run)
+		if err != nil {
+			t.Fatalf("Expected no error, got: %v", err)
+		}
+		metadata, found, err := unstructured.NestedMap(spec, "metadata")
+		if err != nil {
+			t.Fatalf("Expected no error, got: %v", err)
+		}
+		if !found {
+			t.Fatalf("Expected metadata to be found")
+		}
+		obj := &unstructured.Unstructured{
+			Object: map[string]interface{}{
+				"apiVersion": fmt.Sprintf("%s/%s", ScheduledBuildResource.Group, ScheduledBuildResource.Version),
+				"kind":       ScheduledBuildKind,
+				"metadata":   metadata,
+				"spec":       spec,
+			},
+		}
+		scheduledUnstructuredObj[i] = obj
+	}
+
+	mockK8sScheme := k8sRuntime.NewScheme()
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildType, &unstructured.Unstructured{})
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildListType, &unstructured.UnstructuredList{})
+	mockK8sCustom := dynamicFake.NewSimpleDynamicClient(mockK8sScheme, scheduledUnstructuredObj...)
+
+	clients := &Clients{
+		Tekton:    mockTekton,
+		K8sCustom: mockK8sCustom,
+	}
+	pipelineRuns, err := GetPipelineRuns(clients, namespace, v1.ListOptions{LabelSelector: fmt.Sprintf("user=%s", userName)})
+	if err != nil {
+		t.Fatalf("I was not expecting an error, got: %s", err)
+	}
+	if len(pipelineRuns) != 4 {
+		t.Fatalf("I was expecting 4 pipeline run, got: %d", len(pipelineRuns))
+	}
+	expectedOrder := []string{"scheduled-2", "scheduled-1", "running-2", "running-1"}
+	for i, expectedName := range expectedOrder {
+		if pipelineRuns[i].Name != expectedName {
+			t.Fatalf("I was expecting pipeline run at index %d to be '%s', got: %s", i, expectedName, pipelineRuns[i].Name)
+		}
+	}
 }
 
 func TestCleanupOldPipelineRuns(t *testing.T) {
@@ -1357,30 +1595,32 @@ func TestStartReturnsInternalServerErrorOnException(t *testing.T) {
 	}
 	testHarborClientSet, _ := harbor.NewClientSet(testConfig)
 
-	fakeEmptyPipelineRuns := tektonPipelineV1.PipelineRunList{
-		Items:    []tektonPipelineV1.PipelineRun{},
-		TypeMeta: v1.TypeMeta{},
-		ListMeta: v1.ListMeta{},
-	}
-	mockTekton := tektonFake.Clientset{}
-	mockTekton.Fake.PrependReactor(
-		"list",
-		"pipelineruns",
-		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
-			return true, &fakeEmptyPipelineRuns, nil
+	mockTekton := tektonFake.NewSimpleClientset(
+		&tektonPipelineV1.PipelineRunList{
+			Items:    []tektonPipelineV1.PipelineRun{},
+			TypeMeta: v1.TypeMeta{},
+			ListMeta: v1.ListMeta{},
 		},
 	)
-	mockTekton.Fake.PrependReactor(
+
+	mockK8sScheme := k8sRuntime.NewScheme()
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildType, &unstructured.Unstructured{})
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildListType, &unstructured.UnstructuredList{})
+	mockK8sCustom := dynamicFake.NewSimpleDynamicClient(mockK8sScheme)
+
+	mockK8sCustom.Fake.PrependReactor(
 		"create",
-		"pipelineruns",
+		"scheduledbuilds",
 		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
 			return true, nil, fmt.Errorf("Dummy error")
 		},
 	)
+
 	api := BuildsApi{
 		Clients: Clients{
-			Tekton: &mockTekton,
-			Harbor: testHarborClientSet,
+			Tekton:    mockTekton,
+			Harbor:    testHarborClientSet,
+			K8sCustom: mockK8sCustom,
 		},
 		Config: Config{
 			HarborRepository:  testServer.URL,
@@ -1540,17 +1780,44 @@ func TestStartReturnsNewBuildName(t *testing.T) {
 	fakePipelineRun := tektonPipelineV1.PipelineRun{
 		ObjectMeta: v1.ObjectMeta{Name: expectedName},
 	}
-	mockTekton.Fake.PrependReactor(
+
+	spec, err := runtime.DefaultUnstructuredConverter.ToUnstructured(&fakePipelineRun)
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+	metadata, found, err := unstructured.NestedMap(spec, "metadata")
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+	if !found {
+		t.Fatalf("Expected metadata to be found")
+	}
+	obj := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": fmt.Sprintf("%s/%s", ScheduledBuildResource.Group, ScheduledBuildResource.Version),
+			"kind":       ScheduledBuildKind,
+			"metadata":   metadata,
+			"spec":       spec,
+		},
+	}
+
+	mockK8sScheme := k8sRuntime.NewScheme()
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildType, &unstructured.Unstructured{})
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildListType, &unstructured.UnstructuredList{})
+	mockK8sCustom := dynamicFake.NewSimpleDynamicClient(mockK8sScheme)
+	mockK8sCustom.Fake.PrependReactor(
 		"create",
-		"pipelineruns",
+		"scheduledbuilds",
 		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
-			return true, &fakePipelineRun, nil
+			return true, obj, nil
 		},
 	)
+
 	api := BuildsApi{
 		Clients: Clients{
-			Tekton: &mockTekton,
-			Harbor: testHarborClientSet,
+			Tekton:    &mockTekton,
+			Harbor:    testHarborClientSet,
+			K8sCustom: mockK8sCustom,
 		},
 		Config: Config{
 			HarborRepository:  testServer.URL,
@@ -1628,29 +1895,54 @@ func TestStartUsesLatestBuilderAndRunnerVersionsIfPassed(t *testing.T) {
 	fakePipelineRun := tektonPipelineV1.PipelineRun{
 		ObjectMeta: v1.ObjectMeta{Name: name},
 	}
-	mockTekton.Fake.PrependReactor(
+	spec, err := runtime.DefaultUnstructuredConverter.ToUnstructured(&fakePipelineRun)
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+	metadata, found, err := unstructured.NestedMap(spec, "metadata")
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+	if !found {
+		t.Fatalf("Expected metadata to be found")
+	}
+	obj := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": fmt.Sprintf("%s/%s", ScheduledBuildResource.Group, ScheduledBuildResource.Version),
+			"kind":       ScheduledBuildKind,
+			"metadata":   metadata,
+			"spec":       spec,
+		},
+	}
+
+	mockK8sScheme := k8sRuntime.NewScheme()
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildType, &unstructured.Unstructured{})
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildListType, &unstructured.UnstructuredList{})
+	mockK8sCustom := dynamicFake.NewSimpleDynamicClient(mockK8sScheme)
+	mockK8sCustom.Fake.PrependReactor(
 		"create",
-		"pipelineruns",
+		"scheduledbuilds",
 		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
-			return true, &fakePipelineRun, nil
+			return true, obj, nil
 		},
 	)
+
 	origRunCommand := gitLsRemote
 	defer func() { gitLsRemote = origRunCommand }()
 	gitLsRemote = func(sourceURL string, ref string) (string, error) {
 		return fmt.Sprintf("%s\tHEAD", "resolvedref"), nil
 	}
+
 	api := BuildsApi{
 		Clients: Clients{
-			Tekton: &mockTekton,
-			Harbor: testHarborClientSet,
+			Tekton:    &mockTekton,
+			Harbor:    testHarborClientSet,
+			K8sCustom: mockK8sCustom,
 		},
 		Config: Config{
 			HarborRepository:  testServer.URL,
 			Builder:           "dummy-builder",
 			Runner:            "dummy-runner",
-			LatestBuilder:     "latest-dummy-builder",
-			LatestRunner:      "latest-dummy-runner",
 			OkToKeep:          1,
 			FailedToKeep:      2,
 			BuildIdPrefix:     BuildIdPrefix,
@@ -1712,17 +2004,42 @@ func TestStartReturnsWarningMessageIfQuotaIsAbove90(t *testing.T) {
 	fakePipelineRun := tektonPipelineV1.PipelineRun{
 		ObjectMeta: v1.ObjectMeta{Name: expectedName},
 	}
-	mockTekton.Fake.PrependReactor(
+	spec, err := runtime.DefaultUnstructuredConverter.ToUnstructured(&fakePipelineRun)
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+	metadata, found, err := unstructured.NestedMap(spec, "metadata")
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+	if !found {
+		t.Fatalf("Expected metadata to be found")
+	}
+	obj := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": fmt.Sprintf("%s/%s", ScheduledBuildResource.Group, ScheduledBuildResource.Version),
+			"kind":       ScheduledBuildKind,
+			"metadata":   metadata,
+			"spec":       spec,
+		},
+	}
+
+	mockK8sScheme := k8sRuntime.NewScheme()
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildType, &unstructured.Unstructured{})
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildListType, &unstructured.UnstructuredList{})
+	mockK8sCustom := dynamicFake.NewSimpleDynamicClient(mockK8sScheme)
+	mockK8sCustom.Fake.PrependReactor(
 		"create",
-		"pipelineruns",
+		"scheduledbuilds",
 		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
-			return true, &fakePipelineRun, nil
+			return true, obj, nil
 		},
 	)
 	api := BuildsApi{
 		Clients: Clients{
-			Tekton: &mockTekton,
-			Harbor: testHarborClientSet,
+			Tekton:    &mockTekton,
+			Harbor:    testHarborClientSet,
+			K8sCustom: mockK8sCustom,
 		},
 		Config: Config{
 			HarborRepository:  testServer.URL,
@@ -1789,9 +2106,14 @@ func TestDeleteReturnsNotFoundIfNoBuildsThere(t *testing.T) {
 			Items: make([]tektonPipelineV1.PipelineRun, 0),
 		},
 	)
+	mockK8sScheme := k8sRuntime.NewScheme()
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildType, &unstructured.Unstructured{})
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildListType, &unstructured.UnstructuredList{})
+	mockK8sCustom := dynamicFake.NewSimpleDynamicClient(mockK8sScheme)
 	api := BuildsApi{
 		Clients: Clients{
-			Tekton: mockTekton,
+			Tekton:    mockTekton,
+			K8sCustom: mockK8sCustom,
 		},
 		Config: Config{
 			BuildIdPrefix:     BuildIdPrefix,
@@ -1821,9 +2143,21 @@ func TestDeleteReturnsInternalServerErrorOnException(t *testing.T) {
 			return true, nil, fmt.Errorf("Dummy error")
 		},
 	)
+	mockK8sScheme := k8sRuntime.NewScheme()
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildType, &unstructured.Unstructured{})
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildListType, &unstructured.UnstructuredList{})
+	mockK8sCustom := dynamicFake.NewSimpleDynamicClient(mockK8sScheme)
+	mockK8sCustom.Fake.PrependReactor(
+		"delete",
+		"scheduledbuilds",
+		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
+			return true, nil, fmt.Errorf("Dummy error")
+		},
+	)
 	api := BuildsApi{
 		Clients: Clients{
-			Tekton: &mockTekton,
+			Tekton:    &mockTekton,
+			K8sCustom: mockK8sCustom,
 		},
 		Config: Config{
 			BuildIdPrefix:     BuildIdPrefix,
@@ -1853,9 +2187,21 @@ func TestDeleteReturnsDeletedBuildName(t *testing.T) {
 			return true, nil, nil
 		},
 	)
+	mockK8sScheme := k8sRuntime.NewScheme()
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildType, &unstructured.Unstructured{})
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildListType, &unstructured.UnstructuredList{})
+	mockK8sCustom := dynamicFake.NewSimpleDynamicClient(mockK8sScheme)
+	mockK8sCustom.Fake.PrependReactor(
+		"delete",
+		"scheduledbuilds",
+		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
+			return true, nil, nil
+		},
+	)
 	api := BuildsApi{
 		Clients: Clients{
-			Tekton: &mockTekton,
+			Tekton:    &mockTekton,
+			K8sCustom: mockK8sCustom,
 		},
 		Config: Config{
 			BuildIdPrefix:     BuildIdPrefix,
@@ -1914,12 +2260,12 @@ func TestListReturnsInternalServerErrorOnException(t *testing.T) {
 
 func TestListReturnsBuilds(t *testing.T) {
 	toolName := "dummy-tool"
-	expectedBuildId := fmt.Sprintf("%s%sbuild", toolName, BuildIdPrefix)
+	expectedRunningBuildId := fmt.Sprintf("%s%srunning", toolName, BuildIdPrefix)
 	mockTekton := tektonFake.NewSimpleClientset(
 		&tektonPipelineV1.PipelineRunList{
 			Items: []tektonPipelineV1.PipelineRun{
 				{
-					ObjectMeta: v1.ObjectMeta{Name: expectedBuildId, Namespace: BuildNamespace, Labels: map[string]string{"user": toolName}},
+					ObjectMeta: v1.ObjectMeta{Name: expectedRunningBuildId, Namespace: BuildNamespace, Labels: map[string]string{"user": toolName}},
 					Spec: tektonPipelineV1.PipelineRunSpec{
 						Params: []tektonPipelineV1.Param{
 							{Name: "BUILDER_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder:22-cnb"}},
@@ -1933,17 +2279,56 @@ func TestListReturnsBuilds(t *testing.T) {
 					Status: tektonPipelineV1.PipelineRunStatus{
 						Status: knative.Status{Conditions: knative.Conditions{{Type: "Succeeded", Status: "True", Message: "All Tasks Succeeded", Reason: "Succeeded"}}},
 						PipelineRunStatusFields: tektonPipelineV1.PipelineRunStatusFields{
-							CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)},
-							StartTime:      &v1.Time{Time: time.Date(2023, 6, 8, 15, 0, 0, 0, time.UTC)},
+							CompletionTime: &v1.Time{Time: time.Now().Add(2 * time.Minute)},
+							StartTime:      &v1.Time{Time: time.Now().Add(1 * time.Minute)},
 						},
 					},
 				},
 			},
 		},
 	)
+	expectedScheduledBuildId := fmt.Sprintf("%s%sscheduled", toolName, BuildIdPrefix)
+	scheduledRun := tektonPipelineV1.PipelineRun{
+		ObjectMeta: v1.ObjectMeta{
+			Name:              expectedScheduledBuildId,
+			Namespace:         BuildNamespace,
+			Labels:            map[string]string{"user": toolName},
+			CreationTimestamp: v1.Time{Time: time.Now()},
+		},
+		Spec: tektonPipelineV1.PipelineRunSpec{
+			PipelineRef: &tektonPipelineV1.PipelineRef{Name: "buildpacks"},
+		},
+	}
+
+	scheduledUnstructuredObj := make([]runtime.Object, 1)
+	spec, err := runtime.DefaultUnstructuredConverter.ToUnstructured(&scheduledRun)
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+	metadata, found, err := unstructured.NestedMap(spec, "metadata")
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+	if !found {
+		t.Fatalf("Expected metadata to be found")
+	}
+	obj := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": fmt.Sprintf("%s/%s", ScheduledBuildResource.Group, ScheduledBuildResource.Version),
+			"kind":       ScheduledBuildKind,
+			"metadata":   metadata,
+			"spec":       spec,
+		},
+	}
+	scheduledUnstructuredObj[0] = obj
+	mockK8sScheme := k8sRuntime.NewScheme()
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildType, &unstructured.Unstructured{})
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildListType, &unstructured.UnstructuredList{})
+	mockK8sCustom := dynamicFake.NewSimpleDynamicClient(mockK8sScheme, scheduledUnstructuredObj...)
 	api := BuildsApi{
 		Clients: Clients{
-			Tekton: mockTekton,
+			Tekton:    mockTekton,
+			K8sCustom: mockK8sCustom,
 		},
 		Config: Config{
 			BuildIdPrefix:     BuildIdPrefix,
@@ -1964,11 +2349,15 @@ func TestListReturnsBuilds(t *testing.T) {
 	}
 
 	listResponse := response.(gen.ListResponse)
-	if len(*listResponse.Builds) != 1 {
-		t.Fatalf("Got unexpected number of builds, expected 1, got %d", len(*listResponse.Builds))
+	if len(*listResponse.Builds) != 2 {
+		t.Fatalf("Got unexpected number of builds, expected 2, got %d", len(*listResponse.Builds))
 	}
-	if *(*listResponse.Builds)[0].BuildId != expectedBuildId {
-		t.Fatalf("Got unexpected build id, expected '%s', got '%s'", expectedBuildId, *(*listResponse.Builds)[0].BuildId)
+	expectedOrder := []string{expectedScheduledBuildId, expectedRunningBuildId}
+	for i, expectedName := range expectedOrder {
+		gottenName := *(*listResponse.Builds)[i].BuildId
+		if gottenName != expectedName {
+			t.Fatalf("I was expecting pipeline run at index %d to be '%s', got: %s", i, expectedName, gottenName)
+		}
 	}
 }
 
@@ -2037,7 +2426,79 @@ func TestGetPipelineRunParam(t *testing.T) {
 	}
 }
 
-func TestGetReturnsBuildsOk(t *testing.T) {
+func TestGetReturnsBuildsOkForScheduledBuild(t *testing.T) {
+	toolName := "dummy-tool"
+	buildId := fmt.Sprintf("%s%sbuild", toolName, BuildIdPrefix)
+	scheduledRun := tektonPipelineV1.PipelineRun{
+		ObjectMeta: v1.ObjectMeta{
+			Name:              buildId,
+			Namespace:         BuildNamespace,
+			Labels:            map[string]string{"user": toolName},
+			CreationTimestamp: v1.Time{Time: time.Now()},
+		},
+		Spec: tektonPipelineV1.PipelineRunSpec{
+			PipelineRef: &tektonPipelineV1.PipelineRef{Name: "buildpacks"},
+		},
+	}
+
+	scheduledUnstructuredObj := make([]runtime.Object, 1)
+	spec, err := runtime.DefaultUnstructuredConverter.ToUnstructured(&scheduledRun)
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+	metadata, found, err := unstructured.NestedMap(spec, "metadata")
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+	if !found {
+		t.Fatalf("Expected metadata to be found")
+	}
+	obj := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": fmt.Sprintf("%s/%s", ScheduledBuildResource.Group, ScheduledBuildResource.Version),
+			"kind":       ScheduledBuildKind,
+			"metadata":   metadata,
+			"spec":       spec,
+		},
+	}
+	scheduledUnstructuredObj[0] = obj
+	mockK8sScheme := k8sRuntime.NewScheme()
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildType, &unstructured.Unstructured{})
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildListType, &unstructured.UnstructuredList{})
+	mockK8sCustom := dynamicFake.NewSimpleDynamicClient(mockK8sScheme, scheduledUnstructuredObj...)
+	mockTekton := tektonFake.NewSimpleClientset()
+
+	api := BuildsApi{
+		Clients: Clients{
+			Tekton:    mockTekton,
+			K8sCustom: mockK8sCustom,
+		},
+		Config: Config{
+			BuildIdPrefix:     BuildIdPrefix,
+			BuildNamespace:    BuildNamespace,
+			MaxParallelBuilds: 1,
+		},
+	}
+
+	recorder := httptest.NewRecorder()
+	code, response := Get(
+		&api,
+		buildId,
+		toolName,
+	)
+
+	expected_code := http.StatusOK
+	if code != expected_code {
+		t.Fatalf("I was expecting a '%d' response, got (%d): %v", expected_code, code, recorder.Body.String())
+	}
+
+	getResponse := response.(gen.GetResponse)
+	if *getResponse.Build.BuildId != buildId {
+		t.Fatalf("Got unexpected build id, expected '%s', got '%s'", buildId, *getResponse.Build.BuildId)
+	}
+}
+
+func TestGetReturnsBuildsOkForRunningBuild(t *testing.T) {
 	toolName := "dummy-tool"
 	buildId := fmt.Sprintf("%s%sbuild", toolName, BuildIdPrefix)
 	mockTekton := tektonFake.NewSimpleClientset(
@@ -2065,9 +2526,14 @@ func TestGetReturnsBuildsOk(t *testing.T) {
 			},
 		},
 	)
+	mockK8sScheme := k8sRuntime.NewScheme()
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildType, &unstructured.Unstructured{})
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildListType, &unstructured.UnstructuredList{})
+	mockK8sCustom := dynamicFake.NewSimpleDynamicClient(mockK8sScheme)
 	api := BuildsApi{
 		Clients: Clients{
-			Tekton: mockTekton,
+			Tekton:    mockTekton,
+			K8sCustom: mockK8sCustom,
 		},
 		Config: Config{
 			BuildIdPrefix:     BuildIdPrefix,
@@ -2097,11 +2563,8 @@ func TestGetReturnsBuildsOk(t *testing.T) {
 func TestGetReturnsBuildsNotAuth(t *testing.T) {
 	toolName := "dummy-tool"
 	buildId := "some-non-authorized-build-name"
-	mockTekton := tektonFake.NewSimpleClientset()
 	api := BuildsApi{
-		Clients: Clients{
-			Tekton: mockTekton,
-		},
+		Clients: Clients{},
 		Config: Config{
 			BuildIdPrefix:     BuildIdPrefix,
 			BuildNamespace:    BuildNamespace,
@@ -2132,9 +2595,14 @@ func TestGetReturnsBuildsNotFound(t *testing.T) {
 	toolName := "dummy-tool"
 	buildId := fmt.Sprintf("%s%sbuild", toolName, BuildIdPrefix)
 	mockTekton := tektonFake.NewSimpleClientset()
+	mockK8sScheme := k8sRuntime.NewScheme()
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildType, &unstructured.Unstructured{})
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildListType, &unstructured.UnstructuredList{})
+	mockK8sCustom := dynamicFake.NewSimpleDynamicClient(mockK8sScheme)
 	api := BuildsApi{
 		Clients: Clients{
-			Tekton: mockTekton,
+			Tekton:    mockTekton,
+			K8sCustom: mockK8sCustom,
 		},
 		Config: Config{
 			BuildIdPrefix:     BuildIdPrefix,
@@ -2170,9 +2638,17 @@ func TestGetReturnsAPIError(t *testing.T) {
 	mockTekton.PrependReactor("list", "pipelineruns", func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
 		return true, nil, fmt.Errorf("Dummy error!")
 	})
+	mockK8sScheme := k8sRuntime.NewScheme()
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildType, &unstructured.Unstructured{})
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildListType, &unstructured.UnstructuredList{})
+	mockK8sCustom := dynamicFake.NewSimpleDynamicClient(mockK8sScheme)
+	mockK8sCustom.PrependReactor("list", "scheduledbuilds", func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
+		return true, nil, fmt.Errorf("Dummy error!")
+	})
 	api := BuildsApi{
 		Clients: Clients{
-			Tekton: &mockTekton,
+			Tekton:    &mockTekton,
+			K8sCustom: mockK8sCustom,
 		},
 		Config: Config{
 			BuildIdPrefix:     BuildIdPrefix,
@@ -2224,14 +2700,15 @@ func TestCancelReturnsErrorIfNotAllowed(t *testing.T) {
 func TestCancelReturnsNotFoundIfNoBuildsThere(t *testing.T) {
 	toolName := "dummy-tool"
 	buildId := fmt.Sprintf("%s%sbuild", toolName, BuildIdPrefix)
-	mockTekton := tektonFake.NewSimpleClientset(
-		&tektonPipelineV1.PipelineRunList{
-			Items: make([]tektonPipelineV1.PipelineRun, 0),
-		},
-	)
+	mockTekton := tektonFake.NewSimpleClientset()
+	mockK8sScheme := k8sRuntime.NewScheme()
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildType, &unstructured.Unstructured{})
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildListType, &unstructured.UnstructuredList{})
+	mockK8sCustom := dynamicFake.NewSimpleDynamicClient(mockK8sScheme)
 	api := BuildsApi{
 		Clients: Clients{
-			Tekton: mockTekton,
+			Tekton:    mockTekton,
+			K8sCustom: mockK8sCustom,
 		},
 		Config: Config{
 			BuildIdPrefix:     BuildIdPrefix,
@@ -2259,15 +2736,23 @@ func TestCancelReturnsInternalServerErrorOnException(t *testing.T) {
 	}
 
 	mockTekton.Fake.PrependReactor(
-		"get",
+		"list",
 		"pipelineruns",
 		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
 			return true, nil, fmt.Errorf("dummy error")
 		},
 	)
+	mockK8sScheme := k8sRuntime.NewScheme()
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildType, &unstructured.Unstructured{})
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildListType, &unstructured.UnstructuredList{})
+	mockK8sCustom := dynamicFake.NewSimpleDynamicClient(mockK8sScheme)
+	mockK8sCustom.PrependReactor("list", "scheduledbuilds", func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
+		return true, nil, fmt.Errorf("Dummy error!")
+	})
 	api := BuildsApi{
 		Clients: Clients{
-			Tekton: &mockTekton,
+			Tekton:    &mockTekton,
+			K8sCustom: mockK8sCustom,
 		},
 		Config: Config{
 			BuildIdPrefix:     BuildIdPrefix,
@@ -2359,17 +2844,26 @@ func TestCancelReturnsConflictIfBuildIsNotCancellable(t *testing.T) {
 		},
 	}
 
+	mockK8sScheme := k8sRuntime.NewScheme()
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildType, &unstructured.Unstructured{})
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildListType, &unstructured.UnstructuredList{})
+	mockK8sCustom := dynamicFake.NewSimpleDynamicClient(mockK8sScheme)
+
 	for _, pipelineRun := range uncancellablePipelineRuns {
+		fakePipelineRunList := tektonPipelineV1.PipelineRunList{
+			Items: []tektonPipelineV1.PipelineRun{pipelineRun},
+		}
 		mockTekton.Fake.PrependReactor(
-			"get",
+			"list",
 			"pipelineruns",
 			func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
-				return true, &pipelineRun, nil
+				return true, &fakePipelineRunList, nil
 			},
 		)
 		api := BuildsApi{
 			Clients: Clients{
-				Tekton: &mockTekton,
+				Tekton:    &mockTekton,
+				K8sCustom: mockK8sCustom,
 			},
 			Config: Config{
 				OkToKeep:          1,
@@ -2412,10 +2906,14 @@ func TestCancelReturnsCancelledBuild(t *testing.T) {
 			},
 		},
 	)
-
+	mockK8sScheme := k8sRuntime.NewScheme()
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildType, &unstructured.Unstructured{})
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildListType, &unstructured.UnstructuredList{})
+	mockK8sCustom := dynamicFake.NewSimpleDynamicClient(mockK8sScheme)
 	api := BuildsApi{
 		Clients: Clients{
-			Tekton: mockTekton,
+			Tekton:    mockTekton,
+			K8sCustom: mockK8sCustom,
 		},
 		Config: Config{
 			BuildIdPrefix:     BuildIdPrefix,
@@ -2432,6 +2930,129 @@ func TestCancelReturnsCancelledBuild(t *testing.T) {
 	cancelResponse := response.(gen.CancelResponse)
 	if *cancelResponse.Id != buildId {
 		t.Fatalf("Got unexpected build id, expected '%s', got '%s'", buildId, *cancelResponse.Id)
+	}
+}
+
+func TestCancelDeletesPendingTektonPipelineRun(t *testing.T) {
+	toolName := "dummy-tool"
+	buildId := fmt.Sprintf("%s%sbuild", toolName, BuildIdPrefix)
+	mockTekton := tektonFake.NewSimpleClientset(
+		&tektonPipelineV1.PipelineRunList{
+			Items: []tektonPipelineV1.PipelineRun{
+				{
+					ObjectMeta: v1.ObjectMeta{Name: buildId, Namespace: BuildNamespace, Labels: map[string]string{"user": toolName}},
+					Spec: tektonPipelineV1.PipelineRunSpec{
+						Params: []tektonPipelineV1.Param{
+							{Name: "RUN_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "toolsbeta-harbor.wmcloud.org/toolforge/heroku-runner:22-cnb"}},
+							{Name: "APP_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "192.168.188.129/tool-minikube-user/tool-raymond:latest"}},
+							{Name: "SOURCE_URL", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "https://github.com/david-caro/wm-lol"}},
+							{Name: "SOURCE_REFERENCE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: "value4"}},
+						},
+					},
+				},
+			},
+		},
+	)
+	mockK8sScheme := k8sRuntime.NewScheme()
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildType, &unstructured.Unstructured{})
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildListType, &unstructured.UnstructuredList{})
+	mockK8sCustom := dynamicFake.NewSimpleDynamicClient(mockK8sScheme)
+	api := BuildsApi{
+		Clients: Clients{
+			Tekton:    mockTekton,
+			K8sCustom: mockK8sCustom,
+		},
+		Config: Config{
+			BuildIdPrefix:     BuildIdPrefix,
+			BuildNamespace:    BuildNamespace,
+			MaxParallelBuilds: 1,
+		},
+	}
+
+	code, response := Cancel(&api, buildId, toolName)
+	if code != 200 {
+		t.Fatalf("I was expecting a 200 response, got: %d", code)
+	}
+	cancelResponse := response.(gen.CancelResponse)
+	if *cancelResponse.Id != buildId {
+		t.Fatalf("Got unexpected build id, expected '%s', got '%s'", buildId, *cancelResponse.Id)
+	}
+	pipelineRuns, err := GetPipelineRuns(&api.Clients, BuildNamespace, v1.ListOptions{})
+	if err != nil {
+		t.Fatalf("I was not expecting an error, got: %s", err)
+	}
+	if len(pipelineRuns) != 0 {
+		t.Fatalf("I was expecting 0 pipelineruns, got: %d", len(pipelineRuns))
+	}
+}
+
+func TestCancelDeletesPendingScheduledBuild(t *testing.T) {
+	toolName := "dummy-tool"
+	buildId := fmt.Sprintf("%s%sbuild", toolName, BuildIdPrefix)
+	mockTekton := tektonFake.NewSimpleClientset()
+	scheduledRun := tektonPipelineV1.PipelineRun{
+		ObjectMeta: v1.ObjectMeta{
+			Name:              buildId,
+			Namespace:         BuildNamespace,
+			Labels:            map[string]string{"user": toolName},
+			CreationTimestamp: v1.Time{Time: time.Now()},
+		},
+		Spec: tektonPipelineV1.PipelineRunSpec{
+			PipelineRef: &tektonPipelineV1.PipelineRef{Name: "buildpacks"},
+		},
+	}
+
+	scheduledUnstructuredObj := make([]runtime.Object, 1)
+	spec, err := runtime.DefaultUnstructuredConverter.ToUnstructured(&scheduledRun)
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+	metadata, found, err := unstructured.NestedMap(spec, "metadata")
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+	if !found {
+		t.Fatalf("Expected metadata to be found")
+	}
+	obj := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": fmt.Sprintf("%s/%s", ScheduledBuildResource.Group, ScheduledBuildResource.Version),
+			"kind":       ScheduledBuildKind,
+			"metadata":   metadata,
+			"spec":       spec,
+		},
+	}
+	scheduledUnstructuredObj[0] = obj
+	mockK8sScheme := k8sRuntime.NewScheme()
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildType, &unstructured.Unstructured{})
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildListType, &unstructured.UnstructuredList{})
+	mockK8sCustom := dynamicFake.NewSimpleDynamicClient(mockK8sScheme, scheduledUnstructuredObj...)
+	api := BuildsApi{
+		Clients: Clients{
+			Tekton:    mockTekton,
+			K8sCustom: mockK8sCustom,
+		},
+		Config: Config{
+			BuildIdPrefix:     BuildIdPrefix,
+			BuildNamespace:    BuildNamespace,
+			MaxParallelBuilds: 1,
+		},
+	}
+
+	code, response := Cancel(&api, buildId, toolName)
+	if code != 200 {
+		t.Fatalf("I was expecting a 200 response, got: %d", code)
+	}
+	cancelResponse := response.(gen.CancelResponse)
+	if *cancelResponse.Id != buildId {
+		t.Fatalf("Got unexpected build id, expected '%s', got '%s'", buildId, *cancelResponse.Id)
+	}
+	pipelineRuns, err := GetPipelineRuns(&api.Clients, BuildNamespace, v1.ListOptions{})
+	if err != nil {
+		t.Fatalf("I was not expecting an error, got: %s", err)
+	}
+	if len(pipelineRuns) != 0 {
+		t.Fatalf("I was expecting 0 pipelineruns, got: %d", len(pipelineRuns))
 	}
 }
 
@@ -2499,9 +3120,14 @@ func TestLatestReturnsBuildsOk(t *testing.T) {
 			},
 		},
 	)
+	mockK8sScheme := k8sRuntime.NewScheme()
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildType, &unstructured.Unstructured{})
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildListType, &unstructured.UnstructuredList{})
+	mockK8sCustom := dynamicFake.NewSimpleDynamicClient(mockK8sScheme)
 	api := BuildsApi{
 		Clients: Clients{
-			Tekton: mockTekton,
+			Tekton:    mockTekton,
+			K8sCustom: mockK8sCustom,
 		},
 		Config: Config{
 			BuildIdPrefix:     BuildIdPrefix,
@@ -2566,9 +3192,14 @@ func TestLatestReturnsAPIError(t *testing.T) {
 func TestLatestReturnsBuildsNotFound(t *testing.T) {
 	toolName := "dummy-tool"
 	mockTekton := tektonFake.NewSimpleClientset()
+	mockK8sScheme := k8sRuntime.NewScheme()
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildType, &unstructured.Unstructured{})
+	mockK8sScheme.AddKnownTypeWithName(ScheduledBuildListType, &unstructured.UnstructuredList{})
+	mockK8sCustom := dynamicFake.NewSimpleDynamicClient(mockK8sScheme)
 	api := BuildsApi{
 		Clients: Clients{
-			Tekton: mockTekton,
+			Tekton:    mockTekton,
+			K8sCustom: mockK8sCustom,
 		},
 		Config: Config{
 			BuildIdPrefix:     BuildIdPrefix,

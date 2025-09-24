@@ -217,6 +217,36 @@ func getBuildConditionFromPipelineRun(run *tektonPipelineV1.PipelineRun) gen.Bui
 	return *buildCondition
 }
 
+func getTaskRunForPipeline(clients *Clients, namespace, pipelineRunName string) *tektonPipelineV1.TaskRun {
+	taskRunList, err := clients.Tekton.TektonV1().TaskRuns(namespace).List(
+		context.TODO(),
+		metav1.ListOptions{LabelSelector: fmt.Sprintf("tekton.dev/pipelineRun=%s", pipelineRunName)},
+	)
+	if err != nil {
+		log.Warnf(
+			"Got error when retrieving TaskRuns for pipeline %s/%s: %v", namespace, pipelineRunName, err,
+		)
+		return nil
+	}
+
+	for _, taskRun := range taskRunList.Items {
+		if len(taskRun.Status.Results) > 0 {
+			return &taskRun
+		}
+	}
+
+	return nil
+}
+
+func getTaskRunResult(taskRun *tektonPipelineV1.TaskRun, name string) string {
+	for _, result := range taskRun.Status.Results {
+		if result.Name == name {
+			return strings.TrimSpace(result.Value.StringVal)
+		}
+	}
+	return ""
+}
+
 func getpipelineRunStringParam(pipelineRun tektonPipelineV1.PipelineRun, name string) string {
 	for _, param := range pipelineRun.Spec.Params {
 		if param.Name == name {
@@ -241,7 +271,7 @@ func getpipelineRunArrayParam(pipelineRun tektonPipelineV1.PipelineRun, name str
 	return nil
 }
 
-func getBuild(run tektonPipelineV1.PipelineRun, latestBuilder string) *gen.Build {
+func getBuild(clients *Clients, run tektonPipelineV1.PipelineRun, latestBuilder string) *gen.Build {
 	var startTime string
 	var endTime string
 	buildCondition := getBuildConditionFromPipelineRun(&run)
@@ -264,7 +294,22 @@ func getBuild(run tektonPipelineV1.PipelineRun, latestBuilder string) *gen.Build
 		resolvedRef = getpipelineRunStringParam(run, "SOURCE_REFERENCE")
 	}
 
-	destinationimage := getpipelineRunStringParam(run, "APP_IMAGE")
+	// `APP_IMAGE` is set in the PipelineRun parameters i.e. spec, it is always available for a PipelineRun
+	appImageUrl := getpipelineRunStringParam(run, "APP_IMAGE")
+	appImageDigest := ""
+
+	// These results are set by `results.sh` in the `results` step,
+	// if they are present (i.e. we have a finished build) then use them
+	log.Debugf("Getting run: pipelineName=%s, namespace=%s", run.Name, run.Name)
+	if taskRun := getTaskRunForPipeline(clients, run.Namespace, run.Name); taskRun != nil {
+		if appResultImageUrl := getTaskRunResult(taskRun, "APP_IMAGE_URL"); appResultImageUrl != "" {
+			appImageUrl = appResultImageUrl
+		}
+		appImageDigest = getTaskRunResult(taskRun, "APP_IMAGE_DIGEST")
+
+		log.Debugf("Got results for run pipelineName=%s, namespace=%s: appImageUrl=%s, appImageDigest=%s", run.Name, run.Name, appImageUrl, appImageDigest)
+	}
+
 	envvarsStr := getpipelineRunArrayParam(run, "ENV_VARS")
 	envvars := make(map[string]string)
 	for _, envvarStr := range envvarsStr {
@@ -275,9 +320,16 @@ func getBuild(run tektonPipelineV1.PipelineRun, latestBuilder string) *gen.Build
 			envvars[parts[0]] = parts[1]
 		}
 	}
-	// destinationImage is in the format "tools-harbor.wmcloud.org/tool-toolname/imagename:latest"
-	imageReference := strings.Split(destinationimage, "/")[len(strings.Split(destinationimage, "/"))-1]
+	// appImageUrl is in the format "tools-harbor.wmcloud.org/tool-toolname/imagename:latest"
+	imageReference := strings.Split(appImageUrl, "/")[len(strings.Split(appImageUrl, "/"))-1]
 	imageName := strings.Split(imageReference, ":")[0]
+
+	// Append the image digest to the image url, providing assertion that a pulled image matches this build
+	destinationImage := appImageUrl
+	if appImageDigest != "" {
+		destinationImage = fmt.Sprintf("%s@%s", destinationImage, appImageDigest)
+	}
+
 	// We might want to start creating our own datastructure instead of
 	// using the tekton pipeline run as the storage for
 	// the build info, this is a not always correct way to get
@@ -298,7 +350,7 @@ func getBuild(run tektonPipelineV1.PipelineRun, latestBuilder string) *gen.Build
 			UseLatestVersions: &useLatestVersions,
 			ImageName:         &imageName,
 		},
-		DestinationImage: &destinationimage,
+		DestinationImage: &destinationImage,
 		ResolvedRef:      &resolvedRef,
 	}
 }
@@ -1049,7 +1101,7 @@ func Get(
 	// NOTE: we assume here the first pipelineRun from the search is what we are looking for.
 	// In k8s/tekton two objects cannot share metadata.name in the same namespace anyway
 
-	build := getBuild(pipelineRuns[0], api.Config.LatestBuilder)
+	build := getBuild(&api.Clients, pipelineRuns[0], api.Config.LatestBuilder)
 	return http.StatusOK, gen.GetResponse{Build: build, Messages: &gen.ResponseMessages{}}
 }
 
@@ -1067,7 +1119,7 @@ func List(
 
 	builds := make([]gen.Build, len(pipelineRuns))
 	for i, run := range pipelineRuns {
-		builds[i] = *getBuild(run, api.Config.LatestBuilder)
+		builds[i] = *getBuild(&api.Clients, run, api.Config.LatestBuilder)
 	}
 	return http.StatusOK, gen.ListResponse{Builds: &builds, Messages: &gen.ResponseMessages{}}
 }
@@ -1093,7 +1145,7 @@ func Latest(
 	}
 
 	// getPipelineRuns returns a sorted array per creationTimestamp
-	build := getBuild(pipelineRuns[0], api.Config.LatestBuilder)
+	build := getBuild(&api.Clients, pipelineRuns[0], api.Config.LatestBuilder)
 	return http.StatusOK, gen.LatestResponse{Build: build, Messages: &gen.ResponseMessages{}}
 }
 

@@ -53,6 +53,9 @@ var gitLsRemote = func(sourceURL string, ref string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if string(output) == "" {
+		return "", fmt.Errorf("unable to resolve ref %s from %s", ref, sourceURL)
+	}
 	return string(output), nil
 }
 

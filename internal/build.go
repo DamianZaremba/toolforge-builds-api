@@ -217,29 +217,24 @@ func getBuildConditionFromPipelineRun(run *tektonPipelineV1.PipelineRun) gen.Bui
 	return *buildCondition
 }
 
-func getTaskRunForPipeline(clients *Clients, namespace, pipelineRunName string) *tektonPipelineV1.TaskRun {
-	taskRunList, err := clients.Tekton.TektonV1().TaskRuns(namespace).List(
-		context.TODO(),
-		metav1.ListOptions{LabelSelector: fmt.Sprintf("tekton.dev/pipelineRun=%s", pipelineRunName)},
-	)
+func getTaskStatusRunForPipeline(ctx echo.Context, clients *Clients, namespace string, pipelineRun *tektonPipelineV1.PipelineRun) *tektonPipelineV1.PipelineRunTaskRunStatus {
+	taskRunStatuses, _, err := status.GetPipelineTaskStatuses(ctx.Request().Context(), clients.Tekton, namespace, pipelineRun)
 	if err != nil {
-		log.Warnf(
-			"Got error when retrieving TaskRuns for pipeline %s/%s: %v", namespace, pipelineRunName, err,
-		)
+		log.Debugf("Got error when getting task statuses for the pipeline %v: %s", pipelineRun, err)
 		return nil
 	}
 
-	for _, taskRun := range taskRunList.Items {
-		if len(taskRun.Status.Results) > 0 {
-			return &taskRun
+	for _, taskRunStatus := range taskRunStatuses {
+		if len(taskRunStatus.Status.Results) > 0 {
+			return taskRunStatus
 		}
 	}
 
 	return nil
 }
 
-func getTaskRunResult(taskRun *tektonPipelineV1.TaskRun, name string) string {
-	for _, result := range taskRun.Status.Results {
+func getTaskRunResult(taskRunStatus *tektonPipelineV1.PipelineRunTaskRunStatus, name string) string {
+	for _, result := range taskRunStatus.Status.Results {
 		if result.Name == name {
 			return strings.TrimSpace(result.Value.StringVal)
 		}
@@ -271,7 +266,7 @@ func getpipelineRunArrayParam(pipelineRun tektonPipelineV1.PipelineRun, name str
 	return nil
 }
 
-func getBuild(clients *Clients, run tektonPipelineV1.PipelineRun, latestBuilder string) *gen.Build {
+func getBuild(ctx echo.Context, clients *Clients, run tektonPipelineV1.PipelineRun, latestBuilder string) *gen.Build {
 	var startTime string
 	var endTime string
 	buildCondition := getBuildConditionFromPipelineRun(&run)
@@ -301,11 +296,11 @@ func getBuild(clients *Clients, run tektonPipelineV1.PipelineRun, latestBuilder 
 	// These results are set by `results.sh` in the `results` step,
 	// if they are present (i.e. we have a finished build) then use them
 	log.Debugf("Getting run: pipelineName=%s, namespace=%s", run.Name, run.Name)
-	if taskRun := getTaskRunForPipeline(clients, run.Namespace, run.Name); taskRun != nil {
-		if appResultImageUrl := getTaskRunResult(taskRun, "APP_IMAGE_URL"); appResultImageUrl != "" {
+	if taskRunStatus := getTaskStatusRunForPipeline(ctx, clients, run.Namespace, &run); taskRunStatus != nil {
+		if appResultImageUrl := getTaskRunResult(taskRunStatus, "APP_IMAGE_URL"); appResultImageUrl != "" {
 			appImageUrl = appResultImageUrl
 		}
-		appImageDigest = getTaskRunResult(taskRun, "APP_IMAGE_DIGEST")
+		appImageDigest = getTaskRunResult(taskRunStatus, "APP_IMAGE_DIGEST")
 
 		log.Debugf("Got results for run pipelineName=%s, namespace=%s: appImageUrl=%s, appImageDigest=%s", run.Name, run.Name, appImageUrl, appImageDigest)
 	}
@@ -1074,6 +1069,7 @@ func Delete(
 }
 
 func Get(
+	ctx echo.Context,
 	api *BuildsApi,
 	id string,
 	toolName string,
@@ -1101,11 +1097,12 @@ func Get(
 	// NOTE: we assume here the first pipelineRun from the search is what we are looking for.
 	// In k8s/tekton two objects cannot share metadata.name in the same namespace anyway
 
-	build := getBuild(&api.Clients, pipelineRuns[0], api.Config.LatestBuilder)
+	build := getBuild(ctx, &api.Clients, pipelineRuns[0], api.Config.LatestBuilder)
 	return http.StatusOK, gen.GetResponse{Build: build, Messages: &gen.ResponseMessages{}}
 }
 
 func List(
+	ctx echo.Context,
 	api *BuildsApi,
 	toolName string,
 ) (int, interface{}) {
@@ -1119,12 +1116,13 @@ func List(
 
 	builds := make([]gen.Build, len(pipelineRuns))
 	for i, run := range pipelineRuns {
-		builds[i] = *getBuild(&api.Clients, run, api.Config.LatestBuilder)
+		builds[i] = *getBuild(ctx, &api.Clients, run, api.Config.LatestBuilder)
 	}
 	return http.StatusOK, gen.ListResponse{Builds: &builds, Messages: &gen.ResponseMessages{}}
 }
 
 func Latest(
+	ctx echo.Context,
 	api *BuildsApi,
 	toolName string,
 ) (int, interface{}) {
@@ -1145,7 +1143,7 @@ func Latest(
 	}
 
 	// getPipelineRuns returns a sorted array per creationTimestamp
-	build := getBuild(&api.Clients, pipelineRuns[0], api.Config.LatestBuilder)
+	build := getBuild(ctx, &api.Clients, pipelineRuns[0], api.Config.LatestBuilder)
 	return http.StatusOK, gen.LatestResponse{Build: build, Messages: &gen.ResponseMessages{}}
 }
 

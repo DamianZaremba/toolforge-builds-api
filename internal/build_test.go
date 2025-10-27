@@ -49,6 +49,15 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
+func getContextWithRequest(method string, path string, body io.Reader) (*echo.Context, *httptest.ResponseRecorder) {
+
+	e := echo.New()
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(method, path, body)
+	ctx := e.NewContext(req, rec)
+	return &ctx, rec
+}
+
 func TestToolNameToHarborProjectNameReturnsErrorIfNameIsInvalidToolforgeToolName(t *testing.T) {
 	invalidToolNames := []string{
 		"_username",
@@ -475,12 +484,9 @@ func TestStreamLogsForContainerForIncompleteLogLines(t *testing.T) {
 			container: make([]byte, 1024),
 		}
 
-		e := echo.New()
-		rec := httptest.NewRecorder()
-		req := httptest.NewRequest("GET", "/fakeurl", nil)
-		ctx := e.NewContext(req, rec)
+		ctx, rec := getContextWithRequest("GET", "/fakurl", nil)
 
-		err := StreamLogsForContainer(ctx, container, logs, buffers)
+		err := StreamLogsForContainer(*ctx, container, logs, buffers)
 
 		if err != nil {
 			t.Fatalf("Unexpected error: %s", err)
@@ -1710,8 +1716,10 @@ func TestListReturnsInternalServerErrorOnException(t *testing.T) {
 			MaxParallelBuilds: 1,
 		},
 	}
+	var ctx echo.Context
 
 	code, _ := List(
+		ctx,
 		&api,
 		"dummy-tool",
 	)
@@ -1744,6 +1752,7 @@ func TestListReturnsBuilds(t *testing.T) {
 						PipelineRunStatusFields: tektonPipelineV1.PipelineRunStatusFields{
 							CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)},
 							StartTime:      &v1.Time{Time: time.Date(2023, 6, 8, 15, 0, 0, 0, time.UTC)},
+							Results:        []tektonPipelineV1.PipelineRunResult{},
 						},
 					},
 				},
@@ -1761,7 +1770,9 @@ func TestListReturnsBuilds(t *testing.T) {
 		},
 	}
 
+	ctx, _ := getContextWithRequest("GET", "/builds", nil)
 	code, response := List(
+		*ctx,
 		&api,
 		toolName,
 	)
@@ -1886,7 +1897,9 @@ func TestGetReturnsBuildsOk(t *testing.T) {
 	}
 
 	recorder := httptest.NewRecorder()
+	ctx, _ := getContextWithRequest("GET", "/builds/mybuild", nil)
 	code, response := Get(
+		*ctx,
 		&api,
 		buildId,
 		toolName,
@@ -1919,7 +1932,9 @@ func TestGetReturnsBuildsNotAuth(t *testing.T) {
 	}
 
 	recorder := httptest.NewRecorder()
+	var ctx echo.Context
 	code, response := Get(
+		ctx,
 		&api,
 		buildId,
 		toolName,
@@ -1953,7 +1968,9 @@ func TestGetReturnsBuildsNotFound(t *testing.T) {
 	}
 
 	recorder := httptest.NewRecorder()
+	var ctx echo.Context
 	code, response := Get(
+		ctx,
 		&api,
 		buildId,
 		toolName,
@@ -1991,7 +2008,9 @@ func TestGetReturnsAPIError(t *testing.T) {
 	}
 
 	recorder := httptest.NewRecorder()
+	var ctx echo.Context
 	code, response := Get(
+		ctx,
 		&api,
 		buildId,
 		toolName,
@@ -2319,8 +2338,10 @@ func TestLatestReturnsBuildsOk(t *testing.T) {
 		},
 	}
 
+	ctx, _ := getContextWithRequest("GET", "/builds/latest", nil)
 	recorder := httptest.NewRecorder()
 	code, response := Latest(
+		*ctx,
 		&api,
 		toolName,
 	)
@@ -2355,7 +2376,9 @@ func TestLatestReturnsAPIError(t *testing.T) {
 	}
 
 	recorder := httptest.NewRecorder()
+	var ctx echo.Context
 	code, response := Latest(
+		ctx,
 		&api,
 		toolName,
 	)
@@ -2387,7 +2410,9 @@ func TestLatestReturnsBuildsNotFound(t *testing.T) {
 	}
 
 	recorder := httptest.NewRecorder()
+	var ctx echo.Context
 	code, response := Latest(
+		ctx,
 		&api,
 		toolName,
 	)

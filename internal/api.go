@@ -166,7 +166,7 @@ func (api BuildsApi) List(ctx echo.Context, toolnameFromRequest string) error {
 		return echo.NewHTTPError(http.StatusUnauthorized, "Unauthorized")
 	}
 	toolnameFromContext := getToolFromContext(ctx)
-	code, response := List(&api, toolnameFromContext)
+	code, response := List(ctx, &api, toolnameFromContext)
 	return ctx.JSON(code, response)
 }
 
@@ -176,7 +176,7 @@ func (api BuildsApi) Get(ctx echo.Context, toolnameFromRequest string, id string
 		return echo.NewHTTPError(http.StatusUnauthorized, "Unauthorized")
 	}
 	toolnameFromContext := getToolFromContext(ctx)
-	code, response := Get(&api, id, toolnameFromContext)
+	code, response := Get(ctx, &api, id, toolnameFromContext)
 	return ctx.JSON(code, response)
 }
 
@@ -186,7 +186,7 @@ func (api BuildsApi) Latest(ctx echo.Context, toolnameFromRequest string) error 
 		return echo.NewHTTPError(http.StatusUnauthorized, "Unauthorized")
 	}
 	toolnameFromContext := getToolFromContext(ctx)
-	code, response := Latest(&api, toolnameFromContext)
+	code, response := Latest(ctx, &api, toolnameFromContext)
 	return ctx.JSON(code, response)
 }
 

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Toolforge builds API
-  version: 2.3.0
+  version: 2.4.0
 servers:
   - url: "http://127.0.0.1:8000"
     description: "Local direct development server."
@@ -12,6 +12,29 @@ servers:
   - url: "https://api.svc.toolsbeta.eqiad1.wikimedia.cloud:30003/builds"
     description: "Toolforge beta internal API gateway endpoint."
 paths:
+  /v1/tool/{toolname}/images:
+    get:
+      operationId: images
+      parameters:
+        - name: toolname
+          in: path
+          required: true
+          description: Name of the tool
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Returns a list of build+prebuilt images
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImageListResponse"
+        "401":
+          $ref: "#/components/responses/unauthorized"
+        "500":
+          $ref: "#/components/responses/internal-error"
+      security:
+        - key: []
   /v1/tool/{toolname}/builds:
     post:
       operationId: start
@@ -359,6 +382,15 @@ components:
             - ERROR
         messages:
           $ref: "#/components/schemas/ResponseMessages"
+    ImageListResponse:
+      type: object
+      properties:
+        messages:
+          $ref: "#/components/schemas/ResponseMessages"
+        images:
+          type: array
+          items:
+            $ref: "#/components/schemas/Image"
     StartResponse:
       type: object
       properties:
@@ -417,6 +449,46 @@ components:
       properties:
         messages:
           $ref: "#/components/schemas/ResponseMessages"
+    ImageType:
+      type: string
+      enum:
+        - standard
+        - buildpack
+      x-enum-varnames:
+        - IMAGETYPESTANDARD
+        - IMAGETYPEBUILDPACK
+    ImageState:
+      type: string
+      enum:
+        - stable
+        - deprecated
+      x-enum-varnames:
+        - IMAGESTATESTABLE
+        - IMAGESTATEDEPRECATED
+    Image:
+      type: object
+      properties:
+        canonical_name:
+          type: string
+        image_type:
+          $ref: "#/components/schemas/ImageType"
+        aliases:
+          type: array
+          items:
+            type: string
+        ws_type:
+          type: string
+          nullable: true # should be just `string` when we start using webservice images for jobs-framework
+        resources:
+          type: string
+          nullable: true
+        ref:
+          type: string
+        state:
+          $ref: "#/components/schemas/ImageState"
+        digest:
+          type: string
+          nullable: true
     BuildLog:
       type: object
       properties:

@@ -80,6 +80,51 @@ func main() {
 		log.Fatalf("No HARBOR_PASSWORD set, one is needed.")
 	}
 
+	var prebuiltImagesArr []map[string]interface{}
+	if err := viper.UnmarshalKey("prebuilt_images", &prebuiltImagesArr); err != nil {
+		log.Fatalf("Failed to parse prebuilt_images: %s", err)
+	}
+
+	// Parse prebuilt images and load into config
+	var prebuiltImages []gen.Image
+	for _, prebuiltImage := range prebuiltImagesArr {
+		var aliasesArr []string
+		if aliases, ok := prebuiltImage["aliases"]; ok {
+			if aliasesList, ok := aliases.([]interface{}); ok {
+				for _, alias := range aliasesList {
+					if aliasStr, ok := alias.(string); ok {
+						aliasesArr = append(aliasesArr, aliasStr)
+					}
+				}
+			}
+		}
+		canonicalName, _ := prebuiltImage["canonical_name"].(string)
+		ref, _ := prebuiltImage["ref"].(string)
+
+		var wstypePtr *string
+		if wstypeStr, ok := prebuiltImage["wstype"].(string); ok {
+			wstypePtr = &wstypeStr
+		}
+		var resourcesPtr *string
+		if resourcesStr, ok := prebuiltImage["resources"].(string); ok {
+			resourcesPtr = &resourcesStr
+		}
+		imageType := gen.IMAGETYPESTANDARD
+		stateStr, _ := prebuiltImage["state"].(string)
+		imageState := gen.ImageState(stateStr)
+
+		img := gen.Image{
+			CanonicalName: &canonicalName,
+			ImageType:     &imageType,
+			State:         &imageState,
+			Aliases:       &aliasesArr,
+			Ref:           &ref,
+			WsType:        wstypePtr,
+			Resources:     resourcesPtr,
+		}
+		prebuiltImages = append(prebuiltImages, img)
+	}
+
 	kubeconfig := viper.GetString("kubeconfig")
 	outOfK8sRun := viper.GetBool("out_of_k8s_run")
 
@@ -96,6 +141,7 @@ func main() {
 		BuildNamespace:    viper.GetString("build_namespace"),
 		BuildIdPrefix:     viper.GetString("build_id_prefix"),
 		MaxParallelBuilds: viper.GetInt("max_parallel_builds"),
+		PrebuiltImages:    prebuiltImages,
 	}
 
 	clients, err := getApiClients(outOfK8sRun, kubeconfig, internalConfig)

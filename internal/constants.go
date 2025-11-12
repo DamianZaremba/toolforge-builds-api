@@ -28,6 +28,7 @@ var HarborNameRegex = regexp.MustCompile("^[a-z0-9]+(?:[._-][a-z0-9]+)*$")
 var HarborProjectPrefix = "tool-"
 var HarborSpecialCharFiller = "char.sep"
 var HarborSpecialChars = "-_"
+var ToolforgePrebuiltImagesProject = "toolforge-prebuilt-images"
 var PipelineRunNotStartedErrorStr = "pipelineRun not yet started"
 var ResourceNameEmptyErrorStr = "resource name may not be empty"
 var PodInitializingErrorStr = "PodInitializing"

@@ -12,7 +12,7 @@ repos:
       - id: check-merge-conflict
 
   - repo: https://github.com/golangci/golangci-lint
-    rev: v2.8.0
+    rev: v2.10.1
     hooks:
       - id: golangci-lint
         args: ["--timeout=10m"]
@@ -23,7 +23,7 @@ repos:
       - id: shellcheck
 
   - repo: https://github.com/python-openapi/openapi-spec-validator
-    rev: 0.8.0b1
+    rev: 0.8.3
     hooks:
       - id: openapi-spec-validator
         exclude: .*_config.yaml

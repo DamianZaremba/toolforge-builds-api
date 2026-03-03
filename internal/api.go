@@ -124,6 +124,7 @@ func (api BuildsApi) Start(ctx echo.Context, toolnameFromRequest string) error {
 	}
 
 	code, response := Start(
+		ctx,
 		&api,
 		safeDeref[string](&buildParameters.SourceUrl),
 		safeDeref[string](buildParameters.Ref),

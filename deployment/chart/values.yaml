@@ -45,3 +45,486 @@ config:
   runner: toolsbeta-harbor.wmcloud.org/toolforge/heroku-runner:22-cnb
   latestBuilder: toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder:22
   latestRunner: toolsbeta-harbor.wmcloud.org/toolforge/heroku-runner:22-cnb
+
+  prebuiltImages:
+  - canonical_name: trixie
+    state: stable
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-trixie-web-sssd:latest
+    ws_type: generic
+
+  - canonical_name: bookworm
+    state: stable
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-bookworm-web-sssd:latest
+    ws_type: generic
+
+  - canonical_name: golang1.11
+    state: deprecated
+    aliases:
+    - golang
+    - tf-golang
+    - tf-golang111
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-golang111-sssd-web:latest
+    ws_type: generic
+
+  - canonical_name: jdk21
+    state: stable
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-jdk21-sssd-web:latest
+    ws_type: generic
+    resources: jdk
+
+  - canonical_name: jdk17
+    state: stable
+    aliases:
+    - tf-jdk17
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-jdk17-sssd-web:latest
+    ws_type: generic
+    resources: jdk
+
+  - canonical_name: jdk11
+    state: deprecated
+    aliases:
+    - tf-jdk11
+    - tf-jdk11-DEPRECATED
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-jdk11-sssd-web:latest
+    ws_type: generic
+    resources: jdk
+
+  - canonical_name: jdk8
+    state: deprecated
+    aliases:
+    - tf-jdk8
+    - tf-jdk8-DEPRECATED
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-jdk8-sssd-web:latest
+    ws_type: generic
+    resources: jdk
+
+  - canonical_name: node20
+    state: stable
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-node20-sssd-web:latest
+    ws_type: js
+
+  - canonical_name: node18
+    state: stable
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-node18-sssd-web:latest
+    ws_type: js
+
+  - canonical_name: node16
+    state: stable
+    aliases:
+    - tf-node16
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-node16-sssd-web:latest
+    ws_type: js
+
+  - canonical_name: node12
+    state: deprecated
+    aliases:
+    - tf-node12
+    - tf-node12-DEPRECATED
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-node12-sssd-web:latest
+    ws_type: js
+
+  - canonical_name: node10
+    state: deprecated
+    aliases:
+    - tf-node10
+    - tf-node10-DEPRECATED
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-node10-sssd-web:latest
+    ws_type: js
+
+  - canonical_name: node6
+    state: deprecated
+    aliases:
+    - tf-node6
+    - tf-node6-DEPRECATED
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-node6-sssd-web:latest
+    ws_type: js
+
+  - canonical_name: perl5.40
+    state: stable
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-perl540-sssd-web:latest
+    ws_type: lighttpd-plain
+
+  - canonical_name: perl5.36
+    state: stable
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-perl536-sssd-web:latest
+    ws_type: lighttpd-plain
+
+  - canonical_name: perl5.32
+    state: stable
+    aliases:
+    - tf-perl532
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-perl532-sssd-web:latest
+    ws_type: lighttpd-plain
+
+  - canonical_name: php8.4
+    state: stable
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-php84-sssd-web:latest
+    ws_type: lighttpd
+
+  - canonical_name: php8.2
+    state: stable
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-php82-sssd-web:latest
+    ws_type: lighttpd
+
+  - canonical_name: php7.4
+    state: stable
+    aliases:
+    - tf-php74
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-php74-sssd-web:latest
+    ws_type: lighttpd
+
+  - canonical_name: php7.3
+    state: deprecated
+    aliases:
+    - tf-php73
+    - tf-php73-DEPRECATED
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-php73-sssd-web:latest
+    ws_type: lighttpd
+
+  - canonical_name: php7.2
+    state: deprecated
+    aliases:
+    - tf-php72
+    - tf-php72-DEPRECATED
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-php72-sssd-web:latest
+    ws_type: lighttpd
+
+  - canonical_name: php5.6
+    state: deprecated
+    aliases:
+    - php5
+    - tf-php5
+    - tf-php5-DEPRECATED
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-php5-sssd-web:latest
+    ws_type: lighttpd
+
+  - canonical_name: python3.13
+    state: stable
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-python313-sssd-web:latest
+    ws_type: python
+
+  - canonical_name: python3.11
+    state: stable
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-python311-sssd-web:latest
+    ws_type: python
+
+  - canonical_name: python3.9
+    state: stable
+    aliases:
+    - tf-python39
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-python39-sssd-web:latest
+    ws_type: python
+
+  - canonical_name: python3.7
+    state: deprecated
+    aliases:
+    - tf-python37
+    - tf-python37-DEPRECATED
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-python37-sssd-web:latest
+    ws_type: python
+
+  - canonical_name: python3.5
+    state: deprecated
+    aliases:
+    - tf-python35
+    - tf-python35-DEPRECATED
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-python35-sssd-web:latest
+    ws_type: python
+
+  - canonical_name: python3.4
+    state: deprecated
+    aliases:
+    - python
+    - tf-python34
+    - tf-python34-DEPRECATED
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-python34-sssd-web:latest
+    ws_type: python
+
+  - canonical_name: python2
+    state: deprecated
+    aliases:
+    - python2.7
+    - tf-python2
+    - tf-python2-DEPRECATED
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-python2-sssd-web:latest
+    ws_type: python
+
+  - canonical_name: ruby3.3
+    state: stable
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-ruby33-sssd-web:latest
+    ws_type: generic
+
+  - canonical_name: ruby3.1
+    state: stable
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-ruby31-sssd-web:latest
+    ws_type: generic
+
+  - canonical_name: ruby2.7
+    state: stable
+    aliases:
+    - tf-ruby27
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-ruby27-sssd-web:latest
+    ws_type: generic
+
+  - canonical_name: ruby2.5
+    state: deprecated
+    aliases:
+    - tf-ruby25
+    - tf-ruby25-DEPRECATED
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-ruby25-sssd-web:latest
+    ws_type: generic
+
+  - canonical_name: ruby2.1
+    state: stable
+    aliases:
+    - tf-ruby21
+    - tf-ruby21-DEPRECATED
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-ruby21-sssd-web:latest
+    ws_type: generic
+
+  - canonical_name: tcl8.6
+    state: stable
+    aliases:
+    - tcl
+    - tf-tcl86
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-tcl86-sssd-web:latest
+    ws_type: lighttpd-plain
+
+  # TODO: remove the entries below once we start using only webservices images. see https://phabricator.wikimedia.org/T409191
+  - canonical_name: trixie
+    state: stable
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-trixie-sssd:latest
+
+  - canonical_name: bookworm
+    state: stable
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-bookworm-sssd:latest
+
+  - canonical_name: bullseye
+    state: stable
+    aliases:
+    - tf-bullseye
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-bullseye-sssd:latest
+
+  - canonical_name: bullseye-standalone
+    state: deprecated
+    aliases:
+    - tf-bullseye-std
+    - tf-bullseye-std-DEPRECATED
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-bullseye-standalone:latest
+
+  - canonical_name: buster-standalone
+    state: deprecated
+    aliases:
+    - tf-buster-std
+    - tf-buster-std-DEPRECATED
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-buster-standalone:latest
+
+  - canonical_name: golang1.11
+    state: deprecated
+    aliases:
+    - golang
+    - tf-golang
+    - tf-golang111
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-golang111-sssd-base:latest
+
+  - canonical_name: jdk21
+    state: stable
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-jdk21-sssd-base:latest
+
+  - canonical_name: jdk17
+    state: stable
+    aliases:
+    - tf-jdk17
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-jdk17-sssd-base:latest
+
+  - canonical_name: jdk11
+    state: deprecated
+    aliases:
+    - tf-jdk11
+    - tf-jdk11-DEPRECATED
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-jdk11-sssd-base:latest
+
+  - canonical_name: jdk8
+    state: deprecated
+    aliases:
+    - tf-jdk8
+    - tf-jdk8-DEPRECATED
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-jdk8-sssd-base:latest
+
+  - canonical_name: mono6.12
+    state: stable
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-mono612-sssd-base:latest
+
+  - canonical_name: mono6.8
+    state: stable
+    aliases:
+    - tf-mono68
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-mono68-sssd-base:latest
+
+  - canonical_name: node20
+    state: stable
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-node20-sssd-base:latest
+
+  - canonical_name: node18
+    state: stable
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-node18-sssd-base:latest
+
+  - canonical_name: node16
+    state: stable
+    aliases:
+    - tf-node16
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-node16-sssd-base:latest
+
+  - canonical_name: node12
+    state: deprecated
+    aliases:
+    - tf-node12
+    - tf-node12-DEPRECATED
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-node12-sssd-base:latest
+
+  - canonical_name: node10
+    state: deprecated
+    aliases:
+    - tf-node10
+    - tf-node10-DEPRECATED
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-node10-sssd-base:latest
+
+  - canonical_name: node6
+    state: deprecated
+    aliases:
+    - tf-node6
+    - tf-node6-DEPRECATED
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-node6-sssd-base:latest
+
+  - canonical_name: mariadb
+    state: stable
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-mariadb-sssd-base:latest
+
+  - canonical_name: perl5.40
+    state: stable
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-perl540-sssd-base:latest
+
+  - canonical_name: perl5.36
+    state: stable
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-perl536-sssd-base:latest
+
+  - canonical_name: perl5.32
+    state: stable
+    aliases:
+    - tf-perl532
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-perl532-sssd-base:latest
+
+  - canonical_name: php8.4
+    state: stable
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-php84-sssd-base:latest
+
+  - canonical_name: php8.2
+    state: stable
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-php82-sssd-base:latest
+
+  - canonical_name: php7.4
+    state: stable
+    aliases:
+    - tf-php74
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-php74-sssd-base:latest
+
+  - canonical_name: php7.3
+    state: deprecated
+    aliases:
+    - tf-php73
+    - tf-php73-DEPRECATED
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-php73-sssd-base:latest
+
+  - canonical_name: php7.2
+    state: deprecated
+    aliases:
+    - tf-php72
+    - tf-php72-DEPRECATED
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-php72-sssd-base:latest
+
+  - canonical_name: php5.6
+    state: deprecated
+    aliases:
+    - php5
+    - tf-php5
+    - tf-php5-DEPRECATED
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-php5-sssd-base:latest
+
+  - canonical_name: python3.13
+    state: stable
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-python313-sssd-base:latest
+
+  - canonical_name: python3.11
+    state: stable
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-python311-sssd-base:latest
+
+  - canonical_name: python3.9
+    state: stable
+    aliases:
+    - tf-python39
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-python39-sssd-base:latest
+
+  - canonical_name: python3.7
+    state: deprecated
+    aliases:
+    - tf-python37
+    - tf-python37-DEPRECATED
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-python37-sssd-base:latest
+
+  - canonical_name: python3.5
+    state: deprecated
+    aliases:
+    - tf-python35
+    - tf-python35-DEPRECATED
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-python35-sssd-base:latest
+
+  - canonical_name: python3.4
+    state: deprecated
+    aliases:
+    - python
+    - tf-python34
+    - tf-python34-DEPRECATED
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-python34-sssd-base:latest
+
+  - canonical_name: python2
+    state: deprecated
+    aliases:
+    - python2.7
+    - tf-python2
+    - tf-python2-DEPRECATED
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-python2-sssd-base:latest
+
+  - canonical_name: ruby3.3
+    state: stable
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-ruby33-sssd-base:latest
+
+  - canonical_name: ruby3.1
+    state: stable
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-ruby31-sssd-base:latest
+
+  - canonical_name: ruby2.7
+    state: stable
+    aliases:
+    - tf-ruby27
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-ruby27-sssd-base:latest
+
+  - canonical_name: ruby2.5
+    state: deprecated
+    aliases:
+    - tf-ruby25
+    - tf-ruby25-DEPRECATED
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-ruby25-sssd-base:latest
+
+  - canonical_name: ruby2.1
+    state: stable
+    aliases:
+    - tf-ruby21
+    - tf-ruby21-DEPRECATED
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-ruby21-sssd-base:latest
+
+  - canonical_name: tcl8.6
+    state: stable
+    aliases:
+    - tcl
+    - tf-tcl86
+    ref: tools-harbor.wmcloud.org/toolforge-pre-built/toolforge-tcl86-sssd-base:latest

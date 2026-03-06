@@ -50,6 +50,7 @@ type Config struct {
 	BuildNamespace    string
 	BuildIdPrefix     string
 	MaxParallelBuilds int
+	PrebuiltImages    []gen.Image
 }
 
 type Clients struct {
@@ -207,6 +208,16 @@ func (api BuildsApi) Clean(ctx echo.Context, toolnameFromRequest string) error {
 	}
 	toolnameFromContext := getToolFromContext(ctx)
 	code, response := Clean(&api, toolnameFromContext)
+	return ctx.JSON(code, response)
+}
+
+func (api BuildsApi) Images(ctx echo.Context, toolnameFromRequest string) error {
+	err := enforceLoggedIn(ctx)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusUnauthorized, "Unauthorized")
+	}
+	toolnameFromContext := getToolFromContext(ctx)
+	code, response := Images(ctx, &api, toolnameFromContext)
 	return ctx.JSON(code, response)
 }
 

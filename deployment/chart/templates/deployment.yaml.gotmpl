@@ -51,6 +51,9 @@ spec:
               value: "{{ .Values.config.failedBuildsToKeep }}"
             - name: "MAX_PARALLEL_BUILDS"
               value: "{{ .Values.config.maxParallelBuilds }}"
+            - name: "PREBUILT_IMAGES"
+              value: |-
+                "{{ .Values.config.prebuiltImages | toJson | nindent 4 }}"
           envFrom:
             - secretRef:
                 name: "{{ .Values.api.passwordSecretName }}"

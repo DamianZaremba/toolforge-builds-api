@@ -24,6 +24,18 @@ const (
 	OK    HealthResponseStatus = "OK"
 )
 
+// Defines values for ImageState.
+const (
+	IMAGESTATEDEPRECATED ImageState = "deprecated"
+	IMAGESTATESTABLE     ImageState = "stable"
+)
+
+// Defines values for ImageType.
+const (
+	IMAGETYPEBUILDPACK ImageType = "buildpack"
+	IMAGETYPESTANDARD  ImageType = "standard"
+)
+
 // Build defines model for Build.
 type Build struct {
 	BuildId          *string          `json:"build_id,omitempty"`
@@ -115,6 +127,33 @@ type HealthResponse struct {
 
 // HealthResponseStatus defines model for HealthResponse.Status.
 type HealthResponseStatus string
+
+// Image defines model for Image.
+type Image struct {
+	Aliases       *[]string   `json:"aliases,omitempty"`
+	CanonicalName *string     `json:"canonical_name,omitempty"`
+	Digest        *string     `json:"digest"`
+	ImageType     *ImageType  `json:"image_type,omitempty"`
+	Ref           *string     `json:"ref,omitempty"`
+	Resources     *string     `json:"resources"`
+	State         *ImageState `json:"state,omitempty"`
+	WsType        *string     `json:"ws_type"`
+}
+
+// ImageListResponse defines model for ImageListResponse.
+type ImageListResponse struct {
+	Images *[]Image `json:"images,omitempty"`
+
+	// Messages Lists of messages by priority, note that there will be a warning here when the endpoint is being deprecated
+	// with information on how to proceed to update it.
+	Messages *ResponseMessages `json:"messages,omitempty"`
+}
+
+// ImageState defines model for ImageState.
+type ImageState string
+
+// ImageType defines model for ImageType.
+type ImageType string
 
 // LatestResponse defines model for LatestResponse.
 type LatestResponse struct {

@@ -2560,3 +2560,675 @@ func TestCleanHappyPath(t *testing.T) {
 		})
 	}
 }
+
+func TestImagesSuccess(t *testing.T) {
+	const (
+		harborURL           = "https://harbor.example.com"
+		prebuiltProjectName = "toolforge-prebuilt-images"
+		toolProjectName     = "tool-dummy-tool"
+		prebuiltRepoName    = "repo1"
+		toolRepoName        = "repo2"
+		prebuiltImageRef    = "harbor.example.com/toolforge-prebuilt-images/repo1:latest"
+		toolImageRef        = "harbor.example.com/tool-dummy-tool/repo2:latest"
+	)
+
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		uri := r.RequestURI
+
+		if strings.Contains(uri, prebuiltProjectName) && strings.Contains(uri, "repositories") && !strings.Contains(uri, "artifacts") {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(fmt.Sprintf(`[{"name": "%s/%s"}]`, prebuiltProjectName, prebuiltRepoName)))
+			return
+		}
+		if strings.Contains(uri, prebuiltProjectName) && strings.Contains(uri, "artifacts") {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`[{"digest": "sha256:prebuilt123", "tags": [{"name": "latest"}]}]`))
+			return
+		}
+		if strings.Contains(uri, toolProjectName) && strings.Contains(uri, "repositories") && !strings.Contains(uri, "artifacts") {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(fmt.Sprintf(`[{"name": "%s/%s"}]`, toolProjectName, toolRepoName)))
+			return
+		}
+		if strings.Contains(uri, toolProjectName) && strings.Contains(uri, "artifacts") {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`[{"digest": "sha256:tool123", "tags": [{"name": "latest"}]}]`))
+			return
+		}
+
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(fmt.Sprintf("Unexpected request: %s %s", r.Method, r.RequestURI)))
+	}))
+	defer testServer.Close()
+
+	testConfig := &harbor.ClientSetConfig{
+		URL: testServer.URL,
+	}
+	testHarborClientSet, _ := harbor.NewClientSet(testConfig)
+
+	imageType := gen.IMAGETYPESTANDARD
+	imageState := gen.IMAGESTATESTABLE
+	ref := prebuiltImageRef
+	canonicalName := "prebuilt-image"
+	prebuiltImage := gen.Image{
+		Ref:           &ref,
+		ImageType:     &imageType,
+		CanonicalName: &canonicalName,
+		State:         &imageState,
+	}
+
+	api := BuildsApi{
+		Clients: Clients{
+			Harbor: testHarborClientSet,
+		},
+		Config: Config{
+			HarborRepository: harborURL,
+			PrebuiltImages:   []gen.Image{prebuiltImage},
+		},
+	}
+
+	ctx, _ := getContextWithRequest("GET", "/images", nil)
+	code, response := Images(*ctx, &api, "dummy-tool")
+
+	if code != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d", code)
+	}
+
+	imageListResponse := response.(gen.ImageListResponse)
+	images := *imageListResponse.Images
+
+	if len(images) != 2 {
+		t.Fatalf("Expected 2 images, got %d", len(images))
+	}
+
+	foundPrebuilt := false
+	foundTool := false
+	for _, img := range images {
+		if *img.ImageType == gen.IMAGETYPESTANDARD {
+			foundPrebuilt = true
+			if *img.Ref != prebuiltImageRef {
+				t.Fatalf("Expected prebuilt ref '%s', got '%s'", prebuiltImageRef, *img.Ref)
+			}
+			if *img.CanonicalName != canonicalName {
+				t.Fatalf("Expected canonical name '%s', got '%s'", canonicalName, *img.CanonicalName)
+			}
+		} else if *img.ImageType == gen.IMAGETYPEBUILDPACK {
+			foundTool = true
+			if *img.Ref != toolImageRef {
+				t.Fatalf("Expected tool ref '%s', got '%s'", toolImageRef, *img.Ref)
+			}
+		}
+	}
+
+	if !foundPrebuilt {
+		t.Fatal("Expected to find prebuilt image")
+	}
+	if !foundTool {
+		t.Fatal("Expected to find tool image")
+	}
+}
+
+func TestImagesGetPrebuiltImagesFails(t *testing.T) {
+	const (
+		harborURL           = "https://harbor.example.com"
+		prebuiltProjectName = "toolforge-prebuilt-images"
+		toolProjectName     = "tool-dummy-tool"
+		toolRepoName        = "repo2"
+	)
+
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		uri := r.RequestURI
+		method := r.Method
+
+		if method == http.MethodGet && strings.Contains(uri, "/api/v2.0/projects/"+prebuiltProjectName+"/repositories") {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"errors":[{"code":500,"message":"Internal server error"}]}`))
+			return
+		}
+		if method == http.MethodGet && strings.Contains(uri, "/api/v2.0/projects/"+toolProjectName+"/repositories") && !strings.Contains(uri, "/artifacts") {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(fmt.Sprintf(`[{"name": "%s/%s"}]`, toolProjectName, toolRepoName)))
+			return
+		}
+		if method == http.MethodGet && strings.Contains(uri, fmt.Sprintf("/api/v2.0/projects/%s/repositories/%s/artifacts", toolProjectName, toolRepoName)) {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`[{"digest": "sha256:tool123", "tags": [{"name": "latest"}]}]`))
+			return
+		}
+
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(fmt.Sprintf("Unexpected request: %s %s", r.Method, r.RequestURI)))
+	}))
+	defer testServer.Close()
+
+	testConfig := &harbor.ClientSetConfig{
+		URL: testServer.URL,
+	}
+	testHarborClientSet, _ := harbor.NewClientSet(testConfig)
+
+	api := BuildsApi{
+		Clients: Clients{
+			Harbor: testHarborClientSet,
+		},
+		Config: Config{
+			HarborRepository: harborURL,
+			PrebuiltImages:   []gen.Image{}, // No config
+		},
+	}
+
+	ctx, _ := getContextWithRequest("GET", "/images", nil)
+	code, response := Images(*ctx, &api, "dummy-tool")
+
+	if code != http.StatusInternalServerError {
+		t.Fatalf("Expected status 500, got %d", code)
+	}
+
+	responseMessages := response.(gen.ResponseMessages)
+	if len(*responseMessages.Error) == 0 {
+		t.Fatal("Expected error message")
+	}
+	expectedMsg := "Failed to fetch prebuilt images"
+	if !strings.Contains((*responseMessages.Error)[0], expectedMsg) {
+		t.Fatalf("Expected error message to contain '%s', got '%s'", expectedMsg, (*responseMessages.Error)[0])
+	}
+}
+
+func TestImagesFiltersForLatestTag(t *testing.T) {
+	const (
+		harborURL           = "https://harbor.example.com"
+		prebuiltProjectName = "toolforge-prebuilt-images"
+		toolProjectName     = "tool-dummy-tool"
+		prebuiltRepoName    = "repo1"
+		toolRepoName        = "repo2"
+		prebuiltImageRef    = "harbor.example.com/toolforge-prebuilt-images/repo1:latest"
+	)
+
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		uri := r.RequestURI
+
+		if strings.Contains(uri, prebuiltProjectName) && strings.Contains(uri, "repositories") && !strings.Contains(uri, "artifacts") {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(fmt.Sprintf(`[{"name": "%s/%s"}]`, prebuiltProjectName, prebuiltRepoName)))
+			return
+		}
+		if strings.Contains(uri, prebuiltProjectName) && strings.Contains(uri, "artifacts") {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`[
+                {"digest": "sha256:latest1", "tags": [{"name": "latest"}]},
+                {"digest": "sha256:v1", "tags": [{"name": "v1"}]}
+            ]`))
+			return
+		}
+		if strings.Contains(uri, toolProjectName) && strings.Contains(uri, "repositories") && !strings.Contains(uri, "artifacts") {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(fmt.Sprintf(`[{"name": "%s/%s"}]`, toolProjectName, toolRepoName)))
+			return
+		}
+		if strings.Contains(uri, toolProjectName) && strings.Contains(uri, "artifacts") {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`[
+                {"digest": "sha256:tool_latest", "tags": [{"name": "latest"}]},
+                {"digest": "sha256:tool_v2", "tags": [{"name": "v2"}]}
+            ]`))
+			return
+		}
+
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(fmt.Sprintf("Unexpected request: %s %s", r.Method, r.RequestURI)))
+	}))
+	defer testServer.Close()
+
+	testConfig := &harbor.ClientSetConfig{
+		URL: testServer.URL,
+	}
+	testHarborClientSet, _ := harbor.NewClientSet(testConfig)
+
+	imageType := gen.IMAGETYPESTANDARD
+	imageState := gen.IMAGESTATESTABLE
+	ref := prebuiltImageRef
+	canonicalName := "prebuilt-image1"
+	prebuiltImage1 := gen.Image{
+		Ref:           &ref,
+		ImageType:     &imageType,
+		CanonicalName: &canonicalName,
+		State:         &imageState,
+	}
+
+	api := BuildsApi{
+		Clients: Clients{
+			Harbor: testHarborClientSet,
+		},
+		Config: Config{
+			HarborRepository: harborURL,
+			PrebuiltImages:   []gen.Image{prebuiltImage1},
+		},
+	}
+
+	ctx, _ := getContextWithRequest("GET", "/images", nil)
+	code, response := Images(*ctx, &api, "dummy-tool")
+
+	if code != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d", code)
+	}
+
+	imageListResponse := response.(gen.ImageListResponse)
+	images := *imageListResponse.Images
+
+	// Should have 2 images: 1 prebuilt :latest (unique ref) + 1 tool :latest
+	if len(images) != 2 {
+		t.Fatalf("Expected 2 images, got %d", len(images))
+	}
+
+	// Count standard images
+	standardCount := 0
+	// Count buildpack images
+	buildpackCount := 0
+	for _, img := range images {
+		if *img.ImageType == gen.IMAGETYPESTANDARD {
+			standardCount++
+		} else if *img.ImageType == gen.IMAGETYPEBUILDPACK {
+			buildpackCount++
+		}
+	}
+
+	if standardCount != 1 {
+		t.Fatalf("Expected 1 standard image, got %d", standardCount)
+	}
+	if buildpackCount != 1 {
+		t.Fatalf("Expected 1 buildpack image, got %d", buildpackCount)
+	}
+}
+
+func TestImagesDropsStandardImagesNotInConfig(t *testing.T) {
+	const (
+		harborURL           = "https://harbor.example.com"
+		prebuiltProjectName = "toolforge-prebuilt-images"
+		toolProjectName     = "tool-dummy-tool"
+		prebuiltRepoName    = "repo1"
+		toolRepoName        = "repo2"
+	)
+
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		uri := r.RequestURI
+
+		if strings.Contains(uri, prebuiltProjectName) && strings.Contains(uri, "repositories") && !strings.Contains(uri, "artifacts") {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(fmt.Sprintf(`[{"name": "%s/%s"}]`, prebuiltProjectName, prebuiltRepoName)))
+			return
+		}
+		if strings.Contains(uri, prebuiltProjectName) && strings.Contains(uri, "artifacts") {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`[{"digest": "sha256:notinconfig", "tags": [{"name": "latest"}]}]`))
+			return
+		}
+		if strings.Contains(uri, toolProjectName) && strings.Contains(uri, "repositories") && !strings.Contains(uri, "artifacts") {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(fmt.Sprintf(`[{"name": "%s/%s"}]`, toolProjectName, toolRepoName)))
+			return
+		}
+		if strings.Contains(uri, toolProjectName) && strings.Contains(uri, "artifacts") {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`[{"digest": "sha256:tool123", "tags": [{"name": "latest"}]}]`))
+			return
+		}
+
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(fmt.Sprintf("Unexpected request: %s %s", r.Method, r.RequestURI)))
+	}))
+	defer testServer.Close()
+
+	testConfig := &harbor.ClientSetConfig{
+		URL: testServer.URL,
+	}
+	testHarborClientSet, _ := harbor.NewClientSet(testConfig)
+
+	api := BuildsApi{
+		Clients: Clients{
+			Harbor: testHarborClientSet,
+		},
+		Config: Config{
+			HarborRepository: harborURL,
+			PrebuiltImages:   []gen.Image{}, // Empty config
+		},
+	}
+
+	ctx, _ := getContextWithRequest("GET", "/images", nil)
+	code, response := Images(*ctx, &api, "dummy-tool")
+
+	if code != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d", code)
+	}
+
+	imageListResponse := response.(gen.ImageListResponse)
+	images := *imageListResponse.Images
+
+	// Should have 1 image: only the tool :latest (standard image not in config is dropped)
+	if len(images) != 1 {
+		t.Fatalf("Expected 1 image, got %d", len(images))
+	}
+
+	// Should only have buildpack image
+	if *images[0].ImageType != gen.IMAGETYPEBUILDPACK {
+		t.Fatalf("Expected only buildpack image, got %s", *images[0].ImageType)
+	}
+}
+
+func TestImagesMergesConfigForStandardImages(t *testing.T) {
+	const (
+		harborURL           = "https://harbor.example.com"
+		prebuiltProjectName = "toolforge-prebuilt-images"
+		toolProjectName     = "tool-dummy-tool"
+		prebuiltRepoName    = "repo1"
+		toolRepoName        = "repo2"
+		prebuiltImageRef    = "harbor.example.com/toolforge-prebuilt-images/repo1:latest"
+	)
+
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		uri := r.RequestURI
+
+		if strings.Contains(uri, prebuiltProjectName) && strings.Contains(uri, "repositories") && !strings.Contains(uri, "artifacts") {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(fmt.Sprintf(`[{"name": "%s/%s"}]`, prebuiltProjectName, prebuiltRepoName)))
+			return
+		}
+		if strings.Contains(uri, prebuiltProjectName) && strings.Contains(uri, "artifacts") {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`[{"digest": "sha256:harbor123", "tags": [{"name": "latest"}]}]`))
+			return
+		}
+		if strings.Contains(uri, toolProjectName) && strings.Contains(uri, "repositories") && !strings.Contains(uri, "artifacts") {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(fmt.Sprintf(`[{"name": "%s/%s"}]`, toolProjectName, toolRepoName)))
+			return
+		}
+		if strings.Contains(uri, toolProjectName) && strings.Contains(uri, "artifacts") {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`[{"digest": "sha256:tool123", "tags": [{"name": "latest"}]}]`))
+			return
+		}
+
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(fmt.Sprintf("Unexpected request: %s %s", r.Method, r.RequestURI)))
+	}))
+	defer testServer.Close()
+
+	testConfig := &harbor.ClientSetConfig{
+		URL: testServer.URL,
+	}
+	testHarborClientSet, _ := harbor.NewClientSet(testConfig)
+
+	imageType := gen.IMAGETYPESTANDARD
+	imageState := gen.IMAGESTATEDEPRECATED
+	ref := prebuiltImageRef
+	canonicalName := "config-canonical-name"
+	configImage := gen.Image{
+		Ref:           &ref,
+		ImageType:     &imageType,
+		CanonicalName: &canonicalName,
+		State:         &imageState,
+	}
+
+	api := BuildsApi{
+		Clients: Clients{
+			Harbor: testHarborClientSet,
+		},
+		Config: Config{
+			HarborRepository: harborURL,
+			PrebuiltImages:   []gen.Image{configImage},
+		},
+	}
+
+	ctx, _ := getContextWithRequest("GET", "/images", nil)
+	code, response := Images(*ctx, &api, "dummy-tool")
+
+	if code != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d", code)
+	}
+
+	imageListResponse := response.(gen.ImageListResponse)
+	images := *imageListResponse.Images
+
+	if len(images) != 2 {
+		t.Fatalf("Expected 2 images, got %d", len(images))
+	}
+
+	var standardImage *gen.Image
+	for i := range images {
+		if *images[i].ImageType == gen.IMAGETYPESTANDARD {
+			standardImage = &images[i]
+			break
+		}
+	}
+
+	if standardImage == nil {
+		t.Fatal("Expected to find standard image")
+	}
+
+	// Verify merged config data
+	if *standardImage.Ref != prebuiltImageRef {
+		t.Fatalf("Expected ref '%s', got '%s'", prebuiltImageRef, *standardImage.Ref)
+	}
+	if *standardImage.CanonicalName != "config-canonical-name" {
+		t.Fatalf("Expected canonical name 'config-canonical-name', got '%s'", *standardImage.CanonicalName)
+	}
+	if *standardImage.State != gen.IMAGESTATEDEPRECATED {
+		t.Fatalf("Expected state DEPRECATED, got %s", *standardImage.State)
+	}
+}
+
+func TestImagesIncludesBuildpackImagesAsIs(t *testing.T) {
+	const (
+		harborURL           = "https://harbor.example.com"
+		prebuiltProjectName = "toolforge-prebuilt-images"
+		toolProjectName     = "tool-dummy-tool"
+		toolRepoName        = "repo1"
+		toolImageRef        = "harbor.example.com/tool-dummy-tool/repo1:latest"
+	)
+
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		uri := r.RequestURI
+
+		if strings.Contains(uri, prebuiltProjectName) && strings.Contains(uri, "repositories") && !strings.Contains(uri, "artifacts") {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`[]`))
+			return
+		}
+		if strings.Contains(uri, toolProjectName) && strings.Contains(uri, "repositories") && !strings.Contains(uri, "artifacts") {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(fmt.Sprintf(`[{"name": "%s/%s"}]`, toolProjectName, toolRepoName)))
+			return
+		}
+		if strings.Contains(uri, toolProjectName) && strings.Contains(uri, "artifacts") {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`[{"digest": "sha256:buildpack123", "tags": [{"name": "latest"}]}]`))
+			return
+		}
+
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(fmt.Sprintf("Unexpected request: %s %s", r.Method, r.RequestURI)))
+	}))
+	defer testServer.Close()
+
+	testConfig := &harbor.ClientSetConfig{
+		URL: testServer.URL,
+	}
+	testHarborClientSet, _ := harbor.NewClientSet(testConfig)
+
+	api := BuildsApi{
+		Clients: Clients{
+			Harbor: testHarborClientSet,
+		},
+		Config: Config{
+			HarborRepository: harborURL,
+			PrebuiltImages:   []gen.Image{},
+		},
+	}
+
+	ctx, _ := getContextWithRequest("GET", "/images", nil)
+	code, response := Images(*ctx, &api, "dummy-tool")
+
+	if code != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d", code)
+	}
+
+	imageListResponse := response.(gen.ImageListResponse)
+	images := *imageListResponse.Images
+
+	if len(images) != 1 {
+		t.Fatalf("Expected 1 image, got %d", len(images))
+	}
+
+	// Should have buildpack image
+	image := images[0]
+	if *image.ImageType != gen.IMAGETYPEBUILDPACK {
+		t.Fatalf("Expected buildpack image type, got %s", *image.ImageType)
+	}
+	if *image.Ref != toolImageRef {
+		t.Fatalf("Expected ref '%s', got '%s'", toolImageRef, *image.Ref)
+	}
+}
+
+func TestImagesSuccessEmpty(t *testing.T) {
+	const (
+		harborURL           = "https://harbor.example.com"
+		prebuiltProjectName = "toolforge-prebuilt-images"
+		toolProjectName     = "tool-dummy-tool"
+	)
+
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		uri := r.RequestURI
+		method := r.Method
+
+		if method == http.MethodGet && (strings.Contains(uri, "/api/v2.0/projects/"+prebuiltProjectName) || strings.Contains(uri, "/api/v2.0/projects/"+toolProjectName)) {
+			if strings.Contains(uri, "/repositories") && !strings.Contains(uri, "/artifacts") {
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`[]`))
+				return
+			}
+		}
+
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(fmt.Sprintf("Unexpected request: %s %s", r.Method, r.RequestURI)))
+	}))
+	defer testServer.Close()
+
+	testConfig := &harbor.ClientSetConfig{
+		URL: testServer.URL,
+	}
+	testHarborClientSet, _ := harbor.NewClientSet(testConfig)
+
+	api := BuildsApi{
+		Clients: Clients{
+			Harbor: testHarborClientSet,
+		},
+		Config: Config{
+			HarborRepository: harborURL,
+			PrebuiltImages:   []gen.Image{},
+		},
+	}
+
+	ctx, _ := getContextWithRequest("GET", "/images", nil)
+	code, response := Images(*ctx, &api, "dummy-tool")
+
+	if code != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d", code)
+	}
+
+	imageListResponse := response.(gen.ImageListResponse)
+	images := *imageListResponse.Images
+
+	if len(images) != 0 {
+		t.Fatalf("Expected 0 images, got %d", len(images))
+	}
+}
+
+func TestImagesHandlesConfigImageNotInHarbor(t *testing.T) {
+	const (
+		harborURL           = "https://harbor.example.com"
+		prebuiltProjectName = "toolforge-prebuilt-images"
+		toolProjectName     = "tool-dummy-tool"
+		toolRepoName        = "repo2"
+		prebuiltImageRef    = "harbor.example.com/toolforge-prebuilt-images/repo1:latest"
+	)
+
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		uri := r.RequestURI
+		method := r.Method
+
+		if method == http.MethodGet && strings.Contains(uri, "/api/v2.0/projects/"+prebuiltProjectName) {
+			if strings.Contains(uri, "/repositories") && !strings.Contains(uri, "/artifacts") {
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`[]`))
+				return
+			}
+		}
+		if method == http.MethodGet && strings.Contains(uri, "/api/v2.0/projects/"+toolProjectName+"/repositories") && !strings.Contains(uri, "/artifacts") {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(fmt.Sprintf(`[{"name": "%s/%s"}]`, toolProjectName, toolRepoName)))
+			return
+		}
+		if method == http.MethodGet && strings.Contains(uri, fmt.Sprintf("/api/v2.0/projects/%s/repositories/%s/artifacts", toolProjectName, toolRepoName)) {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`[{"digest": "sha256:tool123", "tags": [{"name": "latest"}]}]`))
+			return
+		}
+
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(fmt.Sprintf("Unexpected request: %s %s", r.Method, r.RequestURI)))
+	}))
+	defer testServer.Close()
+
+	testConfig := &harbor.ClientSetConfig{
+		URL: testServer.URL,
+	}
+	testHarborClientSet, _ := harbor.NewClientSet(testConfig)
+
+	imageType := gen.IMAGETYPESTANDARD
+	imageState := gen.IMAGESTATESTABLE
+	ref := prebuiltImageRef
+	canonicalName := "config-image-not-in-harbor"
+	configImage := gen.Image{
+		Ref:           &ref,
+		ImageType:     &imageType,
+		CanonicalName: &canonicalName,
+		State:         &imageState,
+	}
+
+	api := BuildsApi{
+		Clients: Clients{
+			Harbor: testHarborClientSet,
+		},
+		Config: Config{
+			HarborRepository: harborURL,
+			PrebuiltImages:   []gen.Image{configImage},
+		},
+	}
+
+	ctx, _ := getContextWithRequest("GET", "/images", nil)
+	code, response := Images(*ctx, &api, "dummy-tool")
+
+	if code != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d", code)
+	}
+
+	imageListResponse := response.(gen.ImageListResponse)
+	images := *imageListResponse.Images
+
+	// Should have 1 image: only the tool :latest (config image not in Harbor is dropped)
+	if len(images) != 1 {
+		t.Fatalf("Expected 1 image, got %d", len(images))
+	}
+
+	// Should only have buildpack image
+	if *images[0].ImageType != gen.IMAGETYPEBUILDPACK {
+		t.Fatalf("Expected only buildpack image, got %s", *images[0].ImageType)
+	}
+}

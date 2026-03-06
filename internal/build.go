@@ -638,6 +638,7 @@ func formatBytes(bytes int64) string {
 	return fmt.Sprintf("%dB", bytes)
 }
 
+// TODO: use getImagesFromHarbor
 func cleanHarbor(api *BuildsApi, toolName string) (gen.CleanResponse, error) {
 	harborProjectName, err := ToolNameToHarborProjectName(toolName)
 	if err != nil {
@@ -793,6 +794,96 @@ func GetHarborQuota(api *BuildsApi, toolName string) (gen.Quota, error) {
 	}
 
 	return res, nil
+}
+
+func getImagesFromHarborRepositoryArtifacts(projectName string, repoName string, artifacts []*harborModels.Artifact, imageType gen.ImageType, host string) ([]gen.Image, error) {
+	var images []gen.Image
+	for _, artifact := range artifacts {
+		if artifact.Digest == "" {
+			continue
+		}
+
+		tags := artifact.Tags
+		for _, tag := range tags {
+			if tag.Name == "" {
+				continue
+			}
+
+			canonicalName := fmt.Sprintf("%s/%s", projectName, repoName)
+			ref := fmt.Sprintf("%s/%s/%s:%s", host, projectName, repoName, tag.Name)
+			var aliases []string
+			var state *gen.ImageState
+			if imageType == gen.IMAGETYPEBUILDPACK {
+				alias := fmt.Sprintf("%s/%s:%s@%s", projectName, repoName, tag.Name, artifact.Digest)
+				aliases = []string{alias}
+				stable := gen.IMAGESTATESTABLE
+				state = &stable
+			}
+
+			img := gen.Image{
+				CanonicalName: &canonicalName,
+				Ref:           &ref,
+				Aliases:       &aliases,
+				Digest:        &artifact.Digest,
+				ImageType:     &imageType,
+				State:         state,
+			}
+
+			images = append(images, img)
+		}
+	}
+	return images, nil
+}
+
+func getImagesFromHarborRepositories(api *BuildsApi, projectName string, repositories []*harborModels.Repository, imageType gen.ImageType, host string) ([]gen.Image, error) {
+	var images []gen.Image
+	for _, repository := range repositories {
+		repoName := strings.SplitN(repository.Name, "/", 2)[1]
+		pageSize := int64(-1)
+		response, err := api.Clients.Harbor.V2().Artifact.ListArtifacts(
+			context.TODO(),
+			&harborArtifact.ListArtifactsParams{
+				ProjectName:    projectName,
+				RepositoryName: repoName,
+				PageSize:       &pageSize,
+			},
+		)
+		if err != nil {
+			log.Errorf("Error getting artifacts for %s/%s: %s", projectName, repoName, getNiceHarborError(err))
+			continue
+		}
+
+		artifacts := response.Payload
+		repoImages, err := getImagesFromHarborRepositoryArtifacts(projectName, repoName, artifacts, imageType, host)
+		if err != nil {
+			continue
+		}
+		images = append(images, repoImages...)
+	}
+	return images, nil
+}
+
+func getImagesFromHarbor(api *BuildsApi, projectName string) ([]gen.Image, error) {
+	host := strings.Split(api.Config.HarborRepository, "//")[1]
+	imageType := gen.IMAGETYPEBUILDPACK
+	if projectName == ToolforgePrebuiltImagesProject {
+		imageType = gen.IMAGETYPESTANDARD
+	}
+
+	pageSize := int64(-1)
+	response, err := api.Clients.Harbor.V2().Repository.ListRepositories(
+		context.TODO(),
+		&harborRepository.ListRepositoriesParams{ProjectName: projectName, PageSize: &pageSize},
+	)
+	if err != nil {
+		if _, ok := err.(*harborRepository.ListRepositoriesNotFound); ok {
+			return []gen.Image{}, nil
+		}
+		return nil, fmt.Errorf("error getting repositories for project %s: %s", projectName, getNiceHarborError(err))
+	}
+
+	repositories := response.Payload
+	return getImagesFromHarborRepositories(api, projectName, repositories, imageType, host)
 }
 
 func ValidateEnvvars(envvars map[string]string) error {
@@ -1241,6 +1332,66 @@ func Clean(api *BuildsApi, toolName string) (int, interface{}) {
 	}
 
 	return http.StatusOK, cleanResponse
+}
+
+func Images(ctx echo.Context, api *BuildsApi, toolName string) (int, interface{}) {
+	harborPrebuiltImages, err := getImagesFromHarbor(api, ToolforgePrebuiltImagesProject)
+	if err != nil {
+		log.Errorf("Failed to fetch prebuilt images: %s", err)
+		return http.StatusInternalServerError, gen.ResponseMessages{Error: &[]string{"Failed to fetch prebuilt images"}}
+	}
+
+	toolProjectName, err := ToolNameToHarborProjectName(toolName)
+	if err != nil {
+		return http.StatusInternalServerError, gen.ResponseMessages{Error: &[]string{fmt.Sprintf("Failed to map tool name: %s", err)}}
+	}
+	harborToolImages, err := getImagesFromHarbor(api, toolProjectName)
+	if err != nil {
+		log.Errorf("Failed to fetch tool images: %s", err)
+		return http.StatusInternalServerError, gen.ResponseMessages{Error: &[]string{"Failed to fetch tool images"}}
+	}
+
+	harborImages := append(harborPrebuiltImages, harborToolImages...)
+	harborImagesMap := make(map[string]gen.Image)
+
+	// We only care about prebuilt and tool images with the :latest tag for now
+	targetTag := "latest"
+	for _, img := range harborImages {
+		if img.Ref != nil && strings.HasSuffix(*img.Ref, ":"+targetTag) {
+			harborImagesMap[*img.Ref] = img
+		}
+	}
+
+	configPrebuiltImagesMap := make(map[string]gen.Image)
+	for _, img := range api.Config.PrebuiltImages {
+		if _, exists := harborImagesMap[*img.Ref]; !exists {
+			log.Warnf("prebuilt image %s not found in harbor", *img.Ref)
+		}
+		configPrebuiltImagesMap[*img.Ref] = img
+	}
+
+	// Filter allImages to only include standard images that are in config
+	var filteredImages []gen.Image
+	for _, img := range harborImagesMap {
+		if img.ImageType != nil && *img.ImageType == gen.IMAGETYPESTANDARD {
+			if configImg, exists := configPrebuiltImagesMap[*img.Ref]; exists {
+				img.CanonicalName = configImg.CanonicalName
+				img.Aliases = configImg.Aliases
+				img.Resources = configImg.Resources
+				img.State = configImg.State
+				img.WsType = configImg.WsType
+				filteredImages = append(filteredImages, img)
+			} else {
+				// ignore standard image if not in config and warn
+				log.Warnf("Standard image %s is not in config, skipping it", *img.Ref)
+			}
+		} else {
+			// For buildpack images, include them as gotten
+			filteredImages = append(filteredImages, img)
+		}
+	}
+
+	return http.StatusOK, gen.ImageListResponse{Images: &filteredImages, Messages: &gen.ResponseMessages{}}
 }
 
 func Healthcheck(api *BuildsApi) (int, gen.HealthResponse) {

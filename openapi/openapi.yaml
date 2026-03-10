@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Toolforge builds API
-  version: 2.3.0
+  version: 2.4.0
 servers:
   - url: "http://127.0.0.1:8000"
     description: "Local direct development server."
@@ -481,6 +481,12 @@ components:
           description: <-
             If set, it will use the latest available versions of the builder+runner images, recommended if you want
             to be able to have some buffer before the old versions are removed
+        use_deprecated_versions:
+          type: boolean
+          default: false
+          description: <-
+            If set, it will use a deprecated version of the builder+runner images, use only as last resort while migrating.
+            It will be ignored if `use_latest_versions` is `true`.
     BuildCondition:
       type: object
       properties:

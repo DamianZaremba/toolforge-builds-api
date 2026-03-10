@@ -266,7 +266,7 @@ func getpipelineRunArrayParam(pipelineRun tektonPipelineV1.PipelineRun, name str
 	return nil
 }
 
-func getBuild(ctx echo.Context, clients *Clients, run tektonPipelineV1.PipelineRun, latestBuilder string) *gen.Build {
+func getBuild(ctx echo.Context, clients *Clients, run tektonPipelineV1.PipelineRun, latestBuilder string, deprecatedBuilder string) *gen.Build {
 	var startTime string
 	var endTime string
 	buildCondition := getBuildConditionFromPipelineRun(&run)
@@ -331,6 +331,7 @@ func getBuild(ctx echo.Context, clients *Clients, run tektonPipelineV1.PipelineR
 	// the useLatestVersions, but it's the best we can do for now
 	builder := getpipelineRunStringParam(run, "BUILDER_IMAGE")
 	useLatestVersions := builder == latestBuilder
+	useDeprecatedVersions := builder == deprecatedBuilder
 
 	return &gen.Build{
 		BuildId:   &run.Name,
@@ -339,11 +340,12 @@ func getBuild(ctx echo.Context, clients *Clients, run tektonPipelineV1.PipelineR
 		Status:    buildCondition.Status,
 		Message:   buildCondition.Message,
 		Parameters: &gen.BuildParameters{
-			SourceUrl:         sourceurl,
-			Ref:               &ref,
-			Envvars:           &envvars,
-			UseLatestVersions: &useLatestVersions,
-			ImageName:         &imageName,
+			SourceUrl:             sourceurl,
+			Ref:                   &ref,
+			Envvars:               &envvars,
+			UseLatestVersions:     &useLatestVersions,
+			UseDeprecatedVersions: &useDeprecatedVersions,
+			ImageName:             &imageName,
 		},
 		DestinationImage: &destinationImage,
 		ResolvedRef:      &resolvedRef,
@@ -864,6 +866,7 @@ func Start(
 	toolName string,
 	envvars map[string]string,
 	useLatestVersions bool,
+	useDeprecatedVersions bool,
 ) (int, interface{}) {
 	err := ValidateEnvvars(envvars)
 	if err != nil {
@@ -902,15 +905,26 @@ func Start(
 	for varname, value := range envvars {
 		envvarsArray = append(envvarsArray, fmt.Sprintf("%s=%s", varname, value))
 	}
+
+	warnings := []string{}
 	runner := api.Config.Runner
 	builder := api.Config.Builder
 	if useLatestVersions {
 		runner = api.Config.LatestRunner
 		builder = api.Config.LatestBuilder
+	} else if useDeprecatedVersions && api.Config.DeprecatedValidUntil.Compare(time.Now()) > 0 {
+		runner = api.Config.DeprecatedRunner
+		builder = api.Config.DeprecatedBuilder
+		message := fmt.Sprintf("Using a deprecated version of the builder and runner, this will fail starting on %s UTC", api.Config.DeprecatedValidUntil.Format(time.DateOnly))
+		warnings = append(warnings, message)
+	} else if useDeprecatedVersions {
+		message := fmt.Sprintf("Deprecated version are not supported anymore (the deadline was until %s UTC)", api.Config.DeprecatedValidUntil.Format(time.DateOnly))
+		return http.StatusBadRequest, gen.ResponseMessages{Error: &[]string{message}}
 	}
+
 	log.Debugf(
-		"Starting a new build: ref=%s, resolvedRef=%s, imageName=%s, toolName=%s, harborRepository=%s, builder=%s, runner=%s, useLatestVersions=%v",
-		ref, resolvedRef, imageName, toolName, api.Config.HarborRepository, api.Config.Builder, api.Config.Runner, useLatestVersions,
+		"Starting a new build: ref=%s, resolvedRef=%s, imageName=%s, toolName=%s, harborRepository=%s, builder=%s, runner=%s, useLatestVersions=%v, useDeprecatedVersions=%v",
+		ref, resolvedRef, imageName, toolName, api.Config.HarborRepository, api.Config.Builder, api.Config.Runner, useLatestVersions, useDeprecatedVersions,
 	)
 	newRun := tektonPipelineV1.PipelineRun{
 		ObjectMeta: metav1.ObjectMeta{
@@ -997,7 +1011,6 @@ func Start(
 		return http.StatusInternalServerError, gen.ResponseMessages{Error: &[]string{message}}
 	}
 
-	var responseMessages gen.ResponseMessages
 	quota, err := GetHarborQuota(api, toolName)
 	if err != nil {
 		log.Errorf("Got error while trying to get harbor quota for tool %s: %s", toolName, err)
@@ -1014,15 +1027,16 @@ func Start(
 				toolName,
 				*quotaCapacityStr,
 			)
-			responseMessages = gen.ResponseMessages{Warning: &[]string{message}}
+			warnings = append(warnings, message)
 		}
 	}
 
 	buildParams := gen.BuildParameters{
-		SourceUrl:         sourceURL,
-		Ref:               &ref,
-		Envvars:           &envvars,
-		UseLatestVersions: &useLatestVersions,
+		SourceUrl:             sourceURL,
+		Ref:                   &ref,
+		Envvars:               &envvars,
+		UseLatestVersions:     &useLatestVersions,
+		UseDeprecatedVersions: &useDeprecatedVersions,
 	}
 	newBuild := gen.NewBuild{
 		Name:        &pipelineRun.Name,
@@ -1031,7 +1045,7 @@ func Start(
 	}
 	return http.StatusOK, gen.StartResponse{
 		NewBuild: &newBuild,
-		Messages: &responseMessages,
+		Messages: &gen.ResponseMessages{Warning: &warnings},
 	}
 }
 
@@ -1097,7 +1111,7 @@ func Get(
 	// NOTE: we assume here the first pipelineRun from the search is what we are looking for.
 	// In k8s/tekton two objects cannot share metadata.name in the same namespace anyway
 
-	build := getBuild(ctx, &api.Clients, pipelineRuns[0], api.Config.LatestBuilder)
+	build := getBuild(ctx, &api.Clients, pipelineRuns[0], api.Config.LatestBuilder, api.Config.DeprecatedBuilder)
 	return http.StatusOK, gen.GetResponse{Build: build, Messages: &gen.ResponseMessages{}}
 }
 
@@ -1116,7 +1130,7 @@ func List(
 
 	builds := make([]gen.Build, len(pipelineRuns))
 	for i, run := range pipelineRuns {
-		builds[i] = *getBuild(ctx, &api.Clients, run, api.Config.LatestBuilder)
+		builds[i] = *getBuild(ctx, &api.Clients, run, api.Config.LatestBuilder, api.Config.DeprecatedBuilder)
 	}
 	return http.StatusOK, gen.ListResponse{Builds: &builds, Messages: &gen.ResponseMessages{}}
 }
@@ -1143,7 +1157,7 @@ func Latest(
 	}
 
 	// getPipelineRuns returns a sorted array per creationTimestamp
-	build := getBuild(ctx, &api.Clients, pipelineRuns[0], api.Config.LatestBuilder)
+	build := getBuild(ctx, &api.Clients, pipelineRuns[0], api.Config.LatestBuilder, api.Config.DeprecatedBuilder)
 	return http.StatusOK, gen.LatestResponse{Build: build, Messages: &gen.ResponseMessages{}}
 }
 

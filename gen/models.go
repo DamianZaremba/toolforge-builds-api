@@ -62,6 +62,9 @@ type BuildParameters struct {
 	// to build
 	SourceUrl string `json:"source_url"`
 
+	// UseDeprecatedVersions <- If set, it will use a deprecated version of the builder+runner images, use only as last resort while migrating. It will be ignored if `use_latest_versions` is `true`.
+	UseDeprecatedVersions *bool `json:"use_deprecated_versions,omitempty"`
+
 	// UseLatestVersions <- If set, it will use the latest available versions of the builder+runner images, recommended if you want to be able to have some buffer before the old versions are removed
 	UseLatestVersions *bool `json:"use_latest_versions,omitempty"`
 }

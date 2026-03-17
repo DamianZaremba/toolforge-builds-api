@@ -1222,6 +1222,7 @@ func TestStartReturnsInternalServerErrorOnException(t *testing.T) {
 		"dummy-tool",
 		nil,
 		false,
+		false,
 	)
 
 	if code != 500 {
@@ -1262,6 +1263,7 @@ func TestStartReturnsInternalServerErrorIfCreateHarborProjectForToolReturnsError
 		"dummy-image-name",
 		"dummy-tool",
 		nil,
+		false,
 		false,
 	)
 
@@ -1324,6 +1326,7 @@ func TestStartReturnsBadRequestErrorIfBadNamedEnvvarsPassed(t *testing.T) {
 		"dummy-image-name",
 		"dummy-tool",
 		envvars,
+		false,
 		false,
 	)
 
@@ -1392,6 +1395,7 @@ func TestStartReturnsNewBuildName(t *testing.T) {
 		"dummy-tool",
 		expectedEnvvars,
 		false,
+		false,
 	)
 
 	if code != 200 {
@@ -1426,6 +1430,10 @@ func TestStartReturnsNewBuildName(t *testing.T) {
 	if *gottenNewBuild.Parameters.UseLatestVersions != false {
 		t.Fatalf("Got an unexpected use-latest-versions for the new build, got '%v', expected '%v'", *gottenNewBuild.Parameters.UseLatestVersions, false)
 	}
+
+	if *gottenNewBuild.Parameters.UseDeprecatedVersions != false {
+		t.Fatalf("Got an unexpected use-deprecated-versions for the new build, got '%v', expected '%v'", *gottenNewBuild.Parameters.UseDeprecatedVersions, false)
+	}
 }
 
 func TestStartUsesLatestBuilderAndRunnerVersionsIfPassed(t *testing.T) {
@@ -1455,22 +1463,26 @@ func TestStartUsesLatestBuilderAndRunnerVersionsIfPassed(t *testing.T) {
 	gitLsRemote = func(sourceURL string, ref string) (string, error) {
 		return fmt.Sprintf("%s\tHEAD", "resolvedref"), nil
 	}
+	oneHour, _ := time.ParseDuration("1h")
 	api := BuildsApi{
 		Clients: Clients{
 			Tekton: &mockTekton,
 			Harbor: testHarborClientSet,
 		},
 		Config: Config{
-			HarborRepository:  testServer.URL,
-			Builder:           "dummy-builder",
-			Runner:            "dummy-runner",
-			LatestBuilder:     "latest-dummy-builder",
-			LatestRunner:      "latest-dummy-runner",
-			OkToKeep:          1,
-			FailedToKeep:      2,
-			BuildIdPrefix:     BuildIdPrefix,
-			BuildNamespace:    BuildNamespace,
-			MaxParallelBuilds: 1,
+			HarborRepository:     testServer.URL,
+			Builder:              "dummy-builder",
+			Runner:               "dummy-runner",
+			LatestBuilder:        "latest-dummy-builder",
+			LatestRunner:         "latest-dummy-runner",
+			DeprecatedBuilder:    "deprecated-dummy-builder",
+			DeprecatedRunner:     "deprecated-dummy-runner",
+			DeprecatedValidUntil: time.Now().Add(oneHour),
+			OkToKeep:             1,
+			FailedToKeep:         2,
+			BuildIdPrefix:        BuildIdPrefix,
+			BuildNamespace:       BuildNamespace,
+			MaxParallelBuilds:    1,
 		},
 	}
 
@@ -1482,6 +1494,7 @@ func TestStartUsesLatestBuilderAndRunnerVersionsIfPassed(t *testing.T) {
 		"dummy-tool",
 		nil,
 		true,
+		false,
 	)
 
 	if code != 200 {
@@ -1491,6 +1504,150 @@ func TestStartUsesLatestBuilderAndRunnerVersionsIfPassed(t *testing.T) {
 	gottenNewBuild := response.(gen.StartResponse).NewBuild
 	if *gottenNewBuild.Parameters.UseLatestVersions != true {
 		t.Fatalf("Got an unexpected use-latest-versions for the new build, got '%v', expected '%v'", *gottenNewBuild.Parameters.UseLatestVersions, true)
+	}
+
+}
+
+func TestStartUsesDeprecatedBuilderAndRunnerVersionsIfPassed(t *testing.T) {
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer testServer.Close()
+	testConfig := &harbor.ClientSetConfig{
+		URL: testServer.URL,
+	}
+	testHarborClientSet, _ := harbor.NewClientSet(testConfig)
+
+	mockTekton := tektonFake.Clientset{}
+	name := "new-pipelinerun"
+	fakePipelineRun := tektonPipelineV1.PipelineRun{
+		ObjectMeta: v1.ObjectMeta{Name: name},
+	}
+	mockTekton.PrependReactor(
+		"create",
+		"pipelineruns",
+		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
+			return true, &fakePipelineRun, nil
+		},
+	)
+	origRunCommand := gitLsRemote
+	defer func() { gitLsRemote = origRunCommand }()
+	gitLsRemote = func(sourceURL string, ref string) (string, error) {
+		return fmt.Sprintf("%s\tHEAD", "resolvedref"), nil
+	}
+	oneHour, _ := time.ParseDuration("1h")
+	api := BuildsApi{
+		Clients: Clients{
+			Tekton: &mockTekton,
+			Harbor: testHarborClientSet,
+		},
+		Config: Config{
+			HarborRepository:     testServer.URL,
+			Builder:              "dummy-builder",
+			Runner:               "dummy-runner",
+			LatestBuilder:        "latest-dummy-builder",
+			LatestRunner:         "latest-dummy-runner",
+			DeprecatedBuilder:    "deprecated-dummy-builder",
+			DeprecatedRunner:     "deprecated-dummy-runner",
+			DeprecatedValidUntil: time.Now().Add(oneHour),
+			OkToKeep:             1,
+			FailedToKeep:         2,
+			BuildIdPrefix:        BuildIdPrefix,
+			BuildNamespace:       BuildNamespace,
+			MaxParallelBuilds:    1,
+		},
+	}
+
+	code, response := Start(
+		&api,
+		"dummy-source-url",
+		"dummy-ref",
+		"dummy-image-name",
+		"dummy-tool",
+		nil,
+		false,
+		true,
+	)
+
+	if code != 200 {
+		t.Fatalf("I was expecting a 200 response, got: %d", code)
+	}
+
+	gottenNewBuild := response.(gen.StartResponse).NewBuild
+	if *gottenNewBuild.Parameters.UseDeprecatedVersions != true {
+		t.Fatalf("Got an unexpected use-deprecated-versions for the new build, got '%v', expected '%v'", *gottenNewBuild.Parameters.UseDeprecatedVersions, true)
+	}
+
+}
+
+func TestStartUsesDeprecatedBuilderThrowsErrorIfDeprecatedBuilderValidUntilExpired(t *testing.T) {
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer testServer.Close()
+	testConfig := &harbor.ClientSetConfig{
+		URL: testServer.URL,
+	}
+	testHarborClientSet, _ := harbor.NewClientSet(testConfig)
+
+	mockTekton := tektonFake.Clientset{}
+	name := "new-pipelinerun"
+	fakePipelineRun := tektonPipelineV1.PipelineRun{
+		ObjectMeta: v1.ObjectMeta{Name: name},
+	}
+	mockTekton.PrependReactor(
+		"create",
+		"pipelineruns",
+		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
+			return true, &fakePipelineRun, nil
+		},
+	)
+	origRunCommand := gitLsRemote
+	defer func() { gitLsRemote = origRunCommand }()
+	gitLsRemote = func(sourceURL string, ref string) (string, error) {
+		return fmt.Sprintf("%s\tHEAD", "resolvedref"), nil
+	}
+	oneHour, _ := time.ParseDuration("1h")
+	api := BuildsApi{
+		Clients: Clients{
+			Tekton: &mockTekton,
+			Harbor: testHarborClientSet,
+		},
+		Config: Config{
+			HarborRepository:     testServer.URL,
+			Builder:              "dummy-builder",
+			Runner:               "dummy-runner",
+			LatestBuilder:        "latest-dummy-builder",
+			LatestRunner:         "latest-dummy-runner",
+			DeprecatedBuilder:    "deprecated-dummy-builder",
+			DeprecatedRunner:     "deprecated-dummy-runner",
+			DeprecatedValidUntil: time.Now().Add(-oneHour),
+			OkToKeep:             1,
+			FailedToKeep:         2,
+			BuildIdPrefix:        BuildIdPrefix,
+			BuildNamespace:       BuildNamespace,
+			MaxParallelBuilds:    1,
+		},
+	}
+
+	code, response := Start(
+		&api,
+		"dummy-source-url",
+		"dummy-ref",
+		"dummy-image-name",
+		"dummy-tool",
+		nil,
+		false,
+		true,
+	)
+
+	if code != 400 {
+		t.Fatalf("I was expecting a 400 response, got: %d", code)
+	}
+
+	gottenResponse := response.(gen.ResponseMessages)
+	if !strings.Contains((*gottenResponse.Error)[0], "Deprecated version are not supported anymore") {
+		t.Fatalf("Got an unexpected error from deprecated version, for the new build, got '%v', expected '%v'", *gottenResponse.Error, "Deprecated version are not supported anymore.*")
 	}
 
 }
@@ -1563,6 +1720,7 @@ func TestStartReturnsWarningMessageIfQuotaIsAbove90(t *testing.T) {
 		expectedImageName,
 		"dummy-tool",
 		expectedEnvvars,
+		false,
 		false,
 	)
 

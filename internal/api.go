@@ -20,6 +20,7 @@ package internal
 import (
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/goharbor/go-client/pkg/harbor"
 	harborModels "github.com/goharbor/go-client/pkg/sdk/v2.0/models"
@@ -43,13 +44,17 @@ type Config struct {
 	Builder          string
 	Runner           string
 	// the Latest* fields are the ones used when useLatestBuilder is passed
-	LatestBuilder     string
-	LatestRunner      string
-	OkToKeep          int
-	FailedToKeep      int
-	BuildNamespace    string
-	BuildIdPrefix     string
-	MaxParallelBuilds int
+	LatestBuilder string
+	LatestRunner  string
+	// the Deprecated* fields are used only when transitioning versions for builders, to allow a buffer tim
+	DeprecatedBuilder    string
+	DeprecatedRunner     string
+	DeprecatedValidUntil time.Time
+	OkToKeep             int
+	FailedToKeep         int
+	BuildNamespace       string
+	BuildIdPrefix        string
+	MaxParallelBuilds    int
 }
 
 type Clients struct {
@@ -131,6 +136,7 @@ func (api BuildsApi) Start(ctx echo.Context, toolnameFromRequest string) error {
 		toolnameFromContext,
 		safeDeref[map[string]string](buildParameters.Envvars),
 		safeDeref[bool](buildParameters.UseLatestVersions),
+		safeDeref[bool](buildParameters.UseDeprecatedVersions),
 	)
 	return ctx.JSON(code, response)
 }

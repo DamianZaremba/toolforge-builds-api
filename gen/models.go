@@ -99,6 +99,14 @@ type DeleteResponse struct {
 	Messages *ResponseMessages `json:"messages,omitempty"`
 }
 
+// DeprecatedVersion Deprecated build version
+type DeprecatedVersion struct {
+	Builder    *string `json:"builder,omitempty"`
+	IsValid    *bool   `json:"is_valid,omitempty"`
+	Runner     *string `json:"runner,omitempty"`
+	ValidUntil *string `json:"valid_until,omitempty"`
+}
+
 // GetResponse defines model for GetResponse.
 type GetResponse struct {
 	Build *Build `json:"build,omitempty"`
@@ -186,6 +194,24 @@ type StartResponse struct {
 	// with information on how to proceed to update it.
 	Messages *ResponseMessages `json:"messages,omitempty"`
 	NewBuild *NewBuild         `json:"new_build,omitempty"`
+}
+
+// SupportedVersion Supported build version
+type SupportedVersion struct {
+	Builder *string `json:"builder,omitempty"`
+	Runner  *string `json:"runner,omitempty"`
+}
+
+// SupportedVersionsResponse defines model for SupportedVersionsResponse.
+type SupportedVersionsResponse struct {
+	// Default Supported build version
+	Default *SupportedVersion `json:"default,omitempty"`
+
+	// Deprecated Deprecated build version
+	Deprecated *DeprecatedVersion `json:"deprecated,omitempty"`
+
+	// Latest Supported build version
+	Latest *SupportedVersion `json:"latest,omitempty"`
 }
 
 // BadParameters Lists of messages by priority, note that there will be a warning here when the endpoint is being deprecated

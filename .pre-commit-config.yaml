@@ -23,11 +23,11 @@ repos:
       - id: shellcheck
 
   - repo: https://github.com/python-openapi/openapi-spec-validator
-    rev: 0.8.4
+    rev: 0.8.5
     hooks:
       - id: openapi-spec-validator
         exclude: .*_config.yaml
   - repo: https://gitlab.wikimedia.org/repos/cloud/cicd/gitlab-ci
-    rev: bb2ab7469bc423a1bd42511fa2bb9956f324afb7
+    rev: fc7bf0112ae6a4e4c309e109456722b85d0d88b5
     hooks:
       - id: check-openapi-version-bump

@@ -7,13 +7,13 @@ releases:
       - replicas: 1
 
         image:
+          name: toolsbeta-harbor.wmcloud.org/toolforge/builds-api
           tag: dev
           pullPolicy: Never
 
         config:
           debug: true
-          # You can override this by exporting the env var HARBOR_IP before running ./deploy.sh
-          harborRepository: "http://{{ exec "./helpers/get_harbor_ip.sh" (list) }}"
+          harborRepository: "http://harbor.local"
           harborUsername: "robot$maintain-harbor"
           harborPassword: "Dummyr0botpass"
           builder: toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder:22-cnb

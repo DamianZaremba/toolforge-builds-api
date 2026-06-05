@@ -35,7 +35,7 @@ ifdef PODMAN
 		build \
 			--progress=plain \
 			--frontend=gateway.v0 \
-			--opt source=docker-registry.wikimedia.org/repos/releng/blubber/buildkit:v0.19.0 \
+			--opt source=docker-registry.wikimedia.org/repos/releng/blubber/buildkit:v1.8.0 \
 			--local context=. \
 			--local dockerfile=. \
 			--opt filename=.pipeline/blubber.yaml \

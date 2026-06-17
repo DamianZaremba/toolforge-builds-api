@@ -362,50 +362,74 @@ func filterPipelineRunsByStatus(pipelineRuns []tektonPipelineV1.PipelineRun, fil
 	return filteredPipelineRuns
 }
 
+func getRunsToDelete(runs []tektonPipelineV1.PipelineRun, okToKeep int, failedToKeep int) []tektonPipelineV1.PipelineRun {
+	// We expect the runs to be ordered from newer to older
+	okRuns := filterPipelineRunsByStatus(runs, []gen.BuildStatus{gen.BUILDSUCCESS})
+	okToDelete := make([]tektonPipelineV1.PipelineRun, 0)
+	if len(okRuns) > okToKeep {
+		okToDelete = okRuns[okToKeep:]
+	}
+
+	failedRuns := filterPipelineRunsByStatus(runs, []gen.BuildStatus{gen.BUILDFAILURE, gen.BUILDTIMEOUT, gen.BUILDCANCELLED, gen.BUILDUNKNOWN})
+	failedToDelete := make([]tektonPipelineV1.PipelineRun, 0)
+	if len(failedRuns) > failedToKeep {
+		failedToDelete = failedRuns[failedToKeep:]
+	}
+	return append(okToDelete, failedToDelete...)
+}
+
+func getPipelineRunsPerImageName(runs []tektonPipelineV1.PipelineRun, harborRepository string, toolName string) map[string][]tektonPipelineV1.PipelineRun {
+	allRuns := make(map[string][]tektonPipelineV1.PipelineRun)
+	for _, run := range runs {
+		appImageUrl := getpipelineRunStringParam(run, "APP_IMAGE")
+		// appImageUrl is in the format "tools-harbor.wmcloud.org/tool-toolname/imagename:latest"
+		imageReference := strings.Split(appImageUrl, "/")[len(strings.Split(appImageUrl, "/"))-1]
+		name := strings.Split(imageReference, ":")[0]
+		if imageRuns, found := allRuns[name]; found {
+			allRuns[name] = append(imageRuns, run)
+		} else {
+			allRuns[name] = []tektonPipelineV1.PipelineRun{run}
+		}
+	}
+	return allRuns
+}
+
 // This should cleanup some builds, this means:
 //   - leave all the running/pending ones as is (don't clean them up)
-//   - leave only the configured amount of successful finished builds
-//   - leave only the configured amount of combined failed, unknown, cancelled and timed out builds
-//   - remove everything else (that should not be there)
-func cleanupOldPipelineRuns(clients *Clients, namespace string, toolName string, okToKeep int, failedToKeep int) []error {
+//   - For each different image name (ex. component):
+//     -- leave only the configured amount of successful finished builds
+//     -- leave only the configured amount of combined failed, unknown, cancelled and timed out builds
+//     -- remove everything else (that should not be there)
+func cleanupOldPipelineRuns(clients *Clients, namespace string, toolName string, okToKeep int, failedToKeep int, harborRepository string) []error {
 	pipelineRuns, err := getPipelineRuns(clients, namespace, metav1.ListOptions{LabelSelector: fmt.Sprintf("user=%s", toolName)})
 	if err != nil {
 		return []error{err}
 	}
-	log.Debugf("Found %d pipelineruns. Cleaning up old runs...", len(pipelineRuns))
-	log.Debugf("%v", pipelineRuns)
-	runningPipelineRuns := filterPipelineRunsByStatus(pipelineRuns, []gen.BuildStatus{gen.BUILDRUNNING, gen.BUILDPENDING})
-	successfulPipelineRuns := filterPipelineRunsByStatus(pipelineRuns, []gen.BuildStatus{gen.BUILDSUCCESS})
-	failedPipelineRuns := filterPipelineRunsByStatus(pipelineRuns, []gen.BuildStatus{gen.BUILDFAILURE, gen.BUILDTIMEOUT, gen.BUILDCANCELLED, gen.BUILDUNKNOWN})
-	pipelineRunsToKeep := map[string]tektonPipelineV1.PipelineRun{}
-	for _, pipelineRun := range runningPipelineRuns {
-		pipelineRunsToKeep[pipelineRun.Name] = pipelineRun
-	}
-	for idx, pipelineRun := range successfulPipelineRuns {
-		if idx >= okToKeep {
-			break
+	log.Debugf("Found %d pipelineruns. Cleaning up old runs... (okToKeep: %d, failedToKeep: %d)", len(pipelineRuns), okToKeep, failedToKeep)
+	runsPerImage := getPipelineRunsPerImageName(pipelineRuns, harborRepository, toolName)
+	log.Debugf("%v", runsPerImage)
+	runsToDelete := make([]tektonPipelineV1.PipelineRun, 0)
+	for imageName, runs := range runsPerImage {
+		imageToDelete := getRunsToDelete(runs, okToKeep, failedToKeep)
+		runsToDelete = append(runsToDelete, imageToDelete...)
+		log.Debugf("Deleting %d runs for image %s (okToKeep: %d, failedToKeep: %d):", len(imageToDelete), imageName, okToKeep, failedToKeep)
+		for _, run := range imageToDelete {
+			log.Debugf("    * %s (Created:%v - Status:%v)", run.Name, run.CreationTimestamp, run.Status.Conditions)
 		}
-		pipelineRunsToKeep[pipelineRun.Name] = pipelineRun
 	}
-	for idx, pipelineRun := range failedPipelineRuns {
-		if idx >= failedToKeep {
-			break
-		}
-		pipelineRunsToKeep[pipelineRun.Name] = pipelineRun
-	}
+	log.Debugf("Deleting a total of %d runs (okToKeep: %d, failedToKeep: %d).", len(runsToDelete), okToKeep, failedToKeep)
+
 	var deleteErrors []error
-	for _, pipelineRun := range pipelineRuns {
-		if _, found := pipelineRunsToKeep[pipelineRun.Name]; !found {
-			log.Debugf("Deleting old pipelinerun %s: %v", pipelineRun.Name, pipelineRun)
-			err := clients.Tekton.TektonV1().PipelineRuns(namespace).Delete(
-				context.TODO(),
-				pipelineRun.Name,
-				metav1.DeleteOptions{},
-			)
-			if err != nil {
-				log.Warnf("Got error when deleting pipelinerun %s: %s", pipelineRun.Name, err)
-				deleteErrors = append(deleteErrors, err)
-			}
+	for _, pipelineRun := range runsToDelete {
+		log.Debugf("Deleting pipelinerun %s", pipelineRun.Name)
+		err := clients.Tekton.TektonV1().PipelineRuns(namespace).Delete(
+			context.TODO(),
+			pipelineRun.Name,
+			metav1.DeleteOptions{},
+		)
+		if err != nil {
+			log.Warnf("Got error when deleting pipelinerun %s: %s", pipelineRun.Name, err)
+			deleteErrors = append(deleteErrors, err)
 		}
 	}
 	return deleteErrors
@@ -879,7 +903,7 @@ func Start(
 		message := fmt.Sprintf("Failed to create harbor project for tool %s: %s", toolName, err)
 		return http.StatusServiceUnavailable, gen.ResponseMessages{Error: &[]string{message}}
 	}
-	cleanup_err := cleanupOldPipelineRuns(&api.Clients, api.Config.BuildNamespace, toolName, api.Config.OkToKeep, api.Config.FailedToKeep)
+	cleanup_err := cleanupOldPipelineRuns(&api.Clients, api.Config.BuildNamespace, toolName, api.Config.OkToKeep, api.Config.FailedToKeep, api.Config.HarborRepository)
 	for _, err := range cleanup_err {
 		log.Warnf("Got error when cleaning up old pipeline runs: %s", err)
 	}

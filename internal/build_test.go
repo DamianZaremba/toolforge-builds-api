@@ -58,6 +58,39 @@ func getContextWithRequest(method string, path string, body io.Reader) (*echo.Co
 	return &ctx, rec
 }
 
+func getFakePipelineRun(name string, toolName string, imageName string, status *knative.Status, timeSeparation int) tektonPipelineV1.PipelineRun {
+	harborHost := "harbor.local"
+	harborImage := fmt.Sprintf("%s/tool-%s/%s:latest", harborHost, toolName, imageName)
+	fields := tektonPipelineV1.PipelineRunStatusFields{}
+	if status == nil {
+		status = &knative.Status{Conditions: knative.Conditions{{Reason: "Cancelled", Status: "False"}}}
+	} else {
+		if status.Conditions[0].Status != "Unknown" {
+			fields = tektonPipelineV1.PipelineRunStatusFields{
+				CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)},
+			}
+		}
+	}
+	return tektonPipelineV1.PipelineRun{
+		ObjectMeta: v1.ObjectMeta{
+			Name: name, Namespace: "dummy-namespace",
+			CreationTimestamp: v1.Time{Time: time.Date(2023, 6, 8, 23, 0+timeSeparation, 0, 0, time.UTC)},
+			Labels:            map[string]string{"user": toolName}},
+		Spec: tektonPipelineV1.PipelineRunSpec{
+			Params: tektonPipelineV1.Params{
+				tektonPipelineV1.Param{
+					Name:  "APP_IMAGE",
+					Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: harborImage},
+				},
+			},
+		},
+		Status: tektonPipelineV1.PipelineRunStatus{
+			Status:                  *status,
+			PipelineRunStatusFields: fields,
+		},
+	}
+}
+
 func TestToolNameToHarborProjectNameReturnsErrorIfNameIsInvalidToolforgeToolName(t *testing.T) {
 	invalidToolNames := []string{
 		"_username",
@@ -269,96 +302,33 @@ func TestGetPipelineRunsReturnsSortedArrayOfPipelineRuns(t *testing.T) {
 }
 
 func TestCleanupOldPipelineRuns(t *testing.T) {
+	toolName := "test-user"
+	harborHost := "harbor.local"
+	cancelledStatus := knative.Status{Conditions: knative.Conditions{{Reason: "Cancelled", Status: "False"}}}
+	failedStatus := knative.Status{Conditions: knative.Conditions{{Reason: "Failed", Status: "False"}}}
+	failedCreateRunStatus := knative.Status{Conditions: knative.Conditions{{Reason: "CreateRunFailed", Status: "False"}}}
+	runningStatus := knative.Status{Conditions: knative.Conditions{{Reason: "Running", Status: "Unknown"}}}
+	succeededStatus := knative.Status{Conditions: knative.Conditions{{Reason: "Succeeded", Status: "True"}}}
+	timedoutStatus := knative.Status{Conditions: knative.Conditions{{Reason: "PipelineRunTimeout", Status: "False"}}}
 	mockTekton := tektonFake.NewSimpleClientset(
 		&tektonPipelineV1.PipelineRunList{
 			Items: []tektonPipelineV1.PipelineRun{
-				{
-					ObjectMeta: v1.ObjectMeta{
-						Name: "pipelinerun-cancelled", Namespace: "dummy-namespace",
-						CreationTimestamp: v1.Time{Time: time.Date(2023, 6, 8, 23, 0, 0, 0, time.UTC)},
-						Labels:            map[string]string{"user": "test-user"}},
-					Status: tektonPipelineV1.PipelineRunStatus{
-						Status:                  knative.Status{Conditions: knative.Conditions{{Reason: "Cancelled", Status: "False"}}},
-						PipelineRunStatusFields: tektonPipelineV1.PipelineRunStatusFields{CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)}},
-					},
-				},
-				{
-					ObjectMeta: v1.ObjectMeta{
-						Name: "pipelinerun-failed1", Namespace: "dummy-namespace",
-						CreationTimestamp: v1.Time{Time: time.Date(2023, 6, 8, 22, 0, 0, 0, time.UTC)},
-						Labels:            map[string]string{"user": "test-user"}},
-					Status: tektonPipelineV1.PipelineRunStatus{
-						Status:                  knative.Status{Conditions: knative.Conditions{{Reason: "Failed", Status: "False"}}},
-						PipelineRunStatusFields: tektonPipelineV1.PipelineRunStatusFields{CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 15, 0, 0, 0, time.UTC)}},
-					},
-				},
-				{
-					ObjectMeta: v1.ObjectMeta{
-						Name: "pipelinerun-failed2", Namespace: "dummy-namespace",
-						CreationTimestamp: v1.Time{Time: time.Date(2023, 6, 8, 22, 0, 0, 0, time.UTC)},
-						Labels:            map[string]string{"user": "test-user"}},
-					Status: tektonPipelineV1.PipelineRunStatus{
-						Status:                  knative.Status{Conditions: knative.Conditions{{Reason: "CreateRunFailed", Status: "False"}}},
-						PipelineRunStatusFields: tektonPipelineV1.PipelineRunStatusFields{CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)}},
-					},
-				},
-				{
-					ObjectMeta: v1.ObjectMeta{
-						Name: "pipelinerun-running1", Namespace: "dummy-namespace",
-						CreationTimestamp: v1.Time{Time: time.Date(2023, 6, 8, 21, 0, 0, 0, time.UTC)},
-						Labels:            map[string]string{"user": "test-user"}},
-					Status: tektonPipelineV1.PipelineRunStatus{
-						Status: knative.Status{Conditions: knative.Conditions{{Reason: "Running", Status: "Unknown"}}},
-					},
-				},
-				{
-					ObjectMeta: v1.ObjectMeta{
-						Name: "pipelinerun-running2", Namespace: "dummy-namespace",
-						CreationTimestamp: v1.Time{Time: time.Date(2023, 6, 8, 20, 0, 0, 0, time.UTC)},
-						Labels:            map[string]string{"user": "test-user"}},
-					Status: tektonPipelineV1.PipelineRunStatus{
-						Status: knative.Status{Conditions: knative.Conditions{{Reason: "Running", Status: "Unknown"}}},
-					},
-				},
-				{
-					ObjectMeta: v1.ObjectMeta{
-						Name: "pipelinerun-running3", Namespace: "dummy-namespace",
-						CreationTimestamp: v1.Time{Time: time.Date(2023, 6, 8, 19, 0, 0, 0, time.UTC)},
-						Labels:            map[string]string{"user": "test-user"}},
-					Status: tektonPipelineV1.PipelineRunStatus{
-						Status: knative.Status{Conditions: knative.Conditions{{Reason: "Running", Status: "Unknown"}}},
-					},
-				},
-				{
-					ObjectMeta: v1.ObjectMeta{
-						Name: "pipelinerun-succeeded1", Namespace: "dummy-namespace",
-						CreationTimestamp: v1.Time{Time: time.Date(2023, 6, 8, 18, 0, 0, 0, time.UTC)},
-						Labels:            map[string]string{"user": "test-user"}},
-					Status: tektonPipelineV1.PipelineRunStatus{
-						Status:                  knative.Status{Conditions: knative.Conditions{{Reason: "Succeeded", Status: "True"}}},
-						PipelineRunStatusFields: tektonPipelineV1.PipelineRunStatusFields{CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 18, 0, 0, 0, time.UTC)}},
-					},
-				},
-				{
-					ObjectMeta: v1.ObjectMeta{
-						Name: "pipelinerun-succeeded2", Namespace: "dummy-namespace",
-						CreationTimestamp: v1.Time{Time: time.Date(2023, 6, 8, 17, 0, 0, 0, time.UTC)},
-						Labels:            map[string]string{"user": "test-user"}},
-					Status: tektonPipelineV1.PipelineRunStatus{
-						Status:                  knative.Status{Conditions: knative.Conditions{{Reason: "Succeeded", Status: "True"}}},
-						PipelineRunStatusFields: tektonPipelineV1.PipelineRunStatusFields{CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)}},
-					},
-				},
-				{
-					ObjectMeta: v1.ObjectMeta{
-						Name: "pipelinerun-timedout", Namespace: "dummy-namespace",
-						CreationTimestamp: v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)},
-						Labels:            map[string]string{"user": "test-user"}},
-					Status: tektonPipelineV1.PipelineRunStatus{
-						Status:                  knative.Status{Conditions: knative.Conditions{{Reason: "PipelineRunTimeout", Status: "False"}}},
-						PipelineRunStatusFields: tektonPipelineV1.PipelineRunStatusFields{CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)}},
-					},
-				},
+				getFakePipelineRun("pipelinerun-cancelled", toolName, "image-1", &cancelledStatus, 0),
+				getFakePipelineRun("pipelinerun-failed1", toolName, "image-1", &failedStatus, 1),
+				getFakePipelineRun("pipelinerun-failed2", toolName, "image-1", &failedCreateRunStatus, 2),
+				getFakePipelineRun("pipelinerun-running1", toolName, "image-1", &runningStatus, 3),
+				getFakePipelineRun("pipelinerun-running2", toolName, "image-1", &runningStatus, 4),
+				getFakePipelineRun("pipelinerun-running3", toolName, "image-1", &runningStatus, 5),
+				getFakePipelineRun("pipelinerun-succeeded1", toolName, "image-1", &succeededStatus, 6),
+				getFakePipelineRun("pipelinerun-succeeded2", toolName, "image-1", &succeededStatus, 7),
+				getFakePipelineRun("pipelinerun-timedout", toolName, "image-1", &timedoutStatus, 8),
+
+				getFakePipelineRun("pipelinerun-running-image2", toolName, "image-2", &runningStatus, 0),
+				getFakePipelineRun("pipelinerun-succeeded1-image2", toolName, "image-2", &succeededStatus, 1),
+				getFakePipelineRun("pipelinerun-succeeded2-image2", toolName, "image-2", &succeededStatus, 2),
+				getFakePipelineRun("pipelinerun-timedout-image2", toolName, "image-2", &timedoutStatus, 3),
+				getFakePipelineRun("pipelinerun-failed1-image2", toolName, "image-2", &failedCreateRunStatus, 4),
+				getFakePipelineRun("pipelinerun-failed2-image2", toolName, "image-2", &failedCreateRunStatus, 5),
 			},
 		},
 	)
@@ -372,19 +342,30 @@ func TestCleanupOldPipelineRuns(t *testing.T) {
 			BuildIdPrefix:     BuildIdPrefix,
 			BuildNamespace:    BuildNamespace,
 			MaxParallelBuilds: 1,
+			HarborRepository:  harborHost,
 		},
 	}
 
 	expectedPipelineRunNames := map[string]bool{
-		"pipelinerun-succeeded1": true,
-		"pipelinerun-failed2":    true,
-		"pipelinerun-cancelled":  true,
-		"pipelinerun-running1":   true,
-		"pipelinerun-running2":   true,
-		"pipelinerun-running3":   true,
+		"pipelinerun-succeeded2":        true,
+		"pipelinerun-failed2":           true,
+		"pipelinerun-timedout":          true,
+		"pipelinerun-running1":          true,
+		"pipelinerun-running2":          true,
+		"pipelinerun-running3":          true,
+		"pipelinerun-succeeded2-image2": true,
+		"pipelinerun-running-image2":    true,
+		"pipelinerun-failed1-image2":    true,
+		"pipelinerun-failed2-image2":    true,
 	}
 
-	cleanupOldPipelineRuns(&api.Clients, "dummy-namespace", "test-user", api.Config.OkToKeep, api.Config.FailedToKeep)
+	errors := cleanupOldPipelineRuns(
+		&api.Clients, "dummy-namespace", toolName, api.Config.OkToKeep, api.Config.FailedToKeep, api.Config.HarborRepository,
+	)
+
+	if len(errors) > 0 {
+		t.Fatalf("Got errors deleting old pipeline runs: %v", errors)
+	}
 
 	pipelineRuns, err := api.Clients.Tekton.TektonV1().PipelineRuns("dummy-namespace").List(
 		context.TODO(),
@@ -821,7 +802,7 @@ func TestStreamAfterPipelineRunStartedWaitsForTimeDelay(t *testing.T) {
 	})
 
 	// set all handled errors
-	pipelineRun.Status.PipelineRunStatusFields.StartTime = nil
+	pipelineRun.Status.StartTime = nil
 	mockK8s.PrependReactor("get", "pods", func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
 		return true, nil, fmt.Errorf("resource name may not be empty")
 	})
@@ -832,7 +813,7 @@ func TestStreamAfterPipelineRunStartedWaitsForTimeDelay(t *testing.T) {
 	go func() { // clear all handled errors after waitDelay
 		time.Sleep(waitDelay)
 
-		pipelineRun.Status.PipelineRunStatusFields.StartTime = &v1.Time{Time: time.Now()}
+		pipelineRun.Status.StartTime = &v1.Time{Time: time.Now()}
 		_, _ = mockTekton.TektonV1().PipelineRuns(BuildNamespace).Update(context.Background(), pipelineRun, v1.UpdateOptions{})
 		mockK8s.PrependReactor("get", "pods", func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
 			return true, dummyPod, nil
@@ -1082,14 +1063,14 @@ func TestLogsReturnsAllLogsConcatenated(t *testing.T) {
 		}),
 	)
 
-	mockTekton.Fake.PrependReactor(
+	mockTekton.PrependReactor(
 		"list",
 		"pipelineruns",
 		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
 			return true, &fakePipelineRunList, nil
 		},
 	)
-	mockTekton.Fake.PrependReactor(
+	mockTekton.PrependReactor(
 		"get",
 		"taskruns",
 		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
@@ -1178,14 +1159,14 @@ func TestStartReturnsInternalServerErrorOnException(t *testing.T) {
 		ListMeta: v1.ListMeta{},
 	}
 	mockTekton := tektonFake.Clientset{}
-	mockTekton.Fake.PrependReactor(
+	mockTekton.PrependReactor(
 		"list",
 		"pipelineruns",
 		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
 			return true, &fakeEmptyPipelineRuns, nil
 		},
 	)
-	mockTekton.Fake.PrependReactor(
+	mockTekton.PrependReactor(
 		"create",
 		"pipelineruns",
 		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
@@ -1233,7 +1214,7 @@ func TestStartReturnsInternalServerErrorOnException(t *testing.T) {
 func TestStartReturnsInternalServerErrorIfCreateHarborProjectForToolReturnsError(t *testing.T) {
 	testServer := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
 		rw.WriteHeader(http.StatusUnauthorized)
-		_, _ = rw.Write([]byte(fmt.Sprintf(`{"errors":[{ "code": %d, "message": "dummy error" }]}`, http.StatusUnauthorized)))
+		_, _ = fmt.Fprintf(rw, `{"errors":[{ "code": %d, "message": "dummy error" }]}`, http.StatusUnauthorized)
 	}))
 	defer testServer.Close()
 	testConfig := &harbor.ClientSetConfig{
@@ -1287,7 +1268,7 @@ func TestStartReturnsBadRequestErrorIfBadNamedEnvvarsPassed(t *testing.T) {
 	fakePipelineRun := tektonPipelineV1.PipelineRun{
 		ObjectMeta: v1.ObjectMeta{Name: expectedName},
 	}
-	mockTekton.Fake.PrependReactor(
+	mockTekton.PrependReactor(
 		"create",
 		"pipelineruns",
 		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
@@ -1358,7 +1339,7 @@ func TestStartReturnsNewBuildName(t *testing.T) {
 	fakePipelineRun := tektonPipelineV1.PipelineRun{
 		ObjectMeta: v1.ObjectMeta{Name: expectedName},
 	}
-	mockTekton.Fake.PrependReactor(
+	mockTekton.PrependReactor(
 		"create",
 		"pipelineruns",
 		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
@@ -1451,7 +1432,7 @@ func TestStartUsesLatestBuilderAndRunnerVersionsIfPassed(t *testing.T) {
 	fakePipelineRun := tektonPipelineV1.PipelineRun{
 		ObjectMeta: v1.ObjectMeta{Name: name},
 	}
-	mockTekton.Fake.PrependReactor(
+	mockTekton.PrependReactor(
 		"create",
 		"pipelineruns",
 		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
@@ -1655,17 +1636,18 @@ func TestStartUsesDeprecatedBuilderThrowsErrorIfDeprecatedBuilderValidUntilExpir
 func TestStartReturnsWarningMessageIfQuotaIsAbove90(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(rw http.ResponseWriter, req *http.Request) {
-		if req.Method == http.MethodPost {
+		switch req.Method {
+		case http.MethodPost:
 			// for CreateHarborProjectForTool
 			rw.WriteHeader(http.StatusCreated)
-		} else if req.Method == http.MethodGet || req.Method == http.MethodHead {
+		case http.MethodGet, http.MethodHead:
 			// for GetHarborQuota
 			rw.Header().Set("Content-Type", "application/json")
 			rw.WriteHeader(http.StatusOK)
 			_, _ = rw.Write([]byte(`{"quota": {"hard": {"storage": 100}, "used": {"storage": 95}}}`))
-		} else {
+		default:
 			rw.WriteHeader(http.StatusBadRequest)
-			_, _ = rw.Write([]byte(fmt.Sprintf("Should not have been called, got method %s, URI %s", req.Method, req.RequestURI)))
+			_, _ = fmt.Fprintf(rw, "Should not have been called, got method %s, URI %s", req.Method, req.RequestURI)
 		}
 	})
 	testServer := httptest.NewServer(mux)
@@ -1684,7 +1666,7 @@ func TestStartReturnsWarningMessageIfQuotaIsAbove90(t *testing.T) {
 	fakePipelineRun := tektonPipelineV1.PipelineRun{
 		ObjectMeta: v1.ObjectMeta{Name: expectedName},
 	}
-	mockTekton.Fake.PrependReactor(
+	mockTekton.PrependReactor(
 		"create",
 		"pipelineruns",
 		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
@@ -1787,7 +1769,7 @@ func TestDeleteReturnsNotFoundIfNoBuildsThere(t *testing.T) {
 
 func TestDeleteReturnsInternalServerErrorOnException(t *testing.T) {
 	mockTekton := tektonFake.Clientset{}
-	mockTekton.Fake.PrependReactor(
+	mockTekton.PrependReactor(
 		"delete",
 		"pipelineruns",
 		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
@@ -1819,7 +1801,7 @@ func TestDeleteReturnsInternalServerErrorOnException(t *testing.T) {
 func TestDeleteReturnsDeletedBuildName(t *testing.T) {
 	mockTekton := tektonFake.Clientset{}
 	expectedId := fmt.Sprintf("dummy-tool%sbuild", BuildIdPrefix)
-	mockTekton.Fake.PrependReactor(
+	mockTekton.PrependReactor(
 		"delete",
 		"pipelineruns",
 		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
@@ -1857,7 +1839,7 @@ func TestDeleteReturnsDeletedBuildName(t *testing.T) {
 
 func TestListReturnsInternalServerErrorOnException(t *testing.T) {
 	mockTekton := tektonFake.Clientset{}
-	mockTekton.Fake.PrependReactor(
+	mockTekton.PrependReactor(
 		"list",
 		"pipelineruns",
 		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
@@ -2244,7 +2226,7 @@ func TestCancelReturnsInternalServerErrorOnException(t *testing.T) {
 		ObjectMeta: v1.ObjectMeta{Name: buildId, Namespace: BuildNamespace, Labels: map[string]string{"user": toolName}},
 	}
 
-	mockTekton.Fake.PrependReactor(
+	mockTekton.PrependReactor(
 		"get",
 		"pipelineruns",
 		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
@@ -2266,14 +2248,14 @@ func TestCancelReturnsInternalServerErrorOnException(t *testing.T) {
 		t.Fatalf("I was expecting a 500 response, got: %d", code)
 	}
 
-	mockTekton.Fake.PrependReactor(
+	mockTekton.PrependReactor(
 		"get",
 		"pipelineruns",
 		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
 			return true, &fakePipelineRun, nil
 		},
 	)
-	mockTekton.Fake.PrependReactor(
+	mockTekton.PrependReactor(
 		"update",
 		"pipelineruns",
 		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
@@ -2346,7 +2328,7 @@ func TestCancelReturnsConflictIfBuildIsNotCancellable(t *testing.T) {
 	}
 
 	for _, pipelineRun := range uncancellablePipelineRuns {
-		mockTekton.Fake.PrependReactor(
+		mockTekton.PrependReactor(
 			"get",
 			"pipelineruns",
 			func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
@@ -2598,7 +2580,7 @@ func TestCleanReturnsErrorIfHarborApiReturnsUnexpectedError(t *testing.T) {
 			mux.HandleFunc("/", func(rw http.ResponseWriter, req *http.Request) {
 				rw.Header().Set("Content-Type", "application/json")
 				rw.WriteHeader(http.StatusUnauthorized)
-				_, _ = rw.Write([]byte(fmt.Sprintf(`{"errors":[{ "code": "%d", "message": "dummy error" }]}`, http.StatusUnauthorized)))
+				_, _ = fmt.Fprintf(rw, `{"errors":[{ "code": "%d", "message": "dummy error" }]}`, http.StatusUnauthorized)
 			})
 			return httptest.NewServer(mux)
 		},
@@ -2649,7 +2631,7 @@ func TestCleanHappyPath(t *testing.T) {
 					_, _ = rw.Write([]byte("[]"))
 				} else {
 					rw.WriteHeader(http.StatusBadRequest)
-					_, _ = rw.Write([]byte(fmt.Sprintf("Should not have been called, got method %s, URI %s", req.Method, req.RequestURI)))
+					_, _ = fmt.Fprintf(rw, "Should not have been called, got method %s, URI %s", req.Method, req.RequestURI)
 				}
 			})
 			return httptest.NewServer(mux)
@@ -2670,7 +2652,7 @@ func TestCleanHappyPath(t *testing.T) {
 					numDeletesTC1 += 1
 				} else {
 					rw.WriteHeader(http.StatusBadRequest)
-					_, _ = rw.Write([]byte(fmt.Sprintf("Should not have been called, got method %s, URI %s (numDeletesTC1=%d)", req.Method, req.RequestURI, numDeletesTC1)))
+					_, _ = fmt.Fprintf(rw, "Should not have been called, got method %s, URI %s (numDeletesTC1=%d)", req.Method, req.RequestURI, numDeletesTC1)
 				}
 			})
 			return httptest.NewServer(mux)
@@ -2695,7 +2677,7 @@ func TestCleanHappyPath(t *testing.T) {
 					numDeletesTC2 += 1
 				} else {
 					rw.WriteHeader(http.StatusBadRequest)
-					_, _ = rw.Write([]byte(fmt.Sprintf("Should not have been called, got method %s, URI %s (numDeletesTC2=%d)", req.Method, req.RequestURI, numDeletesTC2)))
+					_, _ = fmt.Fprintf(rw, "Should not have been called, got method %s, URI %s (numDeletesTC2=%d)", req.Method, req.RequestURI, numDeletesTC2)
 				}
 			})
 			return httptest.NewServer(mux)

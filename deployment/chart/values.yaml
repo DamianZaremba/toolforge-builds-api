@@ -41,10 +41,10 @@ config:
   okBuildsToKeep: 1
   failedBuildsToKeep: 2
   maxParallelBuilds: 4
-  builder: toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder:22
-  runner: toolsbeta-harbor.wmcloud.org/toolforge/heroku-runner:22-cnb
-  latestBuilder: toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder:22
-  latestRunner: toolsbeta-harbor.wmcloud.org/toolforge/heroku-runner:22-cnb
-  deprecatedBuilder: toolsbeta-harbor.wmcloud.org/toolforge/heroku-builder:22
-  deprecatedRunner: toolsbeta-harbor.wmcloud.org/toolforge/heroku-runner:22-cnb
+  builder: tools-harbor.wmcloud.org/toolforge/heroku-builder:24_0.21.8
+  runner: tools-harbor.wmcloud.org/toolforge/heroku-runner:24_0.21.8
+  latestBuilder: tools-harbor.wmcloud.org/toolforge/heroku-builder:24_20260511
+  latestRunner: tools-harbor.wmcloud.org/toolforge/heroku-runner:24_20260511
+  deprecatedBuilder: tools-harbor.wmcloud.org/toolforge/heroku-builder:22_20240105
+  deprecatedRunner: tools-harbor.wmcloud.org/toolforge/heroku-runner:22-cnb
   deprecatedValidUntil: "2026-04-13"

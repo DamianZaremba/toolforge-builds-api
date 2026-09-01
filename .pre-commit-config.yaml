@@ -12,13 +12,13 @@ repos:
       - id: check-merge-conflict
 
   - repo: https://github.com/golangci/golangci-lint
-    rev: v2.12.2
+    rev: v2.13.2
     hooks:
       - id: golangci-lint
         args: ["--timeout=10m"]
 
   - repo: https://github.com/shellcheck-py/shellcheck-py
-    rev: v0.11.0.1
+    rev: v0.11.0.1-1
     hooks:
       - id: shellcheck
 
@@ -28,6 +28,6 @@ repos:
       - id: openapi-spec-validator
         exclude: .*_config.yaml
   - repo: https://gitlab.wikimedia.org/repos/cloud/cicd/gitlab-ci
-    rev: 9c31ff7c64fecf4136115e98512e4fe79f4d5369
+    rev: 7a734400de5df4f1277e69fafe5ad847d7f96b0d
     hooks:
       - id: check-openapi-version-bump

@@ -227,3 +227,27 @@ func (api BuildsApi) Openapi(ctx echo.Context) error {
 func (api BuildsApi) Metrics(ctx echo.Context) error {
 	return api.MetricsHandler(ctx)
 }
+
+func (api BuildsApi) SupportedVersions(ctx echo.Context) error {
+	deprecatedValidUntilDate := api.Config.DeprecatedValidUntil.Format(time.RFC3339)
+	deprecatedVersionIsValid := api.Config.DeprecatedValidUntil.Compare(time.Now()) > 0
+
+	response := gen.SupportedVersionsResponse{
+		Default: &gen.SupportedVersion{
+			Builder: &api.Config.Builder,
+			Runner:  &api.Config.Runner,
+		},
+		Latest: &gen.SupportedVersion{
+			Builder: &api.Config.LatestBuilder,
+			Runner:  &api.Config.LatestRunner,
+		},
+		Deprecated: &gen.DeprecatedVersion{
+			Builder:    &api.Config.DeprecatedBuilder,
+			Runner:     &api.Config.DeprecatedRunner,
+			ValidUntil: &deprecatedValidUntilDate,
+			IsValid:    &deprecatedVersionIsValid,
+		},
+	}
+
+	return ctx.JSON(200, response)
+}

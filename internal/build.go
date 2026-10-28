@@ -271,7 +271,7 @@ func getpipelineRunArrayParam(pipelineRun tektonPipelineV1.PipelineRun, name str
 	return nil
 }
 
-func getBuild(ctx echo.Context, clients *Clients, run tektonPipelineV1.PipelineRun, latestBuilder string, deprecatedBuilder string) *gen.Build {
+func getBuild(ctx echo.Context, clients *Clients, run tektonPipelineV1.PipelineRun, latestBuilder string, deprecatedBuilder string, stableBuilder string) *gen.Build {
 	var startTime string
 	var endTime string
 	buildCondition := getBuildConditionFromPipelineRun(&run)
@@ -335,6 +335,21 @@ func getBuild(ctx echo.Context, clients *Clients, run tektonPipelineV1.PipelineR
 	useLatestVersions := parseBuildOptionAnnotation(run, useLatestVersionsAnnotation, false)
 	useDeprecatedVersions := parseBuildOptionAnnotation(run, useDeprecatedVersionsAnnotation, false)
 
+    // Check if the builder image we used is the currently supported version
+    builderImage := getpipelineRunStringParam(run, "BUILDER_IMAGE")
+    builderIsCurrent := true
+    if useLatestVersions {
+        if builderImage != latestBuilder {
+            builderIsCurrent = false
+        }
+    } else if useDeprecatedVersions {
+        if builderImage != deprecatedBuilder {
+            builderIsCurrent = false
+        }
+    } else if builderImage != stableBuilder {
+        builderIsCurrent = false
+    }
+
 	return &gen.Build{
 		BuildId:   &run.Name,
 		StartTime: &startTime,
@@ -351,6 +366,7 @@ func getBuild(ctx echo.Context, clients *Clients, run tektonPipelineV1.PipelineR
 		},
 		DestinationImage: &destinationImage,
 		ResolvedRef:      &resolvedRef,
+		CurrentBuilder:   &builderIsCurrent,
 	}
 }
 
@@ -1154,7 +1170,7 @@ func Get(
 	// NOTE: we assume here the first pipelineRun from the search is what we are looking for.
 	// In k8s/tekton two objects cannot share metadata.name in the same namespace anyway
 
-	build := getBuild(ctx, &api.Clients, pipelineRuns[0], api.Config.LatestBuilder, api.Config.DeprecatedBuilder)
+	build := getBuild(ctx, &api.Clients, pipelineRuns[0], api.Config.LatestBuilder, api.Config.DeprecatedBuilder, api.Config.Builder)
 	return http.StatusOK, gen.GetResponse{Build: build, Messages: &gen.ResponseMessages{}}
 }
 
@@ -1173,7 +1189,7 @@ func List(
 
 	builds := make([]gen.Build, len(pipelineRuns))
 	for i, run := range pipelineRuns {
-		builds[i] = *getBuild(ctx, &api.Clients, run, api.Config.LatestBuilder, api.Config.DeprecatedBuilder)
+		builds[i] = *getBuild(ctx, &api.Clients, run, api.Config.LatestBuilder, api.Config.DeprecatedBuilder, api.Config.Builder)
 	}
 	return http.StatusOK, gen.ListResponse{Builds: &builds, Messages: &gen.ResponseMessages{}}
 }
@@ -1200,7 +1216,7 @@ func Latest(
 	}
 
 	// getPipelineRuns returns a sorted array per creationTimestamp
-	build := getBuild(ctx, &api.Clients, pipelineRuns[0], api.Config.LatestBuilder, api.Config.DeprecatedBuilder)
+	build := getBuild(ctx, &api.Clients, pipelineRuns[0], api.Config.LatestBuilder, api.Config.DeprecatedBuilder, api.Config.Builder)
 	return http.StatusOK, gen.LatestResponse{Build: build, Messages: &gen.ResponseMessages{}}
 }
 

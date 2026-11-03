@@ -27,6 +27,7 @@ const (
 // Build defines model for Build.
 type Build struct {
 	BuildId          *string          `json:"build_id,omitempty"`
+	CurrentBuilder   *bool            `json:"current_builder,omitempty"`
 	DestinationImage *string          `json:"destination_image,omitempty"`
 	EndTime          *string          `json:"end_time,omitempty"`
 	Message          *string          `json:"message,omitempty"`

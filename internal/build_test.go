@@ -108,6 +108,79 @@ func TestToolNameToHarborProjectNameReturnsErrorIfNameIsInvalidToolforgeToolName
 	}
 }
 
+func TestParseBuildOptionAnnotation(t *testing.T) {
+	run := tektonPipelineV1.PipelineRun{
+		ObjectMeta: v1.ObjectMeta{
+			Name: "build",
+			Annotations: map[string]string{
+				useLatestVersionsAnnotation:     "true",
+				useDeprecatedVersionsAnnotation: "false",
+			},
+		},
+	}
+
+	if value := parseBuildOptionAnnotation(run, useLatestVersionsAnnotation, false); !value {
+		t.Fatalf("Expected latest option annotation to be true; got value=%v", value)
+	}
+
+	if value := parseBuildOptionAnnotation(run, useDeprecatedVersionsAnnotation, false); value {
+		t.Fatalf("Expected deprecated option annotation to be true; got value=%v", value)
+	}
+
+	if value := parseBuildOptionAnnotation(run, "builds-api/unknown-annotation", true); !value {
+		t.Fatalf("Expected default option annotation to be true; got value=%v", value)
+	}
+}
+
+func TestGetBuildCurrentBuilder(t *testing.T) {
+	stableBuilder := "stable-dummy-builder"
+	latestBuilder := "latest-dummy-builder"
+	deprecatedBuilder := "deprecated-dummy-builder"
+
+	tests := []struct {
+		name            string
+		builderImage    string
+		useLatest       string
+		useDeprecated   string
+		expectedCurrent bool
+	}{
+		{name: "stable with stable builder", builderImage: stableBuilder, useLatest: "false", useDeprecated: "false", expectedCurrent: true},
+		{name: "stable with old builder", builderImage: "old-dummy-builder", useLatest: "false", useDeprecated: "false", expectedCurrent: false},
+		{name: "latest with latest builder", builderImage: latestBuilder, useLatest: "true", useDeprecated: "false", expectedCurrent: true},
+		{name: "latest with old builder", builderImage: "old-dummy-builder", useLatest: "true", useDeprecated: "false", expectedCurrent: false},
+		{name: "deprecated with deprecated builder", builderImage: deprecatedBuilder, useLatest: "false", useDeprecated: "true", expectedCurrent: true},
+		{name: "deprecated with old builder", builderImage: "old-dummy-builder", useLatest: "false", useDeprecated: "true", expectedCurrent: false},
+		{name: "stable with latest builder", builderImage: latestBuilder, useLatest: "false", useDeprecated: "false", expectedCurrent: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			run := tektonPipelineV1.PipelineRun{
+				ObjectMeta: v1.ObjectMeta{
+					Name:      "build",
+					Namespace: BuildNamespace,
+					Annotations: map[string]string{
+						useLatestVersionsAnnotation:     tt.useLatest,
+						useDeprecatedVersionsAnnotation: tt.useDeprecated,
+					},
+				},
+				Spec: tektonPipelineV1.PipelineRunSpec{
+					Params: []tektonPipelineV1.Param{
+						{Name: "BUILDER_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: tt.builderImage}},
+					},
+				},
+			}
+			ctx, _ := getContextWithRequest("GET", "/builds/build", nil)
+			clients := Clients{Tekton: tektonFake.NewSimpleClientset()}
+
+			build := getBuild(*ctx, &clients, run, latestBuilder, deprecatedBuilder, stableBuilder)
+			if *build.CurrentBuilder != tt.expectedCurrent {
+				t.Fatalf("Got unexpected current builder, expected '%v', got '%v'", tt.expectedCurrent, *build.CurrentBuilder)
+			}
+		})
+	}
+}
+
 func TestToolNameToHarborProjectNameReturnsCorrectHarborProjectName(t *testing.T) {
 	testToolNames := [][]string{
 		{
@@ -1272,6 +1345,13 @@ func TestStartReturnsBadRequestErrorIfBadNamedEnvvarsPassed(t *testing.T) {
 		"create",
 		"pipelineruns",
 		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
+			createdRun := action.(k8sTesting.CreateAction).GetObject().(*tektonPipelineV1.PipelineRun)
+			if createdRun.Annotations[useLatestVersionsAnnotation] != "false" {
+				t.Errorf("Expected use-latest-versions annotation to be false, got %q", createdRun.Annotations[useLatestVersionsAnnotation])
+			}
+			if createdRun.Annotations[useDeprecatedVersionsAnnotation] != "false" {
+				t.Errorf("Expected use-deprecated-versions annotation to be false, got %q", createdRun.Annotations[useDeprecatedVersionsAnnotation])
+			}
 			return true, &fakePipelineRun, nil
 		},
 	)

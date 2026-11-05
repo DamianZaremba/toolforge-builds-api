@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os/exec"
 	"regexp"
 	"slices"
@@ -53,7 +54,7 @@ const (
 
 // For easy mocking
 var gitLsRemote = func(sourceURL string, ref string) (string, error) {
-	cmd := exec.Command("git", "ls-remote", sourceURL, ref)
+	cmd := exec.Command("git", gitLsRemoteArgs(sourceURL, ref)...)
 	output, err := cmd.Output()
 	if err != nil {
 		return "", err
@@ -62,6 +63,13 @@ var gitLsRemote = func(sourceURL string, ref string) (string, error) {
 		return "", fmt.Errorf("unable to resolve ref %s from %s", ref, sourceURL)
 	}
 	return string(output), nil
+}
+
+// gitLsRemoteArgs builds the "git ls-remote" arguments.
+// "--end-of-options" makes git read source_url and ref as values, so neither can act as an option.
+// important because an option like "--upload-pack=..." can make git run a program.
+func gitLsRemoteArgs(sourceURL string, ref string) []string {
+	return []string{"ls-remote", "--end-of-options", sourceURL, ref}
 }
 
 func getContainersFromPod(client *Clients, podName string, namespace string) ([]string, error) {
@@ -868,6 +876,23 @@ func ValidateEnvvars(envvars map[string]string) error {
 	return nil
 }
 
+// validateSourceURL requires a public http or https URL. This stops git from
+// reading the value as a local path, an option, or an "ext::" transport that
+// runs a program.
+func validateSourceURL(sourceURL string) error {
+	parsed, err := url.Parse(sourceURL)
+	if err != nil {
+		return fmt.Errorf("not a valid url: %s", err)
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return fmt.Errorf("must use http or https, got scheme %q", parsed.Scheme)
+	}
+	if parsed.Host == "" {
+		return fmt.Errorf("must have a host")
+	}
+	return nil
+}
+
 func checkParallelBuilds(api *BuildsApi, toolName string) error {
 	pipelineRuns, err := getPipelineRuns(&api.Clients, api.Config.BuildNamespace, metav1.ListOptions{LabelSelector: fmt.Sprintf("user=%s", toolName)})
 	if err != nil {
@@ -926,6 +951,12 @@ func Start(
 	err := ValidateEnvvars(envvars)
 	if err != nil {
 		message := fmt.Sprintf("Not valid environment variables passed: %s", err)
+		return http.StatusBadRequest, gen.ResponseMessages{Error: &[]string{message}}
+	}
+
+	err = validateSourceURL(sourceURL)
+	if err != nil {
+		message := fmt.Sprintf("Not a valid source url: %s", err)
 		return http.StatusBadRequest, gen.ResponseMessages{Error: &[]string{message}}
 	}
 

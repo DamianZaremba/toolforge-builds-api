@@ -1270,7 +1270,7 @@ func TestStartReturnsInternalServerErrorOnException(t *testing.T) {
 
 	code, _ := Start(
 		&api,
-		"dummy-source-url",
+		"https://example.org/dummy-source-url",
 		"dummy-ref",
 		"dummy-image-name",
 		"dummy-tool",
@@ -1312,7 +1312,7 @@ func TestStartReturnsInternalServerErrorIfCreateHarborProjectForToolReturnsError
 
 	code, _ := Start(
 		&api,
-		"dummy-source-url",
+		"https://example.org/dummy-source-url",
 		"dummy-ref",
 		"dummy-image-name",
 		"dummy-tool",
@@ -1382,7 +1382,7 @@ func TestStartReturnsBadRequestErrorIfBadNamedEnvvarsPassed(t *testing.T) {
 
 	code, _ := Start(
 		&api,
-		"dummy-source-url",
+		"https://example.org/dummy-source-url",
 		"dummy-ref",
 		"dummy-image-name",
 		"dummy-tool",
@@ -1393,6 +1393,43 @@ func TestStartReturnsBadRequestErrorIfBadNamedEnvvarsPassed(t *testing.T) {
 
 	if code != 400 {
 		t.Fatalf("I was expecting a 400 response, got: %d", code)
+	}
+}
+
+func TestStartReturnsBadRequestErrorIfBadSourceUrlPassed(t *testing.T) {
+	// We don't want these because they'd make git read a path, an option, or an "ext::" transport that runs a program.
+	badSourceURLs := []string{
+		"--upload-pack=/tmp/some-program",
+		"ext::some-helper",
+		"file:///etc/passwd",
+		"ssh://git@example.org/repo",
+		"/etc/passwd",
+		"",
+	}
+	for _, sourceURL := range badSourceURLs {
+		code, _ := Start(
+			&BuildsApi{},
+			sourceURL,
+			"dummy-ref",
+			"dummy-image-name",
+			"dummy-tool",
+			nil,
+			false,
+			false,
+		)
+		if code != 400 {
+			t.Fatalf("I was expecting a 400 response for %q, got: %d", sourceURL, code)
+		}
+	}
+}
+
+func TestGitLsRemoteArgsPutsEndOfOptionsBeforeTheValues(t *testing.T) {
+	// It's important we test this "--end-of-options", because that's how we tell git that
+	// everything else that comes after should be read as argument, not option.
+	args := gitLsRemoteArgs("https://github.com/user/repo", "--upload-pack=/tmp/some-program")
+
+	if len(args) < 2 || args[1] != "--end-of-options" {
+		t.Fatalf("Expected --end-of-options before the values, got %v", args)
 	}
 }
 
@@ -1410,7 +1447,7 @@ func TestStartReturnsNewBuildName(t *testing.T) {
 	expectedName := "new-pipelinerun"
 	expectedRef := "dummy-ref"
 	expectedImageName := "dummy-image-name"
-	expectedSourceURL := "dummy-source-url"
+	expectedSourceURL := "https://example.org/dummy-source-url"
 	expectedEnvvars := map[string]string{
 		"GOOD_NAME1": "silly value 1",
 		"GOOD_NAME2": "silly value 2",
@@ -1549,7 +1586,7 @@ func TestStartUsesLatestBuilderAndRunnerVersionsIfPassed(t *testing.T) {
 
 	code, response := Start(
 		&api,
-		"dummy-source-url",
+		"https://example.org/dummy-source-url",
 		"dummy-ref",
 		"dummy-image-name",
 		"dummy-tool",
@@ -1621,7 +1658,7 @@ func TestStartUsesDeprecatedBuilderAndRunnerVersionsIfPassed(t *testing.T) {
 
 	code, response := Start(
 		&api,
-		"dummy-source-url",
+		"https://example.org/dummy-source-url",
 		"dummy-ref",
 		"dummy-image-name",
 		"dummy-tool",
@@ -1693,7 +1730,7 @@ func TestStartUsesDeprecatedBuilderThrowsErrorIfDeprecatedBuilderValidUntilExpir
 
 	code, response := Start(
 		&api,
-		"dummy-source-url",
+		"https://example.org/dummy-source-url",
 		"dummy-ref",
 		"dummy-image-name",
 		"dummy-tool",
@@ -1741,7 +1778,7 @@ func TestStartReturnsWarningMessageIfQuotaIsAbove90(t *testing.T) {
 	expectedName := "new-pipelinerun"
 	expectedRef := "dummy-ref"
 	expectedImageName := "dummy-image-name"
-	expectedSourceURL := "dummy-source-url"
+	expectedSourceURL := "https://example.org/dummy-source-url"
 	expectedEnvvars := map[string]string{}
 	fakePipelineRun := tektonPipelineV1.PipelineRun{
 		ObjectMeta: v1.ObjectMeta{Name: expectedName},

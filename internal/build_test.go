@@ -132,25 +132,39 @@ func TestParseBuildOptionAnnotation(t *testing.T) {
 	}
 }
 
-func TestGetBuildCurrentBuilder(t *testing.T) {
-	stableBuilder := "stable-dummy-builder"
-	latestBuilder := "latest-dummy-builder"
-	deprecatedBuilder := "deprecated-dummy-builder"
+func TestGetBuildIsOutdatedBuilder(t *testing.T) {
+	supported := supportedBuildImages{
+		Stable:     buildImages{Builder: "stable-dummy-builder", Runner: "stable-dummy-runner"},
+		Latest:     buildImages{Builder: "latest-dummy-builder", Runner: "latest-dummy-runner"},
+		Deprecated: buildImages{Builder: "deprecated-dummy-builder", Runner: "deprecated-dummy-runner"},
+	}
+	oldBuilder := "old-dummy-builder"
+	oldRunner := "old-dummy-runner"
 
 	tests := []struct {
-		name            string
-		builderImage    string
-		useLatest       string
-		useDeprecated   string
-		expectedCurrent bool
+		name             string
+		images           buildImages
+		useLatest        string
+		useDeprecated    string
+		expectedOutdated bool
 	}{
-		{name: "stable with stable builder", builderImage: stableBuilder, useLatest: "false", useDeprecated: "false", expectedCurrent: true},
-		{name: "stable with old builder", builderImage: "old-dummy-builder", useLatest: "false", useDeprecated: "false", expectedCurrent: false},
-		{name: "latest with latest builder", builderImage: latestBuilder, useLatest: "true", useDeprecated: "false", expectedCurrent: true},
-		{name: "latest with old builder", builderImage: "old-dummy-builder", useLatest: "true", useDeprecated: "false", expectedCurrent: false},
-		{name: "deprecated with deprecated builder", builderImage: deprecatedBuilder, useLatest: "false", useDeprecated: "true", expectedCurrent: true},
-		{name: "deprecated with old builder", builderImage: "old-dummy-builder", useLatest: "false", useDeprecated: "true", expectedCurrent: false},
-		{name: "stable with latest builder", builderImage: latestBuilder, useLatest: "false", useDeprecated: "false", expectedCurrent: false},
+		{name: "stable with stable builder", images: supported.Stable, useLatest: "false", useDeprecated: "false", expectedOutdated: false},
+		{name: "stable with old builder", images: buildImages{Builder: oldBuilder, Runner: supported.Stable.Runner}, useLatest: "false", useDeprecated: "false", expectedOutdated: true},
+		{name: "stable with old runner", images: buildImages{Builder: supported.Stable.Builder, Runner: oldRunner}, useLatest: "false", useDeprecated: "false", expectedOutdated: true},
+
+		{name: "latest with latest builder", images: supported.Latest, useLatest: "true", useDeprecated: "false", expectedOutdated: false},
+		{name: "latest with old builder", images: buildImages{Builder: oldBuilder, Runner: supported.Latest.Runner}, useLatest: "true", useDeprecated: "false", expectedOutdated: true},
+		{name: "latest with old runner", images: buildImages{Builder: supported.Latest.Builder, Runner: oldRunner}, useLatest: "true", useDeprecated: "false", expectedOutdated: true},
+
+		{name: "deprecated with deprecated builder", images: supported.Deprecated, useLatest: "false", useDeprecated: "true", expectedOutdated: false},
+		{name: "deprecated with old builder", images: buildImages{Builder: oldBuilder, Runner: supported.Deprecated.Runner}, useLatest: "false", useDeprecated: "true", expectedOutdated: true},
+		{name: "deprecated with old runner", images: buildImages{Builder: supported.Deprecated.Builder, Runner: oldRunner}, useLatest: "false", useDeprecated: "true", expectedOutdated: true},
+
+		{name: "stable with latest builder", images: buildImages{Builder: supported.Latest.Builder, Runner: supported.Stable.Runner}, useLatest: "false", useDeprecated: "false", expectedOutdated: true},
+		{name: "stable with latest runner", images: buildImages{Builder: supported.Stable.Builder, Runner: supported.Latest.Runner}, useLatest: "false", useDeprecated: "false", expectedOutdated: true},
+
+		{name: "stable with deprecated builder", images: buildImages{Builder: supported.Deprecated.Builder, Runner: supported.Stable.Runner}, useLatest: "false", useDeprecated: "false", expectedOutdated: true},
+		{name: "stable with deprecated runner", images: buildImages{Builder: supported.Stable.Builder, Runner: supported.Deprecated.Runner}, useLatest: "false", useDeprecated: "false", expectedOutdated: true},
 	}
 
 	for _, tt := range tests {
@@ -166,16 +180,17 @@ func TestGetBuildCurrentBuilder(t *testing.T) {
 				},
 				Spec: tektonPipelineV1.PipelineRunSpec{
 					Params: []tektonPipelineV1.Param{
-						{Name: "BUILDER_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: tt.builderImage}},
+						{Name: "BUILDER_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: tt.images.Builder}},
+						{Name: "RUN_IMAGE", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: tt.images.Runner}},
 					},
 				},
 			}
 			ctx, _ := getContextWithRequest("GET", "/builds/build", nil)
 			clients := Clients{Tekton: tektonFake.NewSimpleClientset()}
 
-			build := getBuild(*ctx, &clients, run, latestBuilder, deprecatedBuilder, stableBuilder)
-			if *build.CurrentBuilder != tt.expectedCurrent {
-				t.Fatalf("Got unexpected current builder, expected '%v', got '%v'", tt.expectedCurrent, *build.CurrentBuilder)
+			build := getBuild(*ctx, &clients, run, supported)
+			if *build.IsOutdated != tt.expectedOutdated {
+				t.Fatalf("Got unexpected is outdated, expected '%v', got '%v'", tt.expectedOutdated, *build.IsOutdated)
 			}
 		})
 	}

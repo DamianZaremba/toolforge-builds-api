@@ -279,7 +279,28 @@ func getpipelineRunArrayParam(pipelineRun tektonPipelineV1.PipelineRun, name str
 	return nil
 }
 
-func getBuild(ctx echo.Context, clients *Clients, run tektonPipelineV1.PipelineRun, latestBuilder string, deprecatedBuilder string, stableBuilder string) *gen.Build {
+// buildImages is the builder/runner image pair used for a build.
+type buildImages struct {
+	Builder string
+	Runner  string
+}
+
+// supportedBuildImages is the currently supported buildImages for each version channel.
+type supportedBuildImages struct {
+	Stable     buildImages
+	Latest     buildImages
+	Deprecated buildImages
+}
+
+func supportedBuildImagesFromConfig(config Config) supportedBuildImages {
+	return supportedBuildImages{
+		Stable:     buildImages{Builder: config.Builder, Runner: config.Runner},
+		Latest:     buildImages{Builder: config.LatestBuilder, Runner: config.LatestRunner},
+		Deprecated: buildImages{Builder: config.DeprecatedBuilder, Runner: config.DeprecatedRunner},
+	}
+}
+
+func getBuild(ctx echo.Context, clients *Clients, run tektonPipelineV1.PipelineRun, supported supportedBuildImages) *gen.Build {
 	var startTime string
 	var endTime string
 	buildCondition := getBuildConditionFromPipelineRun(&run)
@@ -343,20 +364,18 @@ func getBuild(ctx echo.Context, clients *Clients, run tektonPipelineV1.PipelineR
 	useLatestVersions := parseBuildOptionAnnotation(run, useLatestVersionsAnnotation, false)
 	useDeprecatedVersions := parseBuildOptionAnnotation(run, useDeprecatedVersionsAnnotation, false)
 
-    // Check if the builder image we used is the currently supported version
-    builderImage := getpipelineRunStringParam(run, "BUILDER_IMAGE")
-    builderIsCurrent := true
-    if useLatestVersions {
-        if builderImage != latestBuilder {
-            builderIsCurrent = false
-        }
-    } else if useDeprecatedVersions {
-        if builderImage != deprecatedBuilder {
-            builderIsCurrent = false
-        }
-    } else if builderImage != stableBuilder {
-        builderIsCurrent = false
-    }
+	// Check if the builder and runner images we used are the currently supported versions
+	used := buildImages{
+		Builder: getpipelineRunStringParam(run, "BUILDER_IMAGE"),
+		Runner:  getpipelineRunStringParam(run, "RUN_IMAGE"),
+	}
+	expected := supported.Stable
+	if useLatestVersions {
+		expected = supported.Latest
+	} else if useDeprecatedVersions {
+		expected = supported.Deprecated
+	}
+	isOutdated := used != expected
 
 	return &gen.Build{
 		BuildId:   &run.Name,
@@ -374,7 +393,7 @@ func getBuild(ctx echo.Context, clients *Clients, run tektonPipelineV1.PipelineR
 		},
 		DestinationImage: &destinationImage,
 		ResolvedRef:      &resolvedRef,
-		CurrentBuilder:   &builderIsCurrent,
+		IsOutdated:       &isOutdated,
 	}
 }
 
@@ -1201,7 +1220,7 @@ func Get(
 	// NOTE: we assume here the first pipelineRun from the search is what we are looking for.
 	// In k8s/tekton two objects cannot share metadata.name in the same namespace anyway
 
-	build := getBuild(ctx, &api.Clients, pipelineRuns[0], api.Config.LatestBuilder, api.Config.DeprecatedBuilder, api.Config.Builder)
+	build := getBuild(ctx, &api.Clients, pipelineRuns[0], supportedBuildImagesFromConfig(api.Config))
 	return http.StatusOK, gen.GetResponse{Build: build, Messages: &gen.ResponseMessages{}}
 }
 
@@ -1220,7 +1239,7 @@ func List(
 
 	builds := make([]gen.Build, len(pipelineRuns))
 	for i, run := range pipelineRuns {
-		builds[i] = *getBuild(ctx, &api.Clients, run, api.Config.LatestBuilder, api.Config.DeprecatedBuilder, api.Config.Builder)
+		builds[i] = *getBuild(ctx, &api.Clients, run, supportedBuildImagesFromConfig(api.Config))
 	}
 	return http.StatusOK, gen.ListResponse{Builds: &builds, Messages: &gen.ResponseMessages{}}
 }
@@ -1247,7 +1266,7 @@ func Latest(
 	}
 
 	// getPipelineRuns returns a sorted array per creationTimestamp
-	build := getBuild(ctx, &api.Clients, pipelineRuns[0], api.Config.LatestBuilder, api.Config.DeprecatedBuilder, api.Config.Builder)
+	build := getBuild(ctx, &api.Clients, pipelineRuns[0], supportedBuildImagesFromConfig(api.Config))
 	return http.StatusOK, gen.LatestResponse{Build: build, Messages: &gen.ResponseMessages{}}
 }
 

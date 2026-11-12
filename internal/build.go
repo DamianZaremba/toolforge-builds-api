@@ -38,6 +38,7 @@ import (
 	harborModels "github.com/goharbor/go-client/pkg/sdk/v2.0/models"
 	"github.com/labstack/echo/v4"
 	log "github.com/sirupsen/logrus"
+	tektonPipeline "github.com/tektoncd/pipeline/pkg/apis/pipeline"
 	tektonPipelineV1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	"github.com/tektoncd/pipeline/pkg/status"
 	gen "gitlab.wikimedia.org/repos/toolforge/builds-api/gen"
@@ -230,24 +231,34 @@ func getBuildConditionFromPipelineRun(run *tektonPipelineV1.PipelineRun) gen.Bui
 	return *buildCondition
 }
 
-func getTaskStatusRunForPipeline(ctx echo.Context, clients *Clients, namespace string, pipelineRun *tektonPipelineV1.PipelineRun) *tektonPipelineV1.PipelineRunTaskRunStatus {
-	taskRunStatuses, _, err := status.GetPipelineTaskStatuses(ctx.Request().Context(), clients.Tekton, namespace, pipelineRun)
+func getTaskRunsByName(ctx context.Context, clients *Clients, namespace string, labelSelector string) map[string]*tektonPipelineV1.TaskRun {
+	taskRuns, err := clients.Tekton.TektonV1().TaskRuns(namespace).List(
+		ctx,
+		metav1.ListOptions{LabelSelector: labelSelector},
+	)
 	if err != nil {
-		log.Debugf("Got error when getting task statuses for the pipeline %v: %s", pipelineRun, err)
+		log.Warnf("Got error when listing taskruns on namespace %s (%s): %s", namespace, labelSelector, err)
 		return nil
 	}
 
-	for _, taskRunStatus := range taskRunStatuses {
-		if len(taskRunStatus.Status.Results) > 0 {
-			return taskRunStatus
+	taskRunsByName := make(map[string]*tektonPipelineV1.TaskRun, len(taskRuns.Items))
+	for i := range taskRuns.Items {
+		taskRunsByName[taskRuns.Items[i].Name] = &taskRuns.Items[i]
+	}
+	return taskRunsByName
+}
+
+func getTaskRunWithResults(pipelineRun *tektonPipelineV1.PipelineRun, taskRunsByName map[string]*tektonPipelineV1.TaskRun) *tektonPipelineV1.TaskRun {
+	for _, childReference := range pipelineRun.Status.ChildReferences {
+		if taskRun, found := taskRunsByName[childReference.Name]; found && len(taskRun.Status.Results) > 0 {
+			return taskRun
 		}
 	}
-
 	return nil
 }
 
-func getTaskRunResult(taskRunStatus *tektonPipelineV1.PipelineRunTaskRunStatus, name string) string {
-	for _, result := range taskRunStatus.Status.Results {
+func getTaskRunResult(taskRun *tektonPipelineV1.TaskRun, name string) string {
+	for _, result := range taskRun.Status.Results {
 		if result.Name == name {
 			return strings.TrimSpace(result.Value.StringVal)
 		}
@@ -300,7 +311,7 @@ func supportedBuildImagesFromConfig(config Config) supportedBuildImages {
 	}
 }
 
-func getBuild(ctx echo.Context, clients *Clients, run tektonPipelineV1.PipelineRun, supported supportedBuildImages) *gen.Build {
+func getBuild(run tektonPipelineV1.PipelineRun, taskRunsByName map[string]*tektonPipelineV1.TaskRun, supported supportedBuildImages) *gen.Build {
 	var startTime string
 	var endTime string
 	buildCondition := getBuildConditionFromPipelineRun(&run)
@@ -330,11 +341,11 @@ func getBuild(ctx echo.Context, clients *Clients, run tektonPipelineV1.PipelineR
 	// These results are set by `results.sh` in the `results` step,
 	// if they are present (i.e. we have a finished build) then use them
 	log.Debugf("Getting run: pipelineName=%s, namespace=%s", run.Name, run.Name)
-	if taskRunStatus := getTaskStatusRunForPipeline(ctx, clients, run.Namespace, &run); taskRunStatus != nil {
-		if appResultImageUrl := getTaskRunResult(taskRunStatus, "APP_IMAGE_URL"); appResultImageUrl != "" {
+	if taskRun := getTaskRunWithResults(&run, taskRunsByName); taskRun != nil {
+		if appResultImageUrl := getTaskRunResult(taskRun, "APP_IMAGE_URL"); appResultImageUrl != "" {
 			appImageUrl = appResultImageUrl
 		}
-		appImageDigest = getTaskRunResult(taskRunStatus, "APP_IMAGE_DIGEST")
+		appImageDigest = getTaskRunResult(taskRun, "APP_IMAGE_DIGEST")
 
 		log.Debugf("Got results for run pipelineName=%s, namespace=%s: appImageUrl=%s, appImageDigest=%s", run.Name, run.Name, appImageUrl, appImageDigest)
 	}
@@ -397,7 +408,7 @@ func getBuild(ctx echo.Context, clients *Clients, run tektonPipelineV1.PipelineR
 	}
 }
 
-func parseBuildOptionAnnotation(run tektonPipelineV1.PipelineRun, key string, default_value bool) (bool) {
+func parseBuildOptionAnnotation(run tektonPipelineV1.PipelineRun, key string, default_value bool) bool {
 	value, ok := run.Annotations[key]
 	if !ok {
 		return default_value
@@ -1220,7 +1231,9 @@ func Get(
 	// NOTE: we assume here the first pipelineRun from the search is what we are looking for.
 	// In k8s/tekton two objects cannot share metadata.name in the same namespace anyway
 
-	build := getBuild(ctx, &api.Clients, pipelineRuns[0], supportedBuildImagesFromConfig(api.Config))
+	labelSelector := fmt.Sprintf("%s=%s", tektonPipeline.PipelineRunLabelKey, pipelineRuns[0].Name)
+	taskRunsByName := getTaskRunsByName(ctx.Request().Context(), &api.Clients, api.Config.BuildNamespace, labelSelector)
+	build := getBuild(pipelineRuns[0], taskRunsByName, supportedBuildImagesFromConfig(api.Config))
 	return http.StatusOK, gen.GetResponse{Build: build, Messages: &gen.ResponseMessages{}}
 }
 
@@ -1237,9 +1250,11 @@ func List(
 	}
 	log.Debugf("Found %d pipelineruns for %s", len(pipelineRuns), toolName)
 
+	labelSelector := fmt.Sprintf("user=%s", toolName)
+	taskRunsByName := getTaskRunsByName(ctx.Request().Context(), &api.Clients, api.Config.BuildNamespace, labelSelector)
 	builds := make([]gen.Build, len(pipelineRuns))
 	for i, run := range pipelineRuns {
-		builds[i] = *getBuild(ctx, &api.Clients, run, supportedBuildImagesFromConfig(api.Config))
+		builds[i] = *getBuild(run, taskRunsByName, supportedBuildImagesFromConfig(api.Config))
 	}
 	return http.StatusOK, gen.ListResponse{Builds: &builds, Messages: &gen.ResponseMessages{}}
 }
@@ -1266,7 +1281,9 @@ func Latest(
 	}
 
 	// getPipelineRuns returns a sorted array per creationTimestamp
-	build := getBuild(ctx, &api.Clients, pipelineRuns[0], supportedBuildImagesFromConfig(api.Config))
+	labelSelector := fmt.Sprintf("%s=%s", tektonPipeline.PipelineRunLabelKey, pipelineRuns[0].Name)
+	taskRunsByName := getTaskRunsByName(ctx.Request().Context(), &api.Clients, api.Config.BuildNamespace, labelSelector)
+	build := getBuild(pipelineRuns[0], taskRunsByName, supportedBuildImagesFromConfig(api.Config))
 	return http.StatusOK, gen.LatestResponse{Build: build, Messages: &gen.ResponseMessages{}}
 }
 

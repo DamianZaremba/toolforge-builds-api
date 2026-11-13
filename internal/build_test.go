@@ -25,6 +25,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -32,6 +33,7 @@ import (
 	"github.com/goharbor/go-client/pkg/harbor"
 	"github.com/labstack/echo/v4"
 	log "github.com/sirupsen/logrus"
+	tektonPipeline "github.com/tektoncd/pipeline/pkg/apis/pipeline"
 	tektonPipelineV1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1"
 	tektonFake "github.com/tektoncd/pipeline/pkg/client/clientset/versioned/fake"
 	"gitlab.wikimedia.org/repos/toolforge/builds-api/gen"
@@ -89,6 +91,27 @@ func getFakePipelineRun(name string, toolName string, imageName string, status *
 			PipelineRunStatusFields: fields,
 		},
 	}
+}
+
+func getFakeTaskRun(pipelineRunName string, toolName string, imageDigest string) (*tektonPipelineV1.TaskRun, []tektonPipelineV1.ChildStatusReference) {
+	taskRun := tektonPipelineV1.TaskRun{
+		ObjectMeta: v1.ObjectMeta{
+			Name:      fmt.Sprintf("%s-build-from-git", pipelineRunName),
+			Namespace: BuildNamespace,
+			Labels:    map[string]string{"user": toolName, tektonPipeline.PipelineRunLabelKey: pipelineRunName},
+		},
+		Status: tektonPipelineV1.TaskRunStatus{
+			TaskRunStatusFields: tektonPipelineV1.TaskRunStatusFields{
+				Results: []tektonPipelineV1.TaskRunResult{
+					{Name: "APP_IMAGE_DIGEST", Value: tektonPipelineV1.ParamValue{Type: tektonPipelineV1.ParamTypeString, StringVal: imageDigest}},
+				},
+			},
+		},
+	}
+	childReferences := []tektonPipelineV1.ChildStatusReference{
+		{TypeMeta: k8sRuntime.TypeMeta{Kind: "TaskRun"}, Name: taskRun.Name, PipelineTaskName: "build-from-git"},
+	}
+	return &taskRun, childReferences
 }
 
 func TestToolNameToHarborProjectNameReturnsErrorIfNameIsInvalidToolforgeToolName(t *testing.T) {
@@ -694,6 +717,9 @@ func TestStreamAfterPipelineRunStartedDoesNotWaitIfNoError(t *testing.T) {
 	mockK8s := k8sFake.NewSimpleClientset()
 	// clear all handled errors
 	mockK8s.PrependReactor("get", "pods", func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
+		if action.GetSubresource() == "log" && !action.(k8sTesting.GenericAction).GetValue().(*corev1.PodLogOptions).Follow {
+			t.Errorf("Expected the pod logs to be followed")
+		}
 		return true, dummyPod, nil
 	})
 	mockK8s.PrependReactor("get", "pods/logs", func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
@@ -1438,6 +1464,55 @@ func TestStartReturnsBadRequestErrorIfBadSourceUrlPassed(t *testing.T) {
 	}
 }
 
+func TestStartReturnsBadRequestErrorIfRefCannotBeResolved(t *testing.T) {
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer testServer.Close()
+	testHarborConfig := &harbor.ClientSetConfig{
+		URL: testServer.URL,
+	}
+	testHarborClientSet, _ := harbor.NewClientSet(testHarborConfig)
+
+	mockTekton := tektonFake.Clientset{}
+	api := BuildsApi{
+		Clients: Clients{
+			Tekton: &mockTekton,
+			Harbor: testHarborClientSet,
+		},
+		Config: Config{
+			HarborRepository:  testServer.URL,
+			Builder:           "dummy-builder",
+			Runner:            "dummy-runner",
+			OkToKeep:          1,
+			FailedToKeep:      2,
+			BuildIdPrefix:     BuildIdPrefix,
+			BuildNamespace:    BuildNamespace,
+			MaxParallelBuilds: 1,
+		},
+	}
+	origGitLsRemote := gitLsRemote
+	defer func() { gitLsRemote = origGitLsRemote }()
+	gitLsRemote = func(sourceURL string, ref string) (string, error) {
+		return "", fmt.Errorf("unable to resolve ref %s from %s", ref, sourceURL)
+	}
+
+	code, _ := Start(
+		&api,
+		"https://example.org/dummy-source-url",
+		"dummy-ref",
+		"dummy-image-name",
+		"dummy-tool",
+		nil,
+		false,
+		false,
+	)
+
+	if code != 400 {
+		t.Fatalf("I was expecting a 400 response, got: %d", code)
+	}
+}
+
 func TestGitLsRemoteArgsPutsEndOfOptionsBeforeTheValues(t *testing.T) {
 	// It's important we test this "--end-of-options", because that's how we tell git that
 	// everything else that comes after should be read as argument, not option.
@@ -1475,6 +1550,29 @@ func TestStartReturnsNewBuildName(t *testing.T) {
 		"create",
 		"pipelineruns",
 		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
+			createdRun := action.(k8sTesting.CreateAction).GetObject().(*tektonPipelineV1.PipelineRun)
+			if gottenSourceURL := getpipelineRunStringParam(*createdRun, "SOURCE_URL"); gottenSourceURL != expectedSourceURL {
+				t.Errorf("Expected SOURCE_URL param to be %q, got %q", expectedSourceURL, gottenSourceURL)
+			}
+			if gottenSourceReference := getpipelineRunStringParam(*createdRun, "SOURCE_REFERENCE"); gottenSourceReference != expectedResolvedRef {
+				t.Errorf("Expected SOURCE_REFERENCE param to be %q, got %q", expectedResolvedRef, gottenSourceReference)
+			}
+			expectedAppImage := fmt.Sprintf("%s/tool-dummy-tool/%s:latest", strings.TrimPrefix(testServer.URL, "http://"), expectedImageName)
+			if gottenAppImage := getpipelineRunStringParam(*createdRun, "APP_IMAGE"); gottenAppImage != expectedAppImage {
+				t.Errorf("Expected APP_IMAGE param to be %q, got %q", expectedAppImage, gottenAppImage)
+			}
+			gottenEnvvars := getpipelineRunArrayParam(*createdRun, "ENV_VARS")
+			for envvarName, envvarValue := range expectedEnvvars {
+				if !slices.Contains(gottenEnvvars, fmt.Sprintf("%s=%s", envvarName, envvarValue)) {
+					t.Errorf("Expected ENV_VARS param to contain %s=%s, got %v", envvarName, envvarValue, gottenEnvvars)
+				}
+			}
+			if gottenBuilderImage := getpipelineRunStringParam(*createdRun, "BUILDER_IMAGE"); gottenBuilderImage != "dummy-builder" {
+				t.Errorf("Expected BUILDER_IMAGE param to be %q, got %q", "dummy-builder", gottenBuilderImage)
+			}
+			if gottenRunImage := getpipelineRunStringParam(*createdRun, "RUN_IMAGE"); gottenRunImage != "dummy-runner" {
+				t.Errorf("Expected RUN_IMAGE param to be %q, got %q", "dummy-runner", gottenRunImage)
+			}
 			return true, &fakePipelineRun, nil
 		},
 	)
@@ -1549,6 +1647,78 @@ func TestStartReturnsNewBuildName(t *testing.T) {
 	}
 }
 
+func TestStartUsesDefaultRefAndImageNameIfNotPassed(t *testing.T) {
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer testServer.Close()
+	testHarborConfig := &harbor.ClientSetConfig{
+		URL: testServer.URL,
+	}
+	testHarborClientSet, _ := harbor.NewClientSet(testHarborConfig)
+
+	mockTekton := tektonFake.Clientset{}
+	fakePipelineRunName := "new-pipelinerun"
+	expectedResolvedRef := "1234567890abcdef1234567890abcdef12345678"
+	fakePipelineRun := tektonPipelineV1.PipelineRun{
+		ObjectMeta: v1.ObjectMeta{Name: fakePipelineRunName},
+	}
+	mockTekton.PrependReactor(
+		"create",
+		"pipelineruns",
+		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
+			createdRun := action.(k8sTesting.CreateAction).GetObject().(*tektonPipelineV1.PipelineRun)
+			if gottenSourceReference := getpipelineRunStringParam(*createdRun, "SOURCE_REFERENCE"); gottenSourceReference != expectedResolvedRef {
+				t.Errorf("Expected SOURCE_REFERENCE param to be %q, got %q", expectedResolvedRef, gottenSourceReference)
+			}
+			expectedAppImage := fmt.Sprintf("%s/tool-dummy-tool/tool-dummy-tool:latest", strings.TrimPrefix(testServer.URL, "http://"))
+			if gottenAppImage := getpipelineRunStringParam(*createdRun, "APP_IMAGE"); gottenAppImage != expectedAppImage {
+				t.Errorf("Expected APP_IMAGE param to be %q, got %q", expectedAppImage, gottenAppImage)
+			}
+			return true, &fakePipelineRun, nil
+		},
+	)
+	api := BuildsApi{
+		Clients: Clients{
+			Tekton: &mockTekton,
+			Harbor: testHarborClientSet,
+		},
+		Config: Config{
+			HarborRepository:  testServer.URL,
+			Builder:           "dummy-builder",
+			Runner:            "dummy-runner",
+			OkToKeep:          1,
+			FailedToKeep:      2,
+			BuildIdPrefix:     BuildIdPrefix,
+			BuildNamespace:    BuildNamespace,
+			MaxParallelBuilds: 1,
+		},
+	}
+	origGitLsRemote := gitLsRemote
+	defer func() { gitLsRemote = origGitLsRemote }()
+	gitLsRemote = func(sourceURL string, ref string) (string, error) {
+		if ref != "HEAD" {
+			t.Errorf("Expected to resolve ref %q, got %q", "HEAD", ref)
+		}
+		return fmt.Sprintf("%s\tHEAD", expectedResolvedRef), nil
+	}
+
+	code, _ := Start(
+		&api,
+		"https://example.org/dummy-source-url",
+		"",
+		"",
+		"dummy-tool",
+		nil,
+		false,
+		false,
+	)
+
+	if code != 200 {
+		t.Fatalf("I was expecting a 200 response, got: %d", code)
+	}
+}
+
 func TestStartUsesLatestBuilderAndRunnerVersionsIfPassed(t *testing.T) {
 	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusCreated)
@@ -1568,6 +1738,13 @@ func TestStartUsesLatestBuilderAndRunnerVersionsIfPassed(t *testing.T) {
 		"create",
 		"pipelineruns",
 		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
+			createdRun := action.(k8sTesting.CreateAction).GetObject().(*tektonPipelineV1.PipelineRun)
+			if gottenBuilderImage := getpipelineRunStringParam(*createdRun, "BUILDER_IMAGE"); gottenBuilderImage != "latest-dummy-builder" {
+				t.Errorf("Expected BUILDER_IMAGE param to be %q, got %q", "latest-dummy-builder", gottenBuilderImage)
+			}
+			if gottenRunImage := getpipelineRunStringParam(*createdRun, "RUN_IMAGE"); gottenRunImage != "latest-dummy-runner" {
+				t.Errorf("Expected RUN_IMAGE param to be %q, got %q", "latest-dummy-runner", gottenRunImage)
+			}
 			return true, &fakePipelineRun, nil
 		},
 	)
@@ -1640,6 +1817,13 @@ func TestStartUsesDeprecatedBuilderAndRunnerVersionsIfPassed(t *testing.T) {
 		"create",
 		"pipelineruns",
 		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
+			createdRun := action.(k8sTesting.CreateAction).GetObject().(*tektonPipelineV1.PipelineRun)
+			if gottenBuilderImage := getpipelineRunStringParam(*createdRun, "BUILDER_IMAGE"); gottenBuilderImage != "deprecated-dummy-builder" {
+				t.Errorf("Expected BUILDER_IMAGE param to be %q, got %q", "deprecated-dummy-builder", gottenBuilderImage)
+			}
+			if gottenRunImage := getpipelineRunStringParam(*createdRun, "RUN_IMAGE"); gottenRunImage != "deprecated-dummy-runner" {
+				t.Errorf("Expected RUN_IMAGE param to be %q, got %q", "deprecated-dummy-runner", gottenRunImage)
+			}
 			return true, &fakePipelineRun, nil
 		},
 	)
@@ -1691,6 +1875,84 @@ func TestStartUsesDeprecatedBuilderAndRunnerVersionsIfPassed(t *testing.T) {
 		t.Fatalf("Got an unexpected use-deprecated-versions for the new build, got '%v', expected '%v'", *gottenNewBuild.Parameters.UseDeprecatedVersions, true)
 	}
 
+	gottenResponseMessages := response.(gen.StartResponse).Messages
+	if len(*gottenResponseMessages.Warning) == 0 {
+		t.Fatalf("I was expecting a warning message, got none")
+	}
+
+}
+
+func TestStartUsesLatestBuilderAndRunnerVersionsIfLatestAndDeprecatedPassed(t *testing.T) {
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer testServer.Close()
+	testHarborConfig := &harbor.ClientSetConfig{
+		URL: testServer.URL,
+	}
+	testHarborClientSet, _ := harbor.NewClientSet(testHarborConfig)
+
+	mockTekton := tektonFake.Clientset{}
+	fakePipelineRunName := "new-pipelinerun"
+	fakePipelineRun := tektonPipelineV1.PipelineRun{
+		ObjectMeta: v1.ObjectMeta{Name: fakePipelineRunName},
+	}
+	mockTekton.PrependReactor(
+		"create",
+		"pipelineruns",
+		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
+			createdRun := action.(k8sTesting.CreateAction).GetObject().(*tektonPipelineV1.PipelineRun)
+			if gottenBuilderImage := getpipelineRunStringParam(*createdRun, "BUILDER_IMAGE"); gottenBuilderImage != "latest-dummy-builder" {
+				t.Errorf("Expected BUILDER_IMAGE param to be %q, got %q", "latest-dummy-builder", gottenBuilderImage)
+			}
+			if gottenRunImage := getpipelineRunStringParam(*createdRun, "RUN_IMAGE"); gottenRunImage != "latest-dummy-runner" {
+				t.Errorf("Expected RUN_IMAGE param to be %q, got %q", "latest-dummy-runner", gottenRunImage)
+			}
+			return true, &fakePipelineRun, nil
+		},
+	)
+	origGitLsRemote := gitLsRemote
+	defer func() { gitLsRemote = origGitLsRemote }()
+	gitLsRemote = func(sourceURL string, ref string) (string, error) {
+		return fmt.Sprintf("%s\tHEAD", "resolvedref"), nil
+	}
+	oneHour, _ := time.ParseDuration("1h")
+	api := BuildsApi{
+		Clients: Clients{
+			Tekton: &mockTekton,
+			Harbor: testHarborClientSet,
+		},
+		Config: Config{
+			HarborRepository:     testServer.URL,
+			Builder:              "dummy-builder",
+			Runner:               "dummy-runner",
+			LatestBuilder:        "latest-dummy-builder",
+			LatestRunner:         "latest-dummy-runner",
+			DeprecatedBuilder:    "deprecated-dummy-builder",
+			DeprecatedRunner:     "deprecated-dummy-runner",
+			DeprecatedValidUntil: time.Now().Add(oneHour),
+			OkToKeep:             1,
+			FailedToKeep:         2,
+			BuildIdPrefix:        BuildIdPrefix,
+			BuildNamespace:       BuildNamespace,
+			MaxParallelBuilds:    1,
+		},
+	}
+
+	code, _ := Start(
+		&api,
+		"https://example.org/dummy-source-url",
+		"dummy-ref",
+		"dummy-image-name",
+		"dummy-tool",
+		nil,
+		true,
+		true,
+	)
+
+	if code != 200 {
+		t.Fatalf("I was expecting a 200 response, got: %d", code)
+	}
 }
 
 func TestStartUsesDeprecatedBuilderThrowsErrorIfDeprecatedBuilderValidUntilExpired(t *testing.T) {
@@ -2004,6 +2266,7 @@ func TestListReturnsInternalServerErrorOnException(t *testing.T) {
 func TestListReturnsBuilds(t *testing.T) {
 	toolName := "dummy-tool"
 	expectedBuildId := fmt.Sprintf("%s%sbuild", toolName, BuildIdPrefix)
+	taskRun, childReferences := getFakeTaskRun(expectedBuildId, toolName, "sha256:dummy")
 	mockTekton := tektonFake.NewSimpleClientset(
 		&tektonPipelineV1.PipelineRunList{
 			Items: []tektonPipelineV1.PipelineRun{
@@ -2022,14 +2285,16 @@ func TestListReturnsBuilds(t *testing.T) {
 					Status: tektonPipelineV1.PipelineRunStatus{
 						Status: knative.Status{Conditions: knative.Conditions{{Type: "Succeeded", Status: "True", Message: "All Tasks Succeeded", Reason: "Succeeded"}}},
 						PipelineRunStatusFields: tektonPipelineV1.PipelineRunStatusFields{
-							CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)},
-							StartTime:      &v1.Time{Time: time.Date(2023, 6, 8, 15, 0, 0, 0, time.UTC)},
-							Results:        []tektonPipelineV1.PipelineRunResult{},
+							CompletionTime:  &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)},
+							StartTime:       &v1.Time{Time: time.Date(2023, 6, 8, 15, 0, 0, 0, time.UTC)},
+							Results:         []tektonPipelineV1.PipelineRunResult{},
+							ChildReferences: childReferences,
 						},
 					},
 				},
 			},
 		},
+		taskRun,
 	)
 	api := BuildsApi{
 		Clients: Clients{
@@ -2061,6 +2326,10 @@ func TestListReturnsBuilds(t *testing.T) {
 	}
 	if *(*listResponse.Builds)[0].BuildId != expectedBuildId {
 		t.Fatalf("Got unexpected build id, expected '%s', got '%s'", expectedBuildId, *(*listResponse.Builds)[0].BuildId)
+	}
+	expectedDestinationImage := "192.168.188.129/tool-minikube-user/tool-raymond:latest@sha256:dummy"
+	if *(*listResponse.Builds)[0].DestinationImage != expectedDestinationImage {
+		t.Fatalf("Got unexpected destination image, expected '%s', got '%s'", expectedDestinationImage, *(*listResponse.Builds)[0].DestinationImage)
 	}
 }
 
@@ -2132,6 +2401,7 @@ func TestGetPipelineRunParam(t *testing.T) {
 func TestGetReturnsBuildsOk(t *testing.T) {
 	toolName := "dummy-tool"
 	buildId := fmt.Sprintf("%s%sbuild", toolName, BuildIdPrefix)
+	taskRun, childReferences := getFakeTaskRun(buildId, toolName, "sha256:dummy")
 	mockTekton := tektonFake.NewSimpleClientset(
 		&tektonPipelineV1.PipelineRunList{
 			Items: []tektonPipelineV1.PipelineRun{
@@ -2149,13 +2419,15 @@ func TestGetReturnsBuildsOk(t *testing.T) {
 					Status: tektonPipelineV1.PipelineRunStatus{
 						Status: knative.Status{Conditions: knative.Conditions{{Type: "Succeeded", Status: "True", Message: "All Tasks Succeeded", Reason: "Succeeded"}}},
 						PipelineRunStatusFields: tektonPipelineV1.PipelineRunStatusFields{
-							CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)},
-							StartTime:      &v1.Time{Time: time.Date(2023, 6, 8, 15, 0, 0, 0, time.UTC)},
+							CompletionTime:  &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)},
+							StartTime:       &v1.Time{Time: time.Date(2023, 6, 8, 15, 0, 0, 0, time.UTC)},
+							ChildReferences: childReferences,
 						},
 					},
 				},
 			},
 		},
+		taskRun,
 	)
 	api := BuildsApi{
 		Clients: Clients{
@@ -2185,6 +2457,10 @@ func TestGetReturnsBuildsOk(t *testing.T) {
 	getResponse := response.(gen.GetResponse)
 	if *getResponse.Build.BuildId != buildId {
 		t.Fatalf("Got unexpected build id, expected '%s', got '%s'", buildId, *getResponse.Build.BuildId)
+	}
+	expectedDestinationImage := "192.168.188.129/tool-minikube-user/tool-raymond:latest@sha256:dummy"
+	if *getResponse.Build.DestinationImage != expectedDestinationImage {
+		t.Fatalf("Got unexpected destination image, expected '%s', got '%s'", expectedDestinationImage, *getResponse.Build.DestinationImage)
 	}
 }
 
@@ -2524,6 +2800,17 @@ func TestCancelReturnsCancelledBuild(t *testing.T) {
 		},
 	}
 
+	mockTekton.PrependReactor(
+		"update",
+		"pipelineruns",
+		func(action k8sTesting.Action) (handled bool, ret k8sRuntime.Object, err error) {
+			updatedRun := action.(k8sTesting.UpdateAction).GetObject().(*tektonPipelineV1.PipelineRun)
+			if updatedRun.Spec.Status != tektonPipelineV1.PipelineRunSpecStatusCancelled {
+				t.Errorf("Expected the build status to be %q, got %q", tektonPipelineV1.PipelineRunSpecStatusCancelled, updatedRun.Spec.Status)
+			}
+			return true, updatedRun, nil
+		},
+	)
 	code, response := Cancel(&api, buildId, toolName)
 	if code != 200 {
 		t.Fatalf("I was expecting a 200 response, got: %d", code)
@@ -2539,6 +2826,7 @@ func TestLatestReturnsBuildsOk(t *testing.T) {
 	toolName := "dummy-tool"
 	baseBuildId := fmt.Sprintf("%s%sbuild", toolName, BuildIdPrefix)
 	latestBuildId := fmt.Sprintf("%s-some", baseBuildId)
+	taskRun, childReferences := getFakeTaskRun(latestBuildId, toolName, "sha256:dummy")
 	mockTekton := tektonFake.NewSimpleClientset(
 		&tektonPipelineV1.PipelineRunList{
 			Items: []tektonPipelineV1.PipelineRun{
@@ -2573,8 +2861,9 @@ func TestLatestReturnsBuildsOk(t *testing.T) {
 					Status: tektonPipelineV1.PipelineRunStatus{
 						Status: knative.Status{Conditions: knative.Conditions{{Type: "Succeeded", Status: "True", Message: "All Tasks Succeeded", Reason: "Succeeded"}}},
 						PipelineRunStatusFields: tektonPipelineV1.PipelineRunStatusFields{
-							CompletionTime: &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)},
-							StartTime:      &v1.Time{Time: time.Date(2023, 6, 8, 15, 0, 0, 0, time.UTC)},
+							CompletionTime:  &v1.Time{Time: time.Date(2023, 6, 8, 16, 0, 0, 0, time.UTC)},
+							StartTime:       &v1.Time{Time: time.Date(2023, 6, 8, 15, 0, 0, 0, time.UTC)},
+							ChildReferences: childReferences,
 						},
 					},
 				},
@@ -2598,6 +2887,7 @@ func TestLatestReturnsBuildsOk(t *testing.T) {
 				},
 			},
 		},
+		taskRun,
 	)
 	api := BuildsApi{
 		Clients: Clients{
@@ -2626,6 +2916,10 @@ func TestLatestReturnsBuildsOk(t *testing.T) {
 	latestResponse := response.(gen.LatestResponse)
 	if *latestResponse.Build.BuildId != latestBuildId {
 		t.Fatalf("Got unexpected build id, expected '%s', got '%s'", latestBuildId, *latestResponse.Build.BuildId)
+	}
+	expectedDestinationImage := "192.168.188.129/tool-minikube-user/tool-raymond:latest@sha256:dummy"
+	if *latestResponse.Build.DestinationImage != expectedDestinationImage {
+		t.Fatalf("Got unexpected destination image, expected '%s', got '%s'", expectedDestinationImage, *latestResponse.Build.DestinationImage)
 	}
 }
 
@@ -2753,7 +3047,7 @@ func TestCleanHappyPath(t *testing.T) {
 		"No artifacts": func() *httptest.Server {
 			mux := http.NewServeMux()
 			mux.HandleFunc("/", func(rw http.ResponseWriter, req *http.Request) {
-				if req.Method == http.MethodGet && strings.HasPrefix(req.RequestURI, "/api/v2.0/projects/tool-dummy-tool-name-no-artifacts/repositories") {
+				if req.Method == http.MethodGet && strings.HasPrefix(req.RequestURI, "/api/v2.0/projects/tool-dummy-tool-name-no-artifacts/repositories?") {
 					rw.Header().Set("Content-Type", "application/json")
 					rw.WriteHeader(http.StatusOK)
 					_, _ = rw.Write([]byte(`[{"name": "tool-dummy-tool-name-no-artifacts/repo1"}]`))
@@ -2771,7 +3065,7 @@ func TestCleanHappyPath(t *testing.T) {
 		"One artifact": func() *httptest.Server {
 			mux := http.NewServeMux()
 			mux.HandleFunc("/", func(rw http.ResponseWriter, req *http.Request) {
-				if req.Method == http.MethodGet && strings.HasPrefix(req.RequestURI, "/api/v2.0/projects/tool-dummy-tool-name-one-artifact/repositories") {
+				if req.Method == http.MethodGet && strings.HasPrefix(req.RequestURI, "/api/v2.0/projects/tool-dummy-tool-name-one-artifact/repositories?") {
 					rw.Header().Set("Content-Type", "application/json")
 					rw.WriteHeader(http.StatusOK)
 					_, _ = rw.Write([]byte(`[{"name": "tool-dummy-tool-name-one-artifact/repo1"}]`))
@@ -2792,7 +3086,7 @@ func TestCleanHappyPath(t *testing.T) {
 		"Many artifacts": func() *httptest.Server {
 			mux := http.NewServeMux()
 			mux.HandleFunc("/", func(rw http.ResponseWriter, req *http.Request) {
-				if req.Method == http.MethodGet && strings.HasPrefix(req.RequestURI, "/api/v2.0/projects/tool-dummy-tool-name-many-artifacts/repositories") {
+				if req.Method == http.MethodGet && strings.HasPrefix(req.RequestURI, "/api/v2.0/projects/tool-dummy-tool-name-many-artifacts/repositories?") {
 					rw.Header().Set("Content-Type", "application/json")
 					rw.WriteHeader(http.StatusOK)
 					_, _ = rw.Write([]byte(`[{"name": "tool-dummy-tool-name-many-artifacts/repo1"}, {"name": "tool-dummy-tool-name-many-artifacts/repo2"}]`))
@@ -2830,5 +3124,61 @@ func TestCleanHappyPath(t *testing.T) {
 				t.Fatalf("I was expecting no errors, got return code %d, and response: %v", responseCode, (*response.(gen.ResponseMessages).Error)[0])
 			}
 		})
+	}
+
+	if numDeletesTC1 != 1 {
+		t.Fatalf("I was expecting 1 artifact to be deleted, got %d", numDeletesTC1)
+	}
+	if numDeletesTC2 != 6 {
+		t.Fatalf("I was expecting 6 artifacts to be deleted, got %d", numDeletesTC2)
+	}
+}
+
+func TestQuotaReturnsQuota(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(rw http.ResponseWriter, req *http.Request) {
+		if req.Method == http.MethodPost && strings.HasPrefix(req.RequestURI, "/api/v2.0/projects") {
+			// for CreateHarborProjectForTool
+			rw.WriteHeader(http.StatusCreated)
+		} else if req.Method == http.MethodGet && strings.HasPrefix(req.RequestURI, "/api/v2.0/projects/tool-dummy-tool/summary") {
+			rw.Header().Set("Content-Type", "application/json")
+			rw.WriteHeader(http.StatusOK)
+			_, _ = rw.Write([]byte(`{"quota": {"hard": {"storage": 100}, "used": {"storage": 95}}}`))
+		} else {
+			rw.WriteHeader(http.StatusBadRequest)
+			_, _ = fmt.Fprintf(rw, "Should not have been called, got method %s, URI %s", req.Method, req.RequestURI)
+		}
+	})
+	testServer := httptest.NewServer(mux)
+	defer testServer.Close()
+	testHarborConfig := &harbor.ClientSetConfig{
+		URL: testServer.URL,
+	}
+	testHarborClientSet, _ := harbor.NewClientSet(testHarborConfig)
+	api := BuildsApi{
+		Clients: Clients{
+			Harbor: testHarborClientSet,
+		},
+	}
+
+	code, response := Quota(&api, "dummy-tool")
+
+	if code != 200 {
+		t.Fatalf("I was expecting a 200 response, got: %d", code)
+	}
+
+	quotaResponse := response.(gen.QuotaResponse)
+	storageQuota := (*(*quotaResponse.Quota.Categories)[0].Items)[0]
+	if *storageQuota.Limit != "100.00B" {
+		t.Fatalf("Got unexpected quota limit, expected '%s', got '%s'", "100.00B", *storageQuota.Limit)
+	}
+	if *storageQuota.Used != "95.00B" {
+		t.Fatalf("Got unexpected quota used, expected '%s', got '%s'", "95.00B", *storageQuota.Used)
+	}
+	if *storageQuota.Available != "5.00B" {
+		t.Fatalf("Got unexpected quota available, expected '%s', got '%s'", "5.00B", *storageQuota.Available)
+	}
+	if *storageQuota.Capacity != "95%" {
+		t.Fatalf("Got unexpected quota capacity, expected '%s', got '%s'", "95%", *storageQuota.Capacity)
 	}
 }

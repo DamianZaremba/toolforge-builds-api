@@ -208,10 +208,7 @@ func TestGetBuildIsOutdatedBuilder(t *testing.T) {
 					},
 				},
 			}
-			ctx, _ := getContextWithRequest("GET", "/builds/build", nil)
-			clients := Clients{Tekton: tektonFake.NewSimpleClientset()}
-
-			build := getBuild(*ctx, &clients, run, supported)
+			build := getBuild(run, nil, supported)
 			if *build.IsOutdated != tt.expectedOutdated {
 				t.Fatalf("Got unexpected is outdated, expected '%v', got '%v'", tt.expectedOutdated, *build.IsOutdated)
 			}

@@ -775,11 +775,6 @@ func cleanHarbor(api *BuildsApi, toolName string) (gen.CleanResponse, error) {
 
 		artifacts := response.Payload
 		for _, artifact := range artifacts {
-			// this is neccessary because our harbor-client returns [<object with empty fields>]
-			// when harbor server returns empty array ([])
-			if artifact.Digest == "" {
-				continue
-			}
 			_, err := api.Clients.Harbor.V2().Artifact.DeleteArtifact(
 				context.TODO(),
 				&harborArtifact.DeleteArtifactParams{
